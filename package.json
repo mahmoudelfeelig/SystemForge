@@ -1,0 +1,36 @@
+{
+  "name": "systemforge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.16.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm --filter @systemforge/web dev",
+    "dev:api": "pnpm --filter @systemforge/api dev",
+    "dev:worker": "pnpm --filter @systemforge/worker dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint \"apps/**/*.{ts,tsx,mjs}\" \"packages/**/*.{ts,tsx}\" \"scripts/**/*.mjs\" \"*.config.{mjs,ts}\" --max-warnings=0",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:performance": "vitest run --config vitest.performance.config.ts",
+    "typecheck": "tsc -b --pretty false",
+    "quality": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm --filter @systemforge/web test:sites"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.2",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.0",
+    "prettier": "^3.9.6",
+    "tsup": "^8.5.0",
+    "tsx": "^4.23.9",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  }
+}

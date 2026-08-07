@@ -1,0 +1,179 @@
+name: systemforge
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  systemforge-web:
+    image: systemforge-web:${SYSTEMFORGE_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,mode=0755
+      - /var/run:size=4m,mode=0755
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    expose:
+      - "8080"
+    networks:
+      - web
+      - systemforge-internal
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
+    stop_grace_period: 15s
+
+  systemforge-api:
+    image: systemforge-api:${SYSTEMFORGE_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DATABASE_URL: postgres://systemforge:${POSTGRES_PASSWORD}@systemforge-db:5432/systemforge
+      PUBLIC_ORIGIN: https://systemforge.elfeel.me
+      TRUST_PROXY: "true"
+      MAX_QUEUED_RUNS: ${MAX_QUEUED_RUNS:-250}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      RATE_LIMIT_WINDOW: 1 minute
+    depends_on:
+      systemforge-db:
+        condition: service_healthy
+      systemforge-migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8080"
+    networks:
+      - web
+      - systemforge-internal
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/api/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 4s
+      retries: 4
+      start_period: 20s
+    mem_limit: 768m
+    cpus: 1.00
+    logging: *default-logging
+    stop_grace_period: 20s
+
+  systemforge-worker:
+    image: systemforge-worker:${SYSTEMFORGE_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.worker
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://systemforge:${POSTGRES_PASSWORD}@systemforge-db:5432/systemforge
+      MAX_RUNNING_RUNS: ${MAX_RUNNING_RUNS:-2}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-500}
+      WORKER_JOB_TIMEOUT_MS: ${WORKER_JOB_TIMEOUT_MS:-30000}
+      RUN_RETENTION_DAYS: ${RUN_RETENTION_DAYS:-30}
+    depends_on:
+      systemforge-db:
+        condition: service_healthy
+      systemforge-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "apps/worker/dist/healthcheck.js"]
+      interval: 15s
+      timeout: 4s
+      retries: 4
+      start_period: 20s
+    networks:
+      - systemforge-internal
+    mem_limit: 3g
+    cpus: 3.00
+    logging: *default-logging
+    stop_grace_period: 45s
+
+  systemforge-migrate:
+    image: systemforge-api:${SYSTEMFORGE_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      DATABASE_URL: postgres://systemforge:${POSTGRES_PASSWORD}@systemforge-db:5432/systemforge
+    command: ["node", "apps/api/dist/migrate.js"]
+    depends_on:
+      systemforge-db:
+        condition: service_healthy
+    networks:
+      - systemforge-internal
+    logging: *default-logging
+
+  systemforge-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: systemforge
+      POSTGRES_USER: systemforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - systemforge-db:/var/lib/postgresql/data
+    networks:
+      - systemforge-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U systemforge -d systemforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    shm_size: 256m
+    mem_limit: 2g
+    cpus: 1.50
+    logging: *default-logging
+    stop_grace_period: 60s
+
+volumes:
+  systemforge-db:
+
+networks:
+  web:
+    external: true
+  systemforge-internal:
+    internal: true

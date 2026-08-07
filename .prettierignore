@@ -1,0 +1,8 @@
+LICENSE
+pnpm-lock.yaml
+**/node_modules
+**/dist
+coverage
+apps/web/worker
+apps/web/public/assets
+design-qa.local

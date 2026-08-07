@@ -1,0 +1,12 @@
+.git
+.github
+.agents
+.codex
+**/node_modules
+**/dist
+coverage
+design-qa.local
+*.log
+.env
+.env.*
+!.env.example

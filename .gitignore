@@ -1,0 +1,16 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+test-results/
+playwright-report/
+design-qa.local/
+.last-successful-sha
+.previous-successful-sha
+.DS_Store

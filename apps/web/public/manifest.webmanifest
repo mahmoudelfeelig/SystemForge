@@ -1,0 +1,9 @@
+{
+  "name": "SystemForge",
+  "short_name": "SystemForge",
+  "description": "A deterministic distributed-systems laboratory.",
+  "start_url": "/lab",
+  "display": "standalone",
+  "background_color": "#071015",
+  "theme_color": "#071015"
+}

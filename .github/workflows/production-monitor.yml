@@ -1,0 +1,23 @@
+name: SystemForge Production Monitor
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: systemforge-production-monitor
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: vars.HETZNER_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check browser shell and canonical readiness
+        run: |
+          curl --fail --silent --show-error --retry 2 --retry-all-errors --max-time 15 https://systemforge.elfeel.me/ | grep -q SystemForge
+          curl --fail --silent --show-error --retry 2 --retry-all-errors --max-time 15 https://systemforge.elfeel.me/api/health/ready | grep -q '"status":"ready"'

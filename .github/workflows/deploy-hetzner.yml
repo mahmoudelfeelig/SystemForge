@@ -1,0 +1,58 @@
+name: Deploy SystemForge to Hetzner
+
+on:
+  workflow_run:
+    workflows: ["SystemForge CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: systemforge-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.HETZNER_DEPLOY_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure deployment SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/systemforge_deploy"
+          chmod 600 "$HOME/.ssh/systemforge_deploy"
+
+      - name: Deploy the tested main revision
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          SSH_HOST: ${{ vars.HETZNER_HOST }}
+          SSH_PORT: ${{ vars.HETZNER_SSH_PORT }}
+          SSH_USER: ${{ vars.HETZNER_USER }}
+        run: |
+          test -n "$DEPLOY_SHA"
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          SSH_PORT="${SSH_PORT:-22}"
+          ssh \
+            -i "$HOME/.ssh/systemforge_deploy" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             cd /opt/systemforge
+             git fetch origin main
+             test \"\$(git rev-parse origin/main)\" = \"$DEPLOY_SHA\"
+             git checkout main
+             git pull --ff-only origin main
+             sh scripts/deploy_hetzner.sh \"$DEPLOY_SHA\""

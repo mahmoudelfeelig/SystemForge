@@ -1,0 +1,85 @@
+name: SystemForge CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.16.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - run: pnpm test:performance
+      - run: pnpm build
+      - run: pnpm --filter @systemforge/web test:sites
+      - run: pnpm audit --prod --audit-level=high
+
+  repository:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: sh -n scripts/*.sh
+      - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml config --quiet
+      - run: docker run --rm -v "$PWD/deploy/Caddyfile.systemforge:/etc/caddy/Caddyfile:ro" caddy:2.9-alpine caddy validate --config /etc/caddy/Caddyfile
+
+  containers:
+    runs-on: ubuntu-latest
+    needs: [quality, repository]
+    env:
+      POSTGRES_PASSWORD: ci-only-url-safe-password
+      SYSTEMFORGE_IMAGE_TAG: ci
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker network create web
+      - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml build
+      - uses: anchore/scan-action@v7.4.0
+        with:
+          image: systemforge-api:ci
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+      - uses: anchore/scan-action@v7.4.0
+        with:
+          image: systemforge-web:ci
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [containers]
+    env:
+      POSTGRES_PASSWORD: ci-only-url-safe-password
+      SYSTEMFORGE_IMAGE_TAG: ci
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker network create web
+      - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml up -d --build --wait --wait-timeout 180
+      - run: >-
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml
+          exec -T
+          -e SMOKE_API_ORIGIN=http://127.0.0.1:8080
+          -e SMOKE_WEB_ORIGIN=http://systemforge-web:8080
+          systemforge-api node /app/scripts/production_smoke.mjs
+      - if: always()
+        run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml logs --no-color
+      - if: always()
+        run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml down -v

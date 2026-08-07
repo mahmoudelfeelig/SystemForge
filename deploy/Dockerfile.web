@@ -1,0 +1,21 @@
+FROM node:24-bookworm-slim AS build
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable && corepack prepare pnpm@11.16.0 --activate
+WORKDIR /workspace
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.base.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/sim-core/package.json packages/sim-core/package.json
+RUN pnpm install --frozen-lockfile
+COPY apps/web apps/web
+COPY packages/contracts packages/contracts
+COPY packages/sim-core packages/sim-core
+RUN pnpm --filter @systemforge/web build
+
+FROM nginx:1.29-alpine
+COPY deploy/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/offline.html /usr/share/nginx/html/offline.html
+COPY --from=build /workspace/apps/web/dist/client /usr/share/nginx/html
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --retries=3 CMD wget -qO- http://127.0.0.1:8080/health || exit 1
