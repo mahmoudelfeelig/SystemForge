@@ -124,7 +124,7 @@ Cloudflare recommends proxying HTTP records so traffic is protected at the edge 
 
 ## Deployment, rollback, and smoke checks
 
-For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the tested Git SHA. In automatic deployments, GitHub transfers the exact scanned and integration-tested SHA-tagged image bundle and sets `SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and never rebuilds them. It then starts the full Compose project with health waits and runs an in-network production smoke. The functional smoke checks the static shell, database readiness, candidate/interviewer privacy separation, controlled reveal and reconceal, digest-only credential storage, stale-engine rejection, queue submission, worker completion, exhausted-lease recovery, engine version, and canonical digest. A second smoke sends 256 concurrent canonical reads from an isolated synthetic visitor while fetching the web shell 48 times. It requires structured capacity or rate-limit responses with retry and local-mode guidance, an unaffected independent visitor, and healthy API and web services after the burst. Only then is `.last-successful-sha` updated.
+For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the tested Git SHA. In automatic deployments, GitHub transfers the exact scanned and integration-tested SHA-tagged image bundle and sets `SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and never rebuilds them. It then starts the full Compose project with health waits and runs an in-network production smoke. The functional smoke checks the static shell, database readiness, candidate/interviewer privacy separation, controlled reveal and reconceal, digest-only credential storage, stale-engine rejection, queue submission, worker completion, exhausted-lease recovery, engine version, and canonical digest. A second smoke sends 256 concurrent canonical reads from an isolated synthetic visitor while fetching the web shell 48 times. It requires structured capacity or rate-limit responses with retry and local-mode guidance, an unaffected independent visitor, and healthy API and web services after the burst. The deployment then invokes `scripts/verify_release_backups.sh`: it creates a current validated local dump, copies it to the encrypted independent repository, verifies fresh mode-`0600` backup evidence, and requires a successful disposable restore that covers the current migration manifest. Missing, stale, insecure, or mismatched evidence causes deployment rollback. Only after all three gates pass is `.last-successful-sha` updated.
 
 The interviewer-token migration keeps a nullable legacy column and a hashing
 trigger as a one-release rollback bridge. Current images never write raw tokens;
@@ -174,6 +174,12 @@ backend or an S3-compatible object store. It deliberately does not select or
 initialize a repository automatically. The operator must create independently
 scoped storage credentials, keep the restic repository password outside the
 VPS, and run the explicit initializer once.
+
+An explicitly approved release cannot bypass this setup. Every deployment
+creates and integrity-checks a current encrypted off-site backup. It also runs
+an independent restore when no restore evidence exists, the evidence is older
+than 90 days, or the checked-in migration manifest changed since the last
+drill. The release stops and rolls back if either operation fails.
 
 Install restic from its verified official package or binary, then create the
 configuration without placing credentials in the repository. The directory,

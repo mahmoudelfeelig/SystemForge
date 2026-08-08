@@ -105,6 +105,7 @@ compose exec -T \
   -e OVERLOAD_API_ORIGIN=http://127.0.0.1:8080 \
   -e OVERLOAD_WEB_ORIGIN=http://systemforge-web:8080 \
   systemforge-api node /app/apps/api/overload_smoke.mjs
+sh "$APP_DIR/scripts/verify_release_backups.sh"
 
 if test -n "${SYSTEMFORGE_EXTERNAL_SMOKE_URL:-}"; then
   EXTERNAL_ORIGIN=${SYSTEMFORGE_EXTERNAL_SMOKE_URL%/}

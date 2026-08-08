@@ -12,6 +12,7 @@ import {
   WarningOctagon,
 } from "@phosphor-icons/react";
 import { Link } from "react-router-dom";
+import { BrandIcon } from "../components/BrandIcon";
 
 const objectives = [
   ["p95 latency", "<= 400 ms", "386 ms", "warning"],
@@ -25,7 +26,7 @@ export function LandingPage() {
     <div className="site-shell">
       <header className="site-header">
         <Link className="wordmark" to="/" aria-label="SystemForge home">
-          <span>SF</span>
+          <BrandIcon />
           <strong>SystemForge</strong>
           <small>Distributed systems laboratory</small>
         </Link>
@@ -35,7 +36,9 @@ export function LandingPage() {
           <Link to="/interview">Interview studio</Link>
         </nav>
         <Link className="button button--primary" to="/lab">
-          Enter mission control <ArrowRight size={16} />
+          <span className="site-header__cta-full">Enter mission control</span>
+          <span className="site-header__cta-compact">Enter lab</span>
+          <ArrowRight size={16} />
         </Link>
       </header>
 
@@ -262,14 +265,36 @@ export function LandingPage() {
       </main>
 
       <footer className="site-footer">
-        <span>SystemForge / Distributed systems laboratory</span>
-        <a
-          href="https://github.com/mahmoudelfeelig/SystemForge"
-          target="_blank"
-          rel="noreferrer"
-        >
-          AGPL-3.0 · View source
+        <a className="site-footer__brand" href="https://elfeel.me">
+          <BrandIcon />
+          <span>
+            <strong>SystemForge</strong>
+            <small>A Mahmoud Elfeel project</small>
+          </span>
         </a>
+        <div className="site-footer__engine">
+          <span>ENGINE 0.3.0</span>
+          <strong>LOCAL-FIRST · DETERMINISTIC</strong>
+        </div>
+        <p className="site-footer__reachability">
+          Reachable by <a href="mailto:mahmoudelfeelig@gmail.com">email</a>,{" "}
+          <a
+            href="https://www.linkedin.com/in/elephanto"
+            target="_blank"
+            rel="noreferrer"
+          >
+            LinkedIn
+          </a>
+          , or{" "}
+          <a
+            href="https://github.com/mahmoudelfeelig/SystemForge"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
+          </a>
+          .
+        </p>
       </footer>
     </div>
   );

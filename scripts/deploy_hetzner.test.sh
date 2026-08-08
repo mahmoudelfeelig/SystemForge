@@ -17,7 +17,7 @@ grep -Fq 'MAX_STORED_RUNS: ${MAX_STORED_RUNS:-250}' deploy/docker-compose.prod.y
 grep -Fq 'MAX_SHARED_SCENARIOS: ${MAX_SHARED_SCENARIOS:-2000}' deploy/docker-compose.prod.yml
 grep -Fq 'MAX_CANONICAL_RESULT_BYTES: ${MAX_CANONICAL_RESULT_BYTES:-8500000}' deploy/docker-compose.prod.yml
 
-mkdir -p "$TEST_APP_DIR/deploy" "$TEST_BIN_DIR"
+mkdir -p "$TEST_APP_DIR/deploy" "$TEST_APP_DIR/scripts" "$TEST_BIN_DIR"
 : > "$TEST_APP_DIR/deploy/docker-compose.prod.yml"
 : > "$TEST_APP_DIR/deploy/.env"
 
@@ -66,7 +66,19 @@ case "$*" in
 esac
 EOF
 
-chmod 700 "$TEST_BIN_DIR/git" "$TEST_BIN_DIR/docker" "$TEST_BIN_DIR/curl"
+cat > "$TEST_APP_DIR/scripts/verify_release_backups.sh" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' 'release backup' >> "$FAKE_LOG"
+printf '%s\n' 'release offsite restore' >> "$FAKE_LOG"
+test "${FAKE_OFFSITE_FAILURE:-false}" != true
+EOF
+
+chmod 700 \
+  "$TEST_BIN_DIR/git" \
+  "$TEST_BIN_DIR/docker" \
+  "$TEST_BIN_DIR/curl" \
+  "$TEST_APP_DIR/scripts/verify_release_backups.sh"
 
 run_deploy() {
   : > "$TEST_LOG"
@@ -90,6 +102,8 @@ test "$(grep -c '^curl ' "$TEST_LOG")" -eq 2
 grep -q 'https://systemforge.example.test/$' "$TEST_LOG"
 grep -q 'https://systemforge.example.test/api/health/ready' "$TEST_LOG"
 grep -q '/app/apps/api/overload_smoke.mjs' "$TEST_LOG"
+grep -q '^release backup$' "$TEST_LOG"
+grep -q '^release offsite restore$' "$TEST_LOG"
 
 rm -f "$TEST_APP_DIR/.last-successful-sha" "$TEST_APP_DIR/.previous-successful-sha"
 FAKE_EXTERNAL_SMOKE_URL=""
@@ -98,6 +112,22 @@ export FAKE_EXTERNAL_SMOKE_URL FAKE_EXTERNAL_FAILURE
 run_deploy
 test "$(cat "$TEST_APP_DIR/.last-successful-sha")" = "$NEW_SHA"
 test "$(grep -c '^curl ' "$TEST_LOG" || true)" -eq 0
+
+rm -f "$TEST_APP_DIR/.last-successful-sha" "$TEST_APP_DIR/.previous-successful-sha"
+FAKE_OFFSITE_FAILURE=true
+FAKE_PREVIOUS_IMAGES=none
+export FAKE_OFFSITE_FAILURE FAKE_PREVIOUS_IMAGES
+set +e
+run_deploy >/dev/null 2>&1
+OFFSITE_FAILURE_STATUS=$?
+set -e
+test "$OFFSITE_FAILURE_STATUS" -ne 0
+test ! -f "$TEST_APP_DIR/.last-successful-sha"
+grep -q '^release backup$' "$TEST_LOG"
+grep -q '^release offsite restore$' "$TEST_LOG"
+grep -q ' stop systemforge-web systemforge-api systemforge-worker' "$TEST_LOG"
+FAKE_OFFSITE_FAILURE=false
+export FAKE_OFFSITE_FAILURE
 
 rm -f "$TEST_APP_DIR/.last-successful-sha" "$TEST_APP_DIR/.previous-successful-sha"
 FAKE_SKIP_BUILD=true

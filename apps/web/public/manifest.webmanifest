@@ -5,5 +5,13 @@
   "start_url": "/lab",
   "display": "standalone",
   "background_color": "#071015",
-  "theme_color": "#071015"
+  "theme_color": "#071015",
+  "icons": [
+    {
+      "src": "/assets/mahmoud-elephant.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }

@@ -99,6 +99,7 @@ run_restore() {
     FAKE_REPOSITORY_READY="${FAKE_REPOSITORY_READY:-true}" \
     FAKE_RESTORE_FAILURE="${FAKE_RESTORE_FAILURE:-false}" \
     FAKE_RESTORE_EMPTY="${FAKE_RESTORE_EMPTY:-false}" \
+    SYSTEMFORGE_APP_DIR="$PWD" \
     SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
     SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_FILE" \
     SYSTEMFORGE_RESTIC_BIN="$TEST_BIN_DIR/restic" \
@@ -187,6 +188,7 @@ grep -q '^restore latest --host systemforge-production --tag systemforge-postgre
 test "$(wc -l < "$VERIFY_LOG")" -eq 1
 test "$(stat -c '%a' "$RESTORE_STATUS_FILE")" = 600
 grep -q '^restored_filename=systemforge.20260808T120000Z.dump$' "$RESTORE_STATUS_FILE"
+grep -Eq '^migration_manifest_sha256=[0-9a-f]{64}$' "$RESTORE_STATUS_FILE"
 
 rm -f "$RESTORE_STATUS_FILE"
 FAKE_RESTORE_EMPTY=true

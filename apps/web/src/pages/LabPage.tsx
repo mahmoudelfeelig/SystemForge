@@ -10,7 +10,6 @@ import {
   Play,
   Plus,
   Pulse,
-  ShieldChevron,
   SlidersHorizontal,
   Trash,
   Warning,
@@ -39,6 +38,7 @@ import {
   ComponentNode,
   type SystemFlowNode,
 } from "../components/ComponentNode";
+import { BrandIcon } from "../components/BrandIcon";
 import { COMPONENT_ICONS } from "../components/componentIcons";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ServiceBanner } from "../components/ServiceBanner";
@@ -609,11 +609,7 @@ export function LabPage() {
       <header className="lab-header">
         <Link to="/" className="lab-brand">
           <ArrowLeft className="lab-brand__back" size={14} />
-          <ShieldChevron
-            className="lab-brand__mark"
-            size={28}
-            weight="duotone"
-          />
+          <BrandIcon className="lab-brand__mark" />
           <div>
             <strong>SystemForge Lab</strong>
             <small>Mission control</small>

@@ -98,6 +98,14 @@ RESTORED_DUMP=$(find "$RESTORE_DIR" -type f -name 'systemforge.*.dump' -print)
 
 RESTORED_SHA256=$(sha256sum "$RESTORED_DUMP")
 RESTORED_SHA256=${RESTORED_SHA256%% *}
+MIGRATION_MANIFEST_SHA256=${SYSTEMFORGE_MIGRATION_MANIFEST_SHA256:-$(
+  cd "$APP_DIR"
+  find apps/api/migrations -type f -name '*.sql' -print \
+    | LC_ALL=C sort \
+    | while IFS= read -r migration; do sha256sum "$migration"; done \
+    | sha256sum \
+    | cut -d ' ' -f 1
+)}
 STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 STATUS_TEMP="$STATUS_FILE.partial.$$"
 umask 077
@@ -105,6 +113,7 @@ umask 077
   printf 'last_restore_utc=%s\n' "$STAMP"
   printf 'restored_filename=%s\n' "$(basename "$RESTORED_DUMP")"
   printf 'restored_sha256=%s\n' "$RESTORED_SHA256"
+  printf 'migration_manifest_sha256=%s\n' "$MIGRATION_MANIFEST_SHA256"
   printf 'backup_host=%s\n' "$BACKUP_HOST"
   printf 'backup_tag=%s\n' "$BACKUP_TAG"
 } > "$STATUS_TEMP"

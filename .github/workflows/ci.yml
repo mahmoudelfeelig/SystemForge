@@ -57,6 +57,7 @@ jobs:
       - run: sh scripts/edge_contract.test.sh
       - run: sh scripts/verify_cloudflare_ranges.sh
       - run: sh scripts/offsite_backup.test.sh
+      - run: sh scripts/release_backup_gate.test.sh
       - name: Prove the production release gate defaults closed
         run: |
           set +e

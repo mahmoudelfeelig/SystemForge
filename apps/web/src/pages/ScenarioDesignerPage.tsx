@@ -21,6 +21,7 @@ import {
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DEFAULT_ARCHITECTURE, DEFAULT_SCENARIO } from "@systemforge/sim-core";
+import { BrandIcon } from "../components/BrandIcon";
 import { shareScenario } from "../lib/api";
 import { encodeLocalShare, interviewShareLinks } from "../lib/share";
 import { useLabStore } from "../store/useLabStore";
@@ -223,7 +224,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
     <div className="designer-shell">
       <header className="designer-header">
         <Link className="wordmark" to="/" aria-label="SystemForge home">
-          <span>SF</span>
+          <BrandIcon />
           <strong>SystemForge</strong>
         </Link>
         <div className="designer-header__title">

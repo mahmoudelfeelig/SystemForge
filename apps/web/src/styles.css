@@ -231,12 +231,22 @@ label {
   width: 30px;
   height: 30px;
   border: 1px solid var(--cyan);
-  color: var(--cyan);
   display: grid;
   place-items: center;
-  font-family: var(--display);
-  font-size: 16px;
-  font-weight: 700;
+  background: #02090e;
+  box-shadow: inset 0 0 0 1px rgba(32, 199, 255, 0.08);
+}
+
+.brand-icon {
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.brand-icon img {
+  display: block;
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
 }
 
 .wordmark > strong {
@@ -267,6 +277,10 @@ label {
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.site-header__cta-compact {
+  display: none;
 }
 
 .site-header nav a:hover {
@@ -849,13 +863,16 @@ label {
 
 .site-footer {
   width: min(1520px, 100%);
-  min-height: 62px;
+  min-height: 82px;
   margin: 0 auto;
+  border-top: 1px solid var(--line-bright);
   border-inline: 1px solid var(--line);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) auto minmax(300px, 1fr);
   align-items: center;
-  justify-content: space-between;
-  padding: 0 clamp(24px, 4vw, 56px);
+  gap: 28px;
+  padding: 14px clamp(24px, 4vw, 56px);
+  background: #040b10;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 9px;
@@ -863,13 +880,81 @@ label {
   text-transform: uppercase;
 }
 
-.site-footer a {
-  display: inline-flex;
+.site-footer__brand {
+  display: flex;
+  width: fit-content;
   align-items: center;
-  min-height: 24px;
+  gap: 10px;
+  text-transform: none;
 }
 
-.site-footer a:hover {
+.site-footer__brand .brand-icon {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line-bright);
+  background: #02090e;
+  display: grid;
+  place-items: center;
+}
+
+.site-footer__brand > span {
+  display: grid;
+  gap: 2px;
+}
+
+.site-footer__brand strong {
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.site-footer__brand small {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-footer__engine {
+  min-height: 38px;
+  border-inline: 1px solid var(--line);
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 0 26px;
+  text-align: center;
+}
+
+.site-footer__engine span {
+  color: var(--cyan);
+}
+
+.site-footer__engine strong {
+  color: var(--text);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+}
+
+.site-footer__reachability {
+  justify-self: end;
+  margin: 0;
+  text-align: right;
+  text-transform: none;
+}
+
+.site-footer__reachability a {
+  min-height: 22px;
+  padding: 2px 3px;
+  color: var(--text);
+  box-shadow: inset 0 -1px 0 var(--cyan);
+}
+
+.site-footer a:hover,
+.site-footer a:focus-visible {
   color: var(--cyan);
 }
 
@@ -927,7 +1012,12 @@ label {
 }
 
 .lab-brand__mark {
-  color: var(--cyan);
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-bright);
+  background: #02090e;
+  display: grid;
+  place-items: center;
   filter: drop-shadow(0 0 7px rgba(32, 199, 255, 0.36));
 }
 
@@ -3763,6 +3853,15 @@ label {
   text-transform: uppercase;
 }
 
+.share-loader > a .brand-icon {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line-bright);
+  background: #02090e;
+  display: grid;
+  place-items: center;
+}
+
 .share-loader section {
   width: min(560px, calc(100% - 48px));
   position: absolute;
@@ -4033,7 +4132,7 @@ label {
     padding: 42px 28px 28px 45px;
   }
   .mission-dossier h1 {
-    font-size: clamp(54px, 16vw, 76px);
+    font-size: clamp(48px, 13.6vw, 68px);
   }
   .mission-stage {
     grid-template-rows: 74px auto 138px;
@@ -4096,8 +4195,26 @@ label {
     border-inline: 0;
     padding: 18px 24px;
     gap: 18px;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: flex-start;
+  }
+  .site-footer__engine {
+    width: 100%;
+    border: 0;
+    border-block: 1px solid var(--line);
+    padding: 12px 0;
+    text-align: left;
+  }
+  .site-footer__reachability {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .site-header__cta-full {
+    display: none;
+  }
+  .site-header__cta-compact {
+    display: inline;
   }
 
   .designer-header {
@@ -4173,7 +4290,7 @@ label {
     grid-template-columns: 174px minmax(0, 1fr);
   }
   .lab-brand {
-    grid-template-columns: 19px 26px 1fr;
+    grid-template-columns: 19px 28px 1fr;
     padding-inline: 7px;
   }
   .lab-brand div small {

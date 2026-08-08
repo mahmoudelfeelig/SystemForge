@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchSharedScenario } from "../lib/api";
 import { useLabStore } from "../store/useLabStore";
+import { BrandIcon } from "../components/BrandIcon";
 
 export function SharedScenarioPage() {
   const { id } = useParams();
@@ -43,7 +44,7 @@ export function SharedScenarioPage() {
   return (
     <main className="share-loader">
       <Link to="/">
-        <ArrowLeft size={17} /> SystemForge
+        <ArrowLeft size={17} /> <BrandIcon /> SystemForge
       </Link>
       {error ? (
         <section>

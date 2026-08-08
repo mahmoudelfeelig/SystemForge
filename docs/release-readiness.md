@@ -38,6 +38,10 @@ The 2026-08-08 checkout passed the following checks:
   preserve the local-first cron order, create a mode-`0700` cron output
   directory, reject unsafe cron paths, and validate the restored dump through
   a separate verifier.
+- `sh scripts/release_backup_gate.test.sh`: approved deployment requires a
+  fresh encrypted copy and current restore evidence, reuses valid restore
+  evidence, repeats the drill after migration changes, and fails closed on
+  insecure credentials or a failed restore.
 - `node scripts/service_worker_contract.test.mjs`: an origin `5xx` navigation
   serves the cached local lab, ordinary `4xx` responses remain visible, and API
   requests bypass the shell cache.
@@ -179,8 +183,9 @@ Public release requires all of the following in order:
 - create or verify the protected `production` GitHub environment, variables,
   and dedicated SSH secret;
 - establish an independently recoverable off-host backup or Hetzner backup
-  policy for canonical data, then pass the first real encrypted copy and
-  independent restore drill;
+  policy for canonical data and initialize its credentials; the approved
+  deployment itself now enforces the first real encrypted copy and independent
+  restore drill before it can succeed;
 - enable the two production approval variables;
 - deploy the exact tested SHA and pass the in-network smoke while rollback is
   armed;
