@@ -40,10 +40,17 @@ set -eu
 printf 'caddy %s\n' "$*" >> "$FAKE_LOG"
 EOF
 
+cat > "$TEST_APP_DIR/scripts/install_backup_cron.sh" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' 'backup-cron install' >> "$FAKE_LOG"
+EOF
+
 chmod 700 \
   "$TEST_BIN_DIR/git" \
   "$TEST_BIN_DIR/docker" \
-  "$TEST_APP_DIR/scripts/install_caddy_route.sh"
+  "$TEST_APP_DIR/scripts/install_caddy_route.sh" \
+  "$TEST_APP_DIR/scripts/install_backup_cron.sh"
 
 run_stage() {
   PATH="$TEST_BIN_DIR:$PATH" \
@@ -56,6 +63,7 @@ run_stage() {
 }
 
 run_stage
+grep -q '^backup-cron install$' "$TEST_LOG"
 grep -q '^caddy closed$' "$TEST_LOG"
 grep -q 'docker compose .* stop systemforge-web systemforge-api systemforge-worker systemforge-migrate$' "$TEST_LOG"
 test "$(grep -c '^docker image inspect ' "$TEST_LOG")" -eq 3
@@ -64,6 +72,7 @@ test "$(grep -c '^docker image inspect ' "$TEST_LOG")" -eq 3
 FAKE_PUBLIC_RELEASE_ENABLED=true
 export FAKE_PUBLIC_RELEASE_ENABLED
 run_stage
+grep -q '^backup-cron install$' "$TEST_LOG"
 test "$(grep -c '^caddy ' "$TEST_LOG" || true)" -eq 0
 test "$(grep -c 'docker compose ' "$TEST_LOG" || true)" -eq 0
 test "$(grep -c '^docker image inspect ' "$TEST_LOG")" -eq 3
@@ -77,6 +86,7 @@ run_stage >/dev/null 2>&1
 MISSING_IMAGE_STATUS=$?
 set -e
 test "$MISSING_IMAGE_STATUS" -ne 0
+test "$(grep -c '^backup-cron ' "$TEST_LOG" || true)" -eq 0
 test "$(grep -c '^caddy ' "$TEST_LOG" || true)" -eq 0
 test "$(grep -c 'docker compose ' "$TEST_LOG" || true)" -eq 0
 

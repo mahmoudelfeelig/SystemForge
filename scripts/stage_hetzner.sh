@@ -19,6 +19,7 @@ test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
 docker image inspect "systemforge-api:$DEPLOY_SHA" >/dev/null
 docker image inspect "systemforge-web:$DEPLOY_SHA" >/dev/null
 docker image inspect "systemforge-worker:$DEPLOY_SHA" >/dev/null
+sh "$APP_DIR/scripts/install_backup_cron.sh"
 
 case "${SYSTEMFORGE_PUBLIC_RELEASE_ENABLED:-false}" in
   true)
