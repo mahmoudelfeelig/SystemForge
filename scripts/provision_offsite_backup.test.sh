@@ -6,6 +6,7 @@ FAKE_BIN="$TEST_ROOT/bin"
 SOURCE_DIR="$TEST_ROOT/source"
 CONFIG_SOURCE="$SOURCE_DIR/offsite-backup.env"
 PASSWORD_SOURCE="$SOURCE_DIR/restic-password"
+RESTIC_SOURCE="$SOURCE_DIR/restic"
 EVENTS="$TEST_ROOT/events"
 
 cleanup() {
@@ -13,24 +14,20 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-TARGET_DIR="$TEST_ROOT/etc/systemforge"
+BACKUP_DIR="$TEST_ROOT/backups"
+TARGET_DIR="$BACKUP_DIR/.offsite"
 CONFIG_TARGET="$TARGET_DIR/offsite-backup.env"
 PASSWORD_TARGET="$TARGET_DIR/restic-password"
+RESTIC_TARGET="$TARGET_DIR/restic"
 mkdir -p "$FAKE_BIN" "$SOURCE_DIR"
 printf '%s\n' 'RESTIC_REPOSITORY=s3:https://example.r2.cloudflarestorage.com/systemforge' \
   "RESTIC_PASSWORD_FILE=$PASSWORD_TARGET" > "$CONFIG_SOURCE"
 printf '%s\n' 'test-repository-password' > "$PASSWORD_SOURCE"
 chmod 600 "$CONFIG_SOURCE" "$PASSWORD_SOURCE"
 
-cat > "$FAKE_BIN/restic" <<'EOF'
+cat > "$RESTIC_SOURCE" <<'EOF'
 #!/bin/sh
 exit 0
-EOF
-cat > "$FAKE_BIN/sudo" <<'EOF'
-#!/bin/sh
-set -eu
-test "${1:-}" != -n || shift
-exec "$@"
 EOF
 cat > "$TEST_ROOT/init" <<'EOF'
 #!/bin/sh
@@ -42,58 +39,95 @@ cat > "$TEST_ROOT/cron" <<'EOF'
 #!/bin/sh
 set -eu
 printf 'cron:%s\n' "$SYSTEMFORGE_APP_DIR" >> "$FAKE_EVENTS"
+printf 'cron-config:%s\n' "$SYSTEMFORGE_OFFSITE_CONFIG" >> "$FAKE_EVENTS"
+printf 'cron-restic:%s\n' "$SYSTEMFORGE_RESTIC_BIN" >> "$FAKE_EVENTS"
 EOF
-chmod +x "$FAKE_BIN/restic" "$FAKE_BIN/sudo" "$TEST_ROOT/init" "$TEST_ROOT/cron"
+chmod 700 "$RESTIC_SOURCE" "$TEST_ROOT/init" "$TEST_ROOT/cron"
+RESTIC_SHA256=$(sha256sum "$RESTIC_SOURCE")
+RESTIC_SHA256=${RESTIC_SHA256%% *}
 
 PATH="$FAKE_BIN:$PATH" \
 FAKE_EVENTS="$EVENTS" \
 SYSTEMFORGE_APP_DIR="$PWD" \
+SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
 SYSTEMFORGE_OFFSITE_TARGET_DIR="$TARGET_DIR" \
 SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_TARGET" \
 SYSTEMFORGE_RESTIC_PASSWORD_FILE="$PASSWORD_TARGET" \
+SYSTEMFORGE_RESTIC_BIN="$RESTIC_TARGET" \
+SYSTEMFORGE_RESTIC_SHA256="$RESTIC_SHA256" \
 SYSTEMFORGE_INIT_OFFSITE_BACKUP="$TEST_ROOT/init" \
 SYSTEMFORGE_INSTALL_BACKUP_CRON="$TEST_ROOT/cron" \
-  sh scripts/provision_offsite_backup.sh "$CONFIG_SOURCE" "$PASSWORD_SOURCE"
+  sh scripts/provision_offsite_backup.sh "$CONFIG_SOURCE" "$PASSWORD_SOURCE" "$RESTIC_SOURCE"
 
 test "$(stat -c '%a' "$CONFIG_TARGET")" = 600
 test "$(stat -c '%a' "$PASSWORD_TARGET")" = 600
 cmp "$CONFIG_SOURCE" "$CONFIG_TARGET"
 cmp "$PASSWORD_SOURCE" "$PASSWORD_TARGET"
+cmp "$RESTIC_SOURCE" "$RESTIC_TARGET"
+test "$(stat -c '%a' "$RESTIC_TARGET")" = 700
 grep -Fq "init:$CONFIG_TARGET" "$EVENTS"
 grep -Fq "cron:$PWD" "$EVENTS"
+grep -Fq "cron-config:$CONFIG_TARGET" "$EVENTS"
+grep -Fq "cron-restic:$RESTIC_TARGET" "$EVENTS"
 
 printf '%s\n' 'previous-config' > "$CONFIG_TARGET"
 printf '%s\n' 'previous-password' > "$PASSWORD_TARGET"
+printf '#!/bin/sh\nexit 0\n# previous-restic\n' > "$RESTIC_TARGET"
 chmod 600 "$CONFIG_TARGET" "$PASSWORD_TARGET"
+chmod 700 "$RESTIC_TARGET"
 set +e
 PATH="$FAKE_BIN:$PATH" \
 FAKE_EVENTS="$EVENTS" \
 FAKE_INIT_FAILURE=true \
 SYSTEMFORGE_APP_DIR="$PWD" \
+SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
 SYSTEMFORGE_OFFSITE_TARGET_DIR="$TARGET_DIR" \
 SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_TARGET" \
 SYSTEMFORGE_RESTIC_PASSWORD_FILE="$PASSWORD_TARGET" \
+SYSTEMFORGE_RESTIC_BIN="$RESTIC_TARGET" \
+SYSTEMFORGE_RESTIC_SHA256="$RESTIC_SHA256" \
 SYSTEMFORGE_INIT_OFFSITE_BACKUP="$TEST_ROOT/init" \
 SYSTEMFORGE_INSTALL_BACKUP_CRON="$TEST_ROOT/cron" \
-  sh scripts/provision_offsite_backup.sh "$CONFIG_SOURCE" "$PASSWORD_SOURCE"
+  sh scripts/provision_offsite_backup.sh "$CONFIG_SOURCE" "$PASSWORD_SOURCE" "$RESTIC_SOURCE"
 FAILURE_STATUS=$?
 set -e
 test "$FAILURE_STATUS" -ne 0
 test "$(cat "$CONFIG_TARGET")" = previous-config
 test "$(cat "$PASSWORD_TARGET")" = previous-password
+grep -Fq '# previous-restic' "$RESTIC_TARGET"
 
 chmod 644 "$CONFIG_SOURCE"
 set +e
 PATH="$FAKE_BIN:$PATH" \
 SYSTEMFORGE_APP_DIR="$PWD" \
+SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
 SYSTEMFORGE_OFFSITE_TARGET_DIR="$TARGET_DIR" \
 SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_TARGET" \
 SYSTEMFORGE_RESTIC_PASSWORD_FILE="$PASSWORD_TARGET" \
+SYSTEMFORGE_RESTIC_BIN="$RESTIC_TARGET" \
+SYSTEMFORGE_RESTIC_SHA256="$RESTIC_SHA256" \
 SYSTEMFORGE_INIT_OFFSITE_BACKUP="$TEST_ROOT/init" \
 SYSTEMFORGE_INSTALL_BACKUP_CRON="$TEST_ROOT/cron" \
-  sh scripts/provision_offsite_backup.sh "$CONFIG_SOURCE" "$PASSWORD_SOURCE"
+  sh scripts/provision_offsite_backup.sh "$CONFIG_SOURCE" "$PASSWORD_SOURCE" "$RESTIC_SOURCE"
 MODE_STATUS=$?
 set -e
 test "$MODE_STATUS" -ne 0
+
+chmod 600 "$CONFIG_SOURCE"
+set +e
+PATH="$FAKE_BIN:$PATH" \
+SYSTEMFORGE_APP_DIR="$PWD" \
+SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
+SYSTEMFORGE_OFFSITE_TARGET_DIR="$TARGET_DIR" \
+SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_TARGET" \
+SYSTEMFORGE_RESTIC_PASSWORD_FILE="$PASSWORD_TARGET" \
+SYSTEMFORGE_RESTIC_BIN="$RESTIC_TARGET" \
+SYSTEMFORGE_RESTIC_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+SYSTEMFORGE_INIT_OFFSITE_BACKUP="$TEST_ROOT/init" \
+SYSTEMFORGE_INSTALL_BACKUP_CRON="$TEST_ROOT/cron" \
+  sh scripts/provision_offsite_backup.sh "$CONFIG_SOURCE" "$PASSWORD_SOURCE" "$RESTIC_SOURCE"
+CHECKSUM_STATUS=$?
+set -e
+test "$CHECKSUM_STATUS" -ne 0
 
 echo "Off-site backup provisioning tests passed."

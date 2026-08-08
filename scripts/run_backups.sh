@@ -2,7 +2,8 @@
 set -eu
 
 APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
-CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-/etc/systemforge/offsite-backup.env}
+BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
+CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-"$BACKUP_DIR/.offsite/offsite-backup.env"}
 
 SYSTEMFORGE_APP_DIR="$APP_DIR" "$APP_DIR/scripts/backup_postgres.sh"
 if test -f "$CONFIG_FILE"; then

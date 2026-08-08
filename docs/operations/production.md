@@ -172,7 +172,8 @@ curl -fsS https://systemforge.elfeel.me/api/health/ready
 The installed cron runs at 02:17 UTC. `scripts/run_backups.sh` first creates a
 PostgreSQL custom-format dump in `/opt/systemforge-backups`, validates it with
 `pg_restore --list`, applies mode `0600`, and removes verified local dumps older
-than 14 days. If `/etc/systemforge/offsite-backup.env` exists, the same run then
+than 14 days. If `/opt/systemforge-backups/.offsite/offsite-backup.env` exists,
+the same run then
 copies the newest verified dump into an encrypted restic repository, applies the
 configured snapshot-retention policy, and reads a configured subset of remote
 pack data through `restic check`. A remote failure makes the cron run fail and
@@ -190,11 +191,14 @@ for Cloudflare R2 before application promotion. Configure
 then add `SYSTEMFORGE_R2_ACCESS_KEY_ID`, `SYSTEMFORGE_R2_SECRET_ACCESS_KEY`, and
 `SYSTEMFORGE_RESTIC_PASSWORD` as environment secrets. The R2 token must be
 object-read-write scoped only to the dedicated backup bucket and may be source-IP
-restricted to the Hetzner host. The deployment copies mode-`0600` files over the
-pinned SSH connection, installs restic from the host's signed package repository
-when needed, initializes or verifies the encrypted repository, and installs the
-nightly cron before starting the candidate application release. Failed credential
-rotation restores the previously working host configuration.
+restricted to the Hetzner host. CI downloads the official restic release, checks
+its pinned SHA-256 digest, and transfers that exact binary and the mode-`0600`
+credentials over the pinned SSH connection. The unprivileged deployment account
+installs them below `/opt/systemforge-backups/.offsite`, initializes or verifies
+the encrypted repository, and installs the nightly cron before starting the
+candidate application release. No passwordless sudo or system-wide package
+installation is required. Failed credential rotation restores the previously
+working user-owned configuration and binary.
 
 An explicitly approved release cannot bypass this setup. Every deployment
 creates and integrity-checks a current encrypted off-site backup. It also runs
@@ -202,20 +206,20 @@ an independent restore when no restore evidence exists, the evidence is older
 than 90 days, or the checked-in migration manifest changed since the last
 drill. The release stops and rolls back if either operation fails.
 
-Install restic from its verified official package or binary, then create the
-configuration without placing credentials in the repository. The directory,
-configuration, and password must belong to the same unprivileged account that
-owns the installed crontab (`feel` on this host); the backup scripts reject
-credentials owned by another user or readable by a group:
+For a manual recovery setup, install a checksum-verified official restic binary
+and create the configuration without placing credentials in the repository. The
+directory, binary, configuration, and password must belong to the same
+unprivileged account that owns the installed crontab (`feel` on this host); the
+backup scripts reject credentials owned by another user or readable by a group:
 
 ```sh
-BACKUP_USER=$(id -un)
-BACKUP_GROUP=$(id -gn)
-sudo install -d -o "$BACKUP_USER" -g "$BACKUP_GROUP" -m 0700 /etc/systemforge
-sudo install -o "$BACKUP_USER" -g "$BACKUP_GROUP" -m 0600 deploy/offsite-backup.env.example /etc/systemforge/offsite-backup.env
+RESTIC_BINARY=/path/to/checksum-verified/restic
+install -d -m 0700 /opt/systemforge-backups/.offsite
+install -m 0700 "$RESTIC_BINARY" /opt/systemforge-backups/.offsite/restic
+install -m 0600 deploy/offsite-backup.env.example /opt/systemforge-backups/.offsite/offsite-backup.env
 umask 077
-head -c 48 /dev/urandom | base64 > /etc/systemforge/restic-password
-sudo editor /etc/systemforge/offsite-backup.env
+head -c 48 /dev/urandom | base64 > /opt/systemforge-backups/.offsite/restic-password
+editor /opt/systemforge-backups/.offsite/offsite-backup.env
 ```
 
 For Storage Box, configure a dedicated SSH key and pinned host key in the cron
@@ -229,9 +233,9 @@ Initialize and prove the path explicitly:
 
 ```sh
 cd /opt/systemforge
-SYSTEMFORGE_OFFSITE_CONFIG=/etc/systemforge/offsite-backup.env sh scripts/init_offsite_backup.sh
-SYSTEMFORGE_OFFSITE_CONFIG=/etc/systemforge/offsite-backup.env sh scripts/run_backups.sh
-SYSTEMFORGE_OFFSITE_CONFIG=/etc/systemforge/offsite-backup.env sh scripts/verify_offsite_restore.sh
+sh scripts/init_offsite_backup.sh
+sh scripts/run_backups.sh
+sh scripts/verify_offsite_restore.sh
 ```
 
 The off-site restore drill downloads the latest tagged snapshot into a unique

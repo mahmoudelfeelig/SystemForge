@@ -222,6 +222,8 @@ test -d "$CRON_BACKUP_DIR"
 test "$(stat -c '%a' "$CRON_BACKUP_DIR")" = 700
 grep -q '^5 1 \* \* \* unrelated-command$' "$CRONTAB_OUTPUT"
 grep -q '/opt/systemforge/scripts/run_backups.sh' "$CRONTAB_OUTPUT"
+grep -q "SYSTEMFORGE_OFFSITE_CONFIG=$CRON_BACKUP_DIR/.offsite/offsite-backup.env" "$CRONTAB_OUTPUT"
+grep -q "SYSTEMFORGE_RESTIC_BIN=$CRON_BACKUP_DIR/.offsite/restic" "$CRONTAB_OUTPUT"
 grep -q ">> $CRON_BACKUP_DIR/backup.log 2>&1" "$CRONTAB_OUTPUT"
 test "$(grep -c '# systemforge-postgres-backup' "$CRONTAB_OUTPUT")" -eq 1
 

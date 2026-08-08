@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 
-CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-/etc/systemforge/offsite-backup.env}
-RESTIC_BIN=${SYSTEMFORGE_RESTIC_BIN:-restic}
+BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
+CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-"$BACKUP_DIR/.offsite/offsite-backup.env"}
+RESTIC_BIN=${SYSTEMFORGE_RESTIC_BIN:-"$BACKUP_DIR/.offsite/restic"}
 
 fail() {
   echo "Off-site repository initialization failed: $*" >&2

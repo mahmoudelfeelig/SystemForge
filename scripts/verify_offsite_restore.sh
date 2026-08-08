@@ -3,8 +3,8 @@ set -eu
 
 APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
 BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
-CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-/etc/systemforge/offsite-backup.env}
-RESTIC_BIN=${SYSTEMFORGE_RESTIC_BIN:-restic}
+CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-"$BACKUP_DIR/.offsite/offsite-backup.env"}
+RESTIC_BIN=${SYSTEMFORGE_RESTIC_BIN:-"$BACKUP_DIR/.offsite/restic"}
 BACKUP_HOST=${SYSTEMFORGE_RESTIC_HOST:-systemforge-production}
 BACKUP_TAG=${SYSTEMFORGE_RESTIC_TAG:-systemforge-postgres}
 RESTORE_VERIFIER=${SYSTEMFORGE_RESTORE_VERIFIER:-"$APP_DIR/scripts/verify_backup_restore.sh"}

@@ -155,6 +155,9 @@ jobs:
           R2_ACCOUNT_ID: ${{ vars.SYSTEMFORGE_R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ vars.SYSTEMFORGE_R2_BUCKET }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.SYSTEMFORGE_R2_SECRET_ACCESS_KEY }}
+          RESTIC_BINARY_SHA256: 20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639
+          RESTIC_RELEASE_SHA256: f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
+          RESTIC_RELEASE_VERSION: 0.19.1
           RESTIC_PASSWORD: ${{ secrets.SYSTEMFORGE_RESTIC_PASSWORD }}
           SSH_HOST: ${{ vars.HETZNER_HOST }}
           SSH_PORT: ${{ vars.HETZNER_SSH_PORT }}
@@ -193,15 +196,27 @@ jobs:
           SSH_PORT="${SSH_PORT:-22}"
           CONFIG_SOURCE="$RUNNER_TEMP/systemforge-offsite-$DEPLOY_SHA.env"
           PASSWORD_SOURCE="$RUNNER_TEMP/systemforge-restic-$DEPLOY_SHA.password"
+          RESTIC_ARCHIVE="$RUNNER_TEMP/restic-$DEPLOY_SHA.bz2"
+          RESTIC_SOURCE="$RUNNER_TEMP/restic-$DEPLOY_SHA"
           umask 077
-          trap 'rm -f "$CONFIG_SOURCE" "$PASSWORD_SOURCE"' EXIT HUP INT TERM
+          trap 'rm -f "$CONFIG_SOURCE" "$PASSWORD_SOURCE" "$RESTIC_ARCHIVE" "$RESTIC_SOURCE"' EXIT HUP INT TERM
+          curl --fail --location --silent --show-error \
+            --output "$RESTIC_ARCHIVE" \
+            "https://github.com/restic/restic/releases/download/v$RESTIC_RELEASE_VERSION/restic_${RESTIC_RELEASE_VERSION}_linux_amd64.bz2"
+          actual_sha=$(sha256sum "$RESTIC_ARCHIVE")
+          test "${actual_sha%% *}" = "$RESTIC_RELEASE_SHA256"
+          bzip2 --decompress --stdout "$RESTIC_ARCHIVE" > "$RESTIC_SOURCE"
+          binary_sha=$(sha256sum "$RESTIC_SOURCE")
+          test "${binary_sha%% *}" = "$RESTIC_BINARY_SHA256"
+          chmod 700 "$RESTIC_SOURCE"
+          "$RESTIC_SOURCE" version | grep -Fq "restic $RESTIC_RELEASE_VERSION"
           {
             printf 'RESTIC_REPOSITORY=s3:https://%s.r2.cloudflarestorage.com/%s\n' "$R2_ACCOUNT_ID" "$R2_BUCKET"
             printf 'AWS_ACCESS_KEY_ID=%s\n' "$R2_ACCESS_KEY_ID"
             printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$R2_SECRET_ACCESS_KEY"
             printf 'AWS_DEFAULT_REGION=auto\n'
-            printf 'RESTIC_PASSWORD_FILE=/etc/systemforge/restic-password\n'
-            printf 'RESTIC_CACHE_DIR=/opt/systemforge-restic-cache\n'
+            printf 'RESTIC_PASSWORD_FILE=/opt/systemforge-backups/.offsite/restic-password\n'
+            printf 'RESTIC_CACHE_DIR=/opt/systemforge-backups/.offsite/cache\n'
           } > "$CONFIG_SOURCE"
           printf '%s\n' "$RESTIC_PASSWORD" > "$PASSWORD_SOURCE"
           chmod 600 "$CONFIG_SOURCE" "$PASSWORD_SOURCE"
@@ -213,6 +228,7 @@ jobs:
             -P "$SSH_PORT" \
             "$CONFIG_SOURCE" \
             "$PASSWORD_SOURCE" \
+            "$RESTIC_SOURCE" \
             "$SSH_USER@$SSH_HOST:/tmp/"
           ssh \
             -i "$HOME/.ssh/systemforge_deploy" \
@@ -222,12 +238,19 @@ jobs:
             -p "$SSH_PORT" \
             "$SSH_USER@$SSH_HOST" \
             "set -eu
-             trap 'rm -f /tmp/systemforge-offsite-$DEPLOY_SHA.env /tmp/systemforge-restic-$DEPLOY_SHA.password' EXIT HUP INT TERM
+             trap 'rm -f /tmp/systemforge-offsite-$DEPLOY_SHA.env /tmp/systemforge-restic-$DEPLOY_SHA.password /tmp/restic-$DEPLOY_SHA' EXIT HUP INT TERM
              cd /opt/systemforge
              test \"\$(git rev-parse HEAD)\" = \"$DEPLOY_SHA\"
+             SYSTEMFORGE_BACKUP_DIR=/opt/systemforge-backups \
+             SYSTEMFORGE_OFFSITE_TARGET_DIR=/opt/systemforge-backups/.offsite \
+             SYSTEMFORGE_OFFSITE_CONFIG=/opt/systemforge-backups/.offsite/offsite-backup.env \
+             SYSTEMFORGE_RESTIC_PASSWORD_FILE=/opt/systemforge-backups/.offsite/restic-password \
+             SYSTEMFORGE_RESTIC_BIN=/opt/systemforge-backups/.offsite/restic \
+             SYSTEMFORGE_RESTIC_SHA256=$RESTIC_BINARY_SHA256 \
              sh scripts/provision_offsite_backup.sh \
                /tmp/systemforge-offsite-$DEPLOY_SHA.env \
-               /tmp/systemforge-restic-$DEPLOY_SHA.password"
+               /tmp/systemforge-restic-$DEPLOY_SHA.password \
+               /tmp/restic-$DEPLOY_SHA"
 
       - name: Deploy the staged main revision
         env:
@@ -263,6 +286,8 @@ jobs:
              test \"\$(git rev-parse HEAD)\" = \"$DEPLOY_SHA\"
              SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION \
              SYSTEMFORGE_EXTERNAL_SMOKE_URL=$EXTERNAL_SMOKE_URL \
+             SYSTEMFORGE_OFFSITE_CONFIG=/opt/systemforge-backups/.offsite/offsite-backup.env \
+             SYSTEMFORGE_RESTIC_BIN=/opt/systemforge-backups/.offsite/restic \
              SYSTEMFORGE_SKIP_BUILD=true \
              sh scripts/deploy_hetzner.sh \"$DEPLOY_SHA\""
           DEPLOY_STATUS=$?

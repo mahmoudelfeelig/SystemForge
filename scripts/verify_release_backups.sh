@@ -3,7 +3,7 @@ set -eu
 
 APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
 BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
-CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-/etc/systemforge/offsite-backup.env}
+CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-"$BACKUP_DIR/.offsite/offsite-backup.env"}
 BACKUP_STATUS=${SYSTEMFORGE_OFFSITE_STATUS_FILE:-"$BACKUP_DIR/offsite-backup.status"}
 RESTORE_STATUS=${SYSTEMFORGE_OFFSITE_RESTORE_STATUS_FILE:-"$BACKUP_DIR/offsite-restore.status"}
 RUN_BACKUPS=${SYSTEMFORGE_RUN_BACKUPS:-"$APP_DIR/scripts/run_backups.sh"}
