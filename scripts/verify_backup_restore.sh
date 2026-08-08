@@ -4,7 +4,7 @@ set -eu
 APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
 BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
 COMPOSE_FILE="$APP_DIR/deploy/docker-compose.prod.yml"
-ENV_FILE="$APP_DIR/deploy/.env"
+ENV_FILE=${SYSTEMFORGE_ENV_FILE:-"$APP_DIR/deploy/.env"}
 BACKUP_FILE=${1:-}
 
 if test -z "$BACKUP_FILE"; then

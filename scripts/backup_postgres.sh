@@ -4,7 +4,7 @@ set -eu
 APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
 BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
 COMPOSE_FILE="$APP_DIR/deploy/docker-compose.prod.yml"
-ENV_FILE="$APP_DIR/deploy/.env"
+ENV_FILE=${SYSTEMFORGE_ENV_FILE:-"$APP_DIR/deploy/.env"}
 RETENTION_DAYS=${SYSTEMFORGE_BACKUP_RETENTION_DAYS:-14}
 LOCK_FILE="$BACKUP_DIR/.backup.lock"
 

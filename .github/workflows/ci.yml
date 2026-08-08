@@ -167,6 +167,7 @@ jobs:
         run: |
           export SYSTEMFORGE_APP_DIR="$PWD"
           export SYSTEMFORGE_BACKUP_DIR="$RUNNER_TEMP/systemforge-backups"
+          export SYSTEMFORGE_ENV_FILE="$PWD/deploy/.env.example"
           sh scripts/backup_postgres.sh
           sh scripts/verify_backup_restore.sh
       - if: always()
