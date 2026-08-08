@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   smoke:
+    environment: production
     if: >-
       vars.HETZNER_DEPLOY_ENABLED == 'true' &&
       vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION' &&

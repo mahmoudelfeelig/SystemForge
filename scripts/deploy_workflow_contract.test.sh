@@ -87,6 +87,7 @@ fi
 grep -Fq \
   "vars.SYSTEMFORGE_EXTERNAL_SMOKE_URL == 'https://systemforge.elfeel.me'" \
   .github/workflows/production-monitor.yml
+grep -Fq 'environment: production' .github/workflows/production-monitor.yml
 
 # CI must hand the exact scanned and integrated release images to the deployment
 # workflow instead of asking the server to rebuild mutable base-image tags.
