@@ -104,6 +104,7 @@ grep -Fq 'sh scripts/stage_hetzner.test.sh' "$CI_WORKFLOW"
 grep -Fq 'systemforge-api node /app/apps/api/overload_smoke.mjs' "$CI_WORKFLOW"
 grep -Fq 'systemforge-api node /app/apps/api/overload_smoke.mjs' scripts/deploy_hetzner.sh
 grep -Fq 'sh "$APP_DIR/scripts/verify_release_backups.sh"' scripts/deploy_hetzner.sh
+grep -Fq 'sh "$RESTORE_VERIFIER" "$RESTORED_DUMP"' scripts/verify_offsite_restore.sh
 grep -Fq 'sh "$APP_DIR/scripts/install_caddy_route.sh" open' scripts/deploy_hetzner.sh
 grep -Fq 'sh "$APP_DIR/scripts/install_caddy_route.sh" closed' scripts/deploy_hetzner.sh
 grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8' "$WORKFLOW"

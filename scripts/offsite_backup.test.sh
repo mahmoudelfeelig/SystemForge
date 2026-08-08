@@ -77,7 +77,10 @@ test "$#" -eq 1
 test -f "$1"
 printf '%s\n' "$1" >> "$FAKE_VERIFY_LOG"
 EOF
-chmod 700 "$TEST_BIN_DIR/restic" "$TEST_BIN_DIR/verify-restore"
+chmod 700 "$TEST_BIN_DIR/restic"
+# Release archives intentionally preserve the verifier as a regular readable
+# source file rather than relying on an executable bit from the checkout.
+chmod 600 "$TEST_BIN_DIR/verify-restore"
 
 run_backup() {
   FAKE_RESTIC_LOG="$RESTIC_LOG" \

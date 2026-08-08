@@ -73,7 +73,8 @@ case "$RESTIC_PASSWORD_FILE" in
 esac
 secure_file "$RESTIC_PASSWORD_FILE" "repository password"
 command -v "$RESTIC_BIN" >/dev/null 2>&1 || fail "restic binary was not found: $RESTIC_BIN"
-test -x "$RESTORE_VERIFIER" || fail "restore verifier is not executable: $RESTORE_VERIFIER"
+test -f "$RESTORE_VERIFIER" || fail "restore verifier does not exist: $RESTORE_VERIFIER"
+test -r "$RESTORE_VERIFIER" || fail "restore verifier is not readable: $RESTORE_VERIFIER"
 
 RESTORE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/systemforge-offsite-restore.XXXXXX")
 STATUS_TEMP=""
@@ -94,7 +95,7 @@ trap cleanup EXIT HUP INT TERM
 DUMP_COUNT=$(find "$RESTORE_DIR" -type f -name 'systemforge.*.dump' | wc -l)
 test "$DUMP_COUNT" -eq 1 || fail "expected exactly one restored PostgreSQL dump, found $DUMP_COUNT."
 RESTORED_DUMP=$(find "$RESTORE_DIR" -type f -name 'systemforge.*.dump' -print)
-"$RESTORE_VERIFIER" "$RESTORED_DUMP"
+sh "$RESTORE_VERIFIER" "$RESTORED_DUMP"
 
 RESTORED_SHA256=$(sha256sum "$RESTORED_DUMP")
 RESTORED_SHA256=${RESTORED_SHA256%% *}
