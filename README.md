@@ -34,7 +34,11 @@ still-pending release gates are tracked in `docs/release-readiness.md`.
 - `apps/api` — Fastify control plane and overload-safe submission API.
 - `apps/worker` — bounded canonical simulation worker.
 - `packages/contracts` — versioned architecture, scenario, run, and error contracts.
-- `packages/sim-core` — deterministic simulation and requirement evaluation.
+- `packages/sim-core` — deterministic simulation, requirement evaluation, and
+  bounded architecture alternative solving.
 - `deploy` — isolated Hetzner Docker Compose deployment.
+
+The engine and solver contract, supported trade-offs, verification paths, and
+honest model limits are documented in [`docs/engine.md`](docs/engine.md).
 
 Commands are run from the repository root with pnpm. See `docs/operations/production.md` before changing production.

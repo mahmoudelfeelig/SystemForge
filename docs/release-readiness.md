@@ -9,13 +9,14 @@ from the later public-release actions.
 
 The 2026-08-08 checkout passed the following checks:
 
-- Complete quality gate: formatting, lint, TypeScript, 66 behavioral tests,
+- Complete quality gate: formatting, lint, TypeScript, 73 behavioral tests,
   all workspace builds, and the four-check Sites packaging contract.
-- `pnpm test:coverage`: 93.68% statements, 82.06% branches, 96.31% functions,
-  and 94.5% lines across the selected simulation, API, worker, and
+- `pnpm test:coverage`: 92.99% statements, 83.61% branches, 94.96% functions,
+  and 93.85% lines across the selected simulation, solver, API, worker, and
   browser control paths.
-- `pnpm test:performance`: 250 representative deterministic simulations within
-  the two-second budget. Performance is measured separately from V8 coverage
+- `pnpm test:performance`: 250 representative deterministic simulations and
+  five bounded 12-candidate architecture searches, each within its separate
+  two-second budget. Performance is measured separately from V8 coverage
   instrumentation.
 - `pnpm audit --prod --audit-level=high`: no known production dependency
   vulnerabilities.
@@ -56,6 +57,12 @@ The 2026-08-08 checkout passed the following checks:
   credential, and participant drafts and links remove hidden rubric material.
 - Browser-local admission rejects pathological duration/topology combinations
   before allocating a simulation worker.
+- The architecture-solver core deterministically ranks bounded parameter and
+  operating-policy alternatives, enforces cost, complexity, component-lock, and
+  work-unit limits, excludes hidden interview requirements by default, and may
+  return no recommendation when the baseline dominates. Its browser interaction
+  is still awaiting the approved visual integration and is not represented as a
+  completed public feature.
 - Microsoft Edge 151 at 1564 by 1070 and 390 by 844: no document overflow,
   console errors, or failed network requests across landing, lab, custom, and
   interview flows. A separate 1440 by 1000 pass cleared service-worker state,

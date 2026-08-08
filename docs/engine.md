@@ -1,0 +1,118 @@
+# Simulation and architecture solver
+
+SystemForge has two related engine surfaces. The simulation engine evaluates one
+validated scenario and architecture. The architecture solver evaluates a
+bounded set of explicit design mutations against the same simulation contract,
+then ranks the eligible alternatives without hiding their trade-offs.
+
+Neither surface deploys infrastructure or executes application code. Results
+are modeled evidence for design work, not production benchmark guarantees.
+
+## Simulation engine 0.3.0
+
+`packages/sim-core/src/simulate.ts` advances the model in deterministic
+one-second frames. The same package runs inside the browser Web Worker and the
+canonical Node worker thread. A scenario seed, schema version, architecture,
+workload, incident schedule, and requirement set fully determine the result for
+an engine version.
+
+The current contract models:
+
+- 14 component kinds and directed synchronous or asynchronous edges;
+- regional demand, request mixes, concurrent users, arrival patterns, payloads,
+  client timeouts, retry limits, backoff, and jitter;
+- compute, connections, memory pressure, network capacity, packet loss, cache
+  behavior, storage and IOPS, replication, partitions, queues, delivery
+  semantics, autoscaling, placement, failure domains, and operational cost;
+- 35 incident kinds with target, region, zone, or failure-domain scope;
+- 16 requirement metrics with public, hidden, and candidate-derived ownership;
+- per-node resource snapshots, aggregate time series, causal events,
+  requirement results, bottleneck analysis, strengths, risks, and trade-offs.
+
+Every non-recovery incident has a behavioral regression test proving that it
+changes modeled output rather than only adding an event label. Cache and
+database recovery incidents have separate post-recovery assertions.
+
+## Architecture solver 0.1.0
+
+`packages/sim-core/src/solve.ts` adds a deterministic, bounded design search. It
+does not label a single heuristic answer as universally optimal. It keeps the
+baseline in the comparison, applies explicit mutations, evaluates each
+candidate with the shared engine, computes a Pareto frontier, and may return no
+recommendation when the baseline or hard constraints dominate the alternatives.
+
+Supported mutation strategies are:
+
+- horizontal scaling with modeled recurring cost;
+- elastic scaling with startup, target-utilization, and cooldown behavior;
+- circuit breaking, load shedding, bulkheads, retry bounds, backoff, and jitter;
+- quorum replication and multi-zone state placement;
+- storage repartitioning with explicit complexity consequences;
+- cache efficiency and capacity changes;
+- queue partition and consumer-parallelism changes.
+
+Callers can lock components, allow only selected strategies, limit changes per
+candidate, set monthly-cost and operational-complexity ceilings, and weight
+requirement fit, resilience, latency, cost, and complexity. Candidate generation
+is capped at 64 and additionally constrained by a work-unit budget before a
+simulation worker is allocated.
+
+Hidden interviewer requirements are excluded by default. A trusted interviewer
+must explicitly request their inclusion. This prevents a candidate-facing
+solver call from silently optimizing against a private rubric.
+
+```ts
+import { solveArchitecture } from "@systemforge/sim-core";
+
+const comparison = solveArchitecture(scenario, architecture, {
+  maxCandidates: 24,
+  maxChangesPerCandidate: 2,
+  lockedNodeIds: ["payment-provider"],
+  maximumMonthlyCostEur: 140_000,
+  weights: {
+    requirements: 0.55,
+    resilience: 0.25,
+    cost: 0.2,
+  },
+});
+```
+
+Each candidate includes the changed architecture, explicit change descriptions,
+requirement results, normalized decision metrics, baseline deltas, constraint
+violations, modeled improvements, modeled regressions, a preference score, and
+Pareto status. The preference score orders the supplied trade-off policy; it is
+not a probability or a production-confidence value.
+
+## Current limits
+
+The model uses one-second aggregate frames rather than packet-, process-, or
+protocol-level discrete events. Redis, PostgreSQL, Kafka, Raft, Paxos, and cloud
+provider behavior are represented through configurable primitives rather than
+vendor-accurate implementations. Cost is driven by authored component inputs
+and egress settings, not a live provider catalogue.
+
+The solver currently changes parameters and operating policies inside the
+authored topology. It does not invent new service boundaries, add arbitrary
+nodes or edges, prove a global optimum, run Monte Carlo ensembles, produce
+confidence intervals, or calibrate itself from production traces. A result from
+one seed is reproducible evidence for that modeled scenario, not statistical
+evidence about every workload or outage.
+
+These boundaries must remain visible beside solver output. Future topology
+synthesis, multi-seed robustness analysis, provider catalogues, and trace
+calibration should extend the versioned contracts rather than being implied by
+UI copy.
+
+## Verification
+
+The focused checks are:
+
+```sh
+pnpm exec vitest run packages/sim-core/tests/simulate.test.ts
+pnpm exec vitest run packages/sim-core/tests/solve.test.ts
+pnpm test:performance
+pnpm --filter @systemforge/sim-core typecheck
+```
+
+The repository-wide `pnpm quality` command adds formatting, linting, all
+behavioral tests, all workspace builds, and the static-site packaging contract.

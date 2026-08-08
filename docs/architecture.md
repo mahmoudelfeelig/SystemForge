@@ -16,6 +16,15 @@ flowchart LR
 
 The same TypeScript simulation package runs in the Vite Web Worker and the Node worker thread. A canonical result includes a SHA-256 digest, engine version, seed, time-series metrics, causal events, and requirement results. Identical validated inputs produce identical outputs within the same engine version.
 
+The package also exposes a bounded architecture solver. It applies explicit
+parameter and operating-policy mutations, evaluates them through the same
+engine, enforces caller-supplied cost and complexity ceilings, and returns a
+Pareto frontier with baseline deltas. Candidate generation is limited before
+simulation work is allocated. Hidden interview requirements are excluded unless
+a trusted caller explicitly includes them. The current solver API is a core
+engine capability; browser presentation and interaction remain a separate UI
+integration concern. See `docs/engine.md` for its contract and limitations.
+
 ## Failure and overload behavior
 
 Cloudflare absorbs the public volumetric edge and Caddy rejects direct-to-origin requests for the SystemForge hostname. The web and API are separate containers, so API or database degradation does not remove the static application shell. The installed service worker caches the application shell and immutable assets for returning browsers. It is network-first while the origin is healthy, but a network failure or origin `5xx` navigation serves the cached local lab instead of replacing it with an outage page. Ordinary client errors remain visible, and `/api/*` always bypasses the shell cache.
