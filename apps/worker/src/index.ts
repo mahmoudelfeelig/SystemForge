@@ -29,12 +29,25 @@ const timeoutMilliseconds = integer(
   1_000,
   300_000,
 );
+const maximumResultBytes = integer(
+  "MAX_CANONICAL_RESULT_BYTES",
+  8_500_000,
+  100_000,
+  100_000_000,
+);
 const retentionDays = integer("RUN_RETENTION_DAYS", 30, 1, 365);
+const maintenanceMilliseconds = integer(
+  "WORKER_MAINTENANCE_MS",
+  60_000,
+  1_000,
+  3_600_000,
+);
 const leaseSeconds = Math.ceil(timeoutMilliseconds / 1_000) + 15;
 const store = new JobStore(databaseUrl, concurrency + 2);
 const workerId = hostname();
 let stopping = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let maintenanceTimer: ReturnType<typeof setInterval> | null = null;
 
 const log = (
   level: "info" | "error",
@@ -64,7 +77,11 @@ const runLoop = async (slot: number) => {
       continue;
     }
     try {
-      const canonical = await runInThread(job.submission, timeoutMilliseconds);
+      const canonical = await runInThread(
+        job.submission,
+        timeoutMilliseconds,
+        maximumResultBytes,
+      );
       await store.complete(job.id, canonical.result, canonical.digest);
       log("info", "canonical run completed", {
         slot,
@@ -76,7 +93,11 @@ const runLoop = async (slot: number) => {
         error instanceof Error ? error.message : "canonical_run_failed";
       await store.fail(
         job.id,
-        message === "canonical_run_timeout" ? "timeout" : "simulation_error",
+        message === "canonical_run_timeout"
+          ? "timeout"
+          : message.startsWith("canonical_result_too_large:")
+            ? "result_too_large"
+            : "simulation_error",
         message,
       );
       log("error", "canonical run failed", {
@@ -89,7 +110,7 @@ const runLoop = async (slot: number) => {
 };
 
 if (!(await store.ready())) throw new Error("Database schema is not ready.");
-await store.cleanup(retentionDays);
+await store.maintain(retentionDays);
 await store.heartbeat(workerId);
 heartbeatTimer = setInterval(() => {
   void store.heartbeat(workerId).catch((error: unknown) => {
@@ -99,13 +120,34 @@ heartbeatTimer = setInterval(() => {
   });
 }, 5_000);
 heartbeatTimer.unref();
-log("info", "canonical worker started", { concurrency, timeoutMilliseconds });
+maintenanceTimer = setInterval(() => {
+  void store
+    .maintain(retentionDays)
+    .then((expiredJobs) => {
+      if (expiredJobs > 0)
+        log("error", "expired canonical leases were failed closed", {
+          expiredJobs,
+        });
+    })
+    .catch((error: unknown) => {
+      log("error", "worker maintenance failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+}, maintenanceMilliseconds);
+maintenanceTimer.unref();
+log("info", "canonical worker started", {
+  concurrency,
+  timeoutMilliseconds,
+  maximumResultBytes,
+});
 const loops = Array.from({ length: concurrency }, (_, slot) => runLoop(slot));
 
 const shutdown = async (signal: string) => {
   if (stopping) return;
   stopping = true;
   if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (maintenanceTimer) clearInterval(maintenanceTimer);
   log("info", "worker shutdown started", { signal });
   await Promise.race([
     Promise.allSettled(loops),

@@ -22,10 +22,25 @@ export interface SharedScenarioRecord {
   architecture: Architecture;
 }
 
+export interface SharedScenarioView {
+  id: string;
+  scenario: Scenario;
+  architecture: Architecture;
+  isHost: boolean;
+  revealState: "hidden" | "revealed";
+}
+
 export class QueueCapacityError extends Error {
   constructor(readonly retryAfterSeconds = 30) {
     super("Canonical simulation capacity is currently full.");
     this.name = "QueueCapacityError";
+  }
+}
+
+export class SharedScenarioCapacityError extends Error {
+  constructor(readonly retryAfterSeconds = 60) {
+    super("Canonical scenario storage is currently full.");
+    this.name = "SharedScenarioCapacityError";
   }
 }
 
@@ -34,12 +49,23 @@ export interface ControlStore {
   queueRun(
     submission: RunSubmission,
     maximumQueued: number,
+    maximumStored: number,
   ): Promise<RunRecord>;
   getRun(id: string): Promise<RunRecord | null>;
   shareScenario(
     scenario: Scenario,
     architecture: Architecture,
+    maximumShared: number,
   ): Promise<SharedScenarioRecord>;
-  getScenario(id: string): Promise<SharedScenarioRecord | null>;
+  getScenario(
+    id: string,
+    hostToken?: string,
+  ): Promise<SharedScenarioView | null>;
+  markScenarioRun(id: string): Promise<SharedScenarioView | null>;
+  setScenarioReveal(
+    id: string,
+    hostToken: string,
+    revealed: boolean,
+  ): Promise<SharedScenarioView | null>;
   close(): Promise<void>;
 }

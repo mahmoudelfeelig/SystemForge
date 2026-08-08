@@ -11,7 +11,10 @@ export interface CanonicalResult {
   digest: string;
 }
 
-export function executeCanonical(input: RunSubmission): CanonicalResult {
+export function executeCanonical(
+  input: RunSubmission,
+  maximumResultBytes = Number.POSITIVE_INFINITY,
+): CanonicalResult {
   const submission = runSubmissionSchema.parse(input);
   const result = simulate(submission.scenario, submission.architecture);
   const manifest = {
@@ -24,5 +27,11 @@ export function executeCanonical(input: RunSubmission): CanonicalResult {
   const digest = createHash("sha256")
     .update(JSON.stringify(manifest))
     .digest("hex");
-  return { result: { ...result, digest }, digest };
+  const canonicalResult = { ...result, digest };
+  const resultBytes = Buffer.byteLength(JSON.stringify(canonicalResult));
+  if (resultBytes > maximumResultBytes)
+    throw new Error(
+      `canonical_result_too_large:${resultBytes}:${maximumResultBytes}`,
+    );
+  return { result: canonicalResult, digest };
 }

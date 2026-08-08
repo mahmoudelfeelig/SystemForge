@@ -1,17 +1,11 @@
 import { ArrowLeft, CloudSlash, SpinnerGap } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import {
-  Link,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchSharedScenario } from "../lib/api";
 import { useLabStore } from "../store/useLabStore";
 
 export function SharedScenarioPage() {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const loadSharedScenario = useLabStore((state) => state.loadSharedScenario);
   const [error, setError] = useState<string | null>(null);
@@ -22,10 +16,17 @@ export function SharedScenarioPage() {
       return;
     }
     const controller = new AbortController();
-    void fetchSharedScenario(id, searchParams.get("hostToken") ?? undefined)
+    const hostToken = new URLSearchParams(window.location.hash.slice(1)).get(
+      "hostToken",
+    );
+    void fetchSharedScenario(id, hostToken ?? undefined)
       .then((shared) => {
         if (controller.signal.aborted) return;
-        loadSharedScenario(shared.scenario, shared.architecture, shared.role);
+        loadSharedScenario(shared.scenario, shared.architecture, shared.role, {
+          id: shared.id,
+          ...(hostToken ? { hostToken } : {}),
+          revealState: shared.revealState,
+        });
         void navigate("/lab", { replace: true });
       })
       .catch((reason: unknown) => {
@@ -37,7 +38,7 @@ export function SharedScenarioPage() {
         );
       });
     return () => controller.abort();
-  }, [id, loadSharedScenario, navigate, searchParams]);
+  }, [id, loadSharedScenario, navigate]);
 
   return (
     <main className="share-loader">

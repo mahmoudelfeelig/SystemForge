@@ -1,6 +1,8 @@
 FROM node:24-bookworm-slim AS build
+ARG VITE_CANONICAL_RELEASE_ENABLED=false
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV VITE_CANONICAL_RELEASE_ENABLED=$VITE_CANONICAL_RELEASE_ENABLED
 RUN corepack enable && corepack prepare pnpm@11.16.0 --activate
 WORKDIR /workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.base.json ./

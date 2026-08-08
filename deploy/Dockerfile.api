@@ -29,7 +29,8 @@ COPY --from=production-dependencies /workspace/node_modules /app/node_modules
 COPY --from=production-dependencies /workspace/apps/api/node_modules /app/apps/api/node_modules
 COPY --from=dependencies /workspace/apps/api/dist /app/apps/api/dist
 COPY apps/api/migrations /app/apps/api/migrations
-COPY scripts/production_smoke.mjs /app/scripts/production_smoke.mjs
+COPY scripts/production_smoke.mjs /app/apps/api/production_smoke.mjs
+COPY scripts/overload_smoke.mjs /app/apps/api/overload_smoke.mjs
 USER node
 EXPOSE 8080
 CMD ["node", "apps/api/dist/index.js"]

@@ -12,6 +12,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
+      args:
+        VITE_CANONICAL_RELEASE_ENABLED: ${VITE_CANONICAL_RELEASE_ENABLED:-false}
     restart: unless-stopped
     init: true
     read_only: true
@@ -58,6 +60,10 @@ services:
       PUBLIC_ORIGIN: https://systemforge.elfeel.me
       TRUST_PROXY: "true"
       MAX_QUEUED_RUNS: ${MAX_QUEUED_RUNS:-250}
+      MAX_STORED_RUNS: ${MAX_STORED_RUNS:-250}
+      MAX_SHARED_SCENARIOS: ${MAX_SHARED_SCENARIOS:-2000}
+      MAX_CANONICAL_WORK_UNITS: ${MAX_CANONICAL_WORK_UNITS:-30000}
+      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-96}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
       RATE_LIMIT_WINDOW: 1 minute
     depends_on:
@@ -107,6 +113,8 @@ services:
       MAX_RUNNING_RUNS: ${MAX_RUNNING_RUNS:-2}
       WORKER_POLL_MS: ${WORKER_POLL_MS:-500}
       WORKER_JOB_TIMEOUT_MS: ${WORKER_JOB_TIMEOUT_MS:-30000}
+      MAX_CANONICAL_RESULT_BYTES: ${MAX_CANONICAL_RESULT_BYTES:-8500000}
+      WORKER_MAINTENANCE_MS: ${WORKER_MAINTENANCE_MS:-60000}
       RUN_RETENTION_DAYS: ${RUN_RETENTION_DAYS:-30}
     depends_on:
       systemforge-db:

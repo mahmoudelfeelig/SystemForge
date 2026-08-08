@@ -6,9 +6,13 @@ if (!parentPort)
   throw new Error("Canonical worker thread requires a parent port.");
 
 try {
+  const { submission, maximumResultBytes } = workerData as {
+    submission: RunSubmission;
+    maximumResultBytes: number;
+  };
   parentPort.postMessage({
     ok: true,
-    ...executeCanonical(workerData as RunSubmission),
+    ...executeCanonical(submission, maximumResultBytes),
   });
 } catch (error) {
   parentPort.postMessage({

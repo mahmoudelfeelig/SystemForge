@@ -29,4 +29,28 @@ describe("canonical execution", () => {
       } as never),
     ).toThrow();
   });
+
+  it("rejects a canonical result before it can amplify durable storage", () => {
+    expect(() =>
+      executeCanonical(
+        {
+          scenario: DEFAULT_SCENARIO,
+          architecture: DEFAULT_ARCHITECTURE,
+          clientEngineVersion: ENGINE_VERSION,
+        },
+        1_000,
+      ),
+    ).toThrow(/canonical_result_too_large/);
+
+    expect(() =>
+      executeCanonical(
+        {
+          scenario: DEFAULT_SCENARIO,
+          architecture: DEFAULT_ARCHITECTURE,
+          clientEngineVersion: ENGINE_VERSION,
+        },
+        10_000_000,
+      ),
+    ).not.toThrow();
+  });
 });

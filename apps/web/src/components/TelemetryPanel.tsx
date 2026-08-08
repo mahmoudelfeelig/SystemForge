@@ -1,101 +1,324 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle,
+  FlowArrow,
   Info,
+  Pulse,
   Warning,
   WarningOctagon,
 } from "@phosphor-icons/react";
-import type { SimulationResult } from "@systemforge/contracts";
+import type {
+  ArchitectureNode,
+  CausalEvent,
+  NodeMetricSnapshot,
+  SimulationResult,
+} from "@systemforge/contracts";
 
 interface TelemetryPanelProps {
   result: SimulationResult | null;
+  nodes: ArchitectureNode[];
   selectedEventId: string | null;
+  currentSecond: number;
   onSelectEvent: (id: string) => void;
+  onSeek: (second: number) => void;
 }
 
-function TelemetryCanvas({ result }: { result: SimulationResult }) {
+type ResourceMetric = keyof Pick<
+  NodeMetricSnapshot,
+  | "cpuUtilization"
+  | "memoryUtilization"
+  | "networkUtilization"
+  | "iopsUtilization"
+>;
+
+interface ResourceSeries {
+  id: string;
+  label: string;
+  color: string;
+  values: number[];
+  current: number;
+}
+
+const resourceMetrics: Array<{ key: ResourceMetric; label: string }> = [
+  { key: "cpuUtilization", label: "CPU" },
+  { key: "memoryUtilization", label: "Memory" },
+  { key: "networkUtilization", label: "Network" },
+  { key: "iopsUtilization", label: "Disk" },
+];
+
+const resourceColors = ["#ff604f", "#58bfff", "#75d48a", "#f2bf4b", "#b993e8"];
+
+function ResourceCanvas({ series }: { series: ResourceSeries[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const ratio = window.devicePixelRatio || 1;
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    canvas.width = width * ratio;
-    canvas.height = height * ratio;
-    context.scale(ratio, ratio);
-    context.clearRect(0, 0, width, height);
-    const frames = result.frames;
-    const maxRps = Math.max(...frames.map((frame) => frame.rps), 1);
-    const maxLatency = Math.max(
-      ...frames.map((frame) => frame.p95LatencyMs),
-      1,
-    );
-    const maxError = Math.max(...frames.map((frame) => frame.errorRate), 1);
-    const draw = (values: number[], max: number, color: string) => {
-      context.beginPath();
-      context.lineWidth = 1.5;
-      context.strokeStyle = color;
-      values.forEach((value, index) => {
-        const x = (index / Math.max(1, values.length - 1)) * width;
-        const y = height - 8 - (value / max) * (height - 16);
-        if (index === 0) context.moveTo(x, y);
-        else context.lineTo(x, y);
-      });
-      context.stroke();
+    const draw = () => {
+      if (typeof CanvasRenderingContext2D === "undefined") return;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      const ratio = window.devicePixelRatio || 1;
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.strokeStyle = "#172b36";
+      context.lineWidth = 1;
+      for (let index = 1; index < 4; index += 1) {
+        const y = (height / 4) * index;
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(width, y);
+        context.stroke();
+      }
+      const maximum = Math.max(1, ...series.flatMap((item) => item.values));
+      for (const item of series) {
+        if (item.values.length < 2) continue;
+        context.beginPath();
+        context.strokeStyle = item.color;
+        context.lineWidth = 1.4;
+        item.values.forEach((value, index) => {
+          const x = (index / Math.max(1, item.values.length - 1)) * width;
+          const y = height - 5 - (value / maximum) * (height - 10);
+          if (index === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        });
+        context.stroke();
+      }
     };
-    draw(
-      frames.map((frame) => frame.rps),
-      maxRps,
-      "#7adbd0",
-    );
-    draw(
-      frames.map((frame) => frame.p95LatencyMs),
-      maxLatency,
-      "#e8bd65",
-    );
-    draw(
-      frames.map((frame) => frame.errorRate),
-      maxError,
-      "#f06b5c",
-    );
-  }, [result]);
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [series]);
+
   return (
     <canvas
+      className="resource-canvas"
       ref={canvasRef}
-      className="telemetry-canvas"
-      aria-label="Traffic, latency and error-rate telemetry chart"
+      aria-label="Per-component resource utilization history"
     />
   );
 }
 
+function TelemetryCanvas({
+  result,
+  currentSecond,
+}: {
+  result: SimulationResult;
+  currentSecond: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const draw = () => {
+      if (typeof CanvasRenderingContext2D === "undefined") return;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      const ratio = window.devicePixelRatio || 1;
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.strokeStyle = "#172b36";
+      context.lineWidth = 1;
+      for (let index = 1; index < 5; index += 1) {
+        const y = (height / 5) * index;
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(width, y);
+        context.stroke();
+      }
+      const frames = result.frames;
+      const series = [
+        {
+          values: frames.map((frame) => frame.rps),
+          maximum: Math.max(...frames.map((frame) => frame.rps), 1),
+          color: "#45d9ff",
+        },
+        {
+          values: frames.map((frame) => frame.p95LatencyMs),
+          maximum: Math.max(...frames.map((frame) => frame.p95LatencyMs), 1),
+          color: "#ffc857",
+        },
+        {
+          values: frames.map((frame) => frame.errorRate),
+          maximum: Math.max(...frames.map((frame) => frame.errorRate), 1),
+          color: "#ff5d4a",
+        },
+        {
+          values: frames.map((frame) => frame.queueDepth),
+          maximum: Math.max(...frames.map((frame) => frame.queueDepth), 1),
+          color: "#b6ef5b",
+        },
+      ];
+      for (const line of series) {
+        context.beginPath();
+        context.lineWidth = 1.6;
+        context.strokeStyle = line.color;
+        line.values.forEach((value, index) => {
+          const x = (index / Math.max(1, line.values.length - 1)) * width;
+          const y = height - 7 - (value / line.maximum) * (height - 14);
+          if (index === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        });
+        context.stroke();
+      }
+      const cursorX =
+        (currentSecond / Math.max(1, result.frames.length - 1)) * width;
+      context.strokeStyle = "#eef8fb";
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(cursorX, 0);
+      context.lineTo(cursorX, height);
+      context.stroke();
+      context.fillStyle = "#eef8fb";
+      context.fillRect(cursorX - 2, 0, 4, 4);
+    };
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [currentSecond, result]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="telemetry-canvas"
+      aria-label="Traffic, latency, error-rate and queue-depth telemetry chart"
+    />
+  );
+}
+
+const causalChain = (
+  events: CausalEvent[],
+  selectedEventId: string | null,
+): CausalEvent[] => {
+  const selected = events.find((event) => event.id === selectedEventId);
+  if (!selected) return [];
+  const byId = new Map(events.map((event) => [event.id, event]));
+  const ordered: CausalEvent[] = [];
+  const visited = new Set<string>();
+  const visit = (event: CausalEvent) => {
+    if (visited.has(event.id)) return;
+    for (const parentId of event.parentIds) {
+      const parent = byId.get(parentId);
+      if (parent) visit(parent);
+    }
+    visited.add(event.id);
+    ordered.push(event);
+  };
+  visit(selected);
+  return ordered;
+};
+
+const formatSecond = (second: number) =>
+  `${String(Math.floor(second / 60)).padStart(2, "0")}:${String(second % 60).padStart(2, "0")}`;
+
+const milestoneEvents = (events: CausalEvent[]): CausalEvent[] => {
+  const firstAtSecond = events.filter(
+    (event, index) => index === 0 || events[index - 1]?.second !== event.second,
+  );
+  const preferred = firstAtSecond.filter(
+    (event) =>
+      event.parentIds.length === 0 ||
+      /traffic|fail|unavailable|recover|retry|slow|storm/i.test(event.title),
+  );
+  const candidates = preferred.length >= 3 ? preferred : firstAtSecond;
+  const selected: CausalEvent[] = [];
+  for (const event of candidates) {
+    const previous = selected.at(-1);
+    if (!previous || event.second - previous.second >= 10) selected.push(event);
+    if (selected.length === 5) break;
+  }
+  return selected;
+};
+
 export function TelemetryPanel({
   result,
+  nodes,
   selectedEventId,
+  currentSecond,
   onSelectEvent,
+  onSeek,
 }: TelemetryPanelProps) {
+  const [resourceMetric, setResourceMetric] =
+    useState<ResourceMetric>("cpuUtilization");
+  const fallbackEventId = useMemo(
+    () =>
+      [...(result?.events ?? [])]
+        .reverse()
+        .find((event) => event.severity === "critical")?.id ??
+      result?.events.at(-1)?.id ??
+      null,
+    [result],
+  );
+  const activeEventId = selectedEventId ?? fallbackEventId;
+  const chain = useMemo(
+    () => causalChain(result?.events ?? [], activeEventId),
+    [activeEventId, result],
+  );
+  const milestones = useMemo(
+    () => milestoneEvents(result?.events ?? []),
+    [result],
+  );
+
   if (!result) {
     return (
       <section className="telemetry-panel telemetry-panel--empty">
+        <span className="panel-index">04 / CAUSAL TIME MACHINE</span>
         <div>
-          <Info size={18} weight="duotone" />
-          <strong>Simulation timeline</strong>
+          <Info size={20} weight="duotone" />
+          <strong>Telemetry is armed</strong>
+          <p>
+            Run in this browser to generate resource traces, incident evidence
+            and a navigable causal chain. Server access is not required.
+          </p>
         </div>
-        <p>
-          Run locally to generate telemetry and causal evidence. Server
-          availability is not required.
-        </p>
       </section>
     );
   }
+
+  const frame =
+    result.frames[Math.min(currentSecond, result.frames.length - 1)] ??
+    result.frames.at(-1)!;
+  const duration = Math.max(1, result.frames.length - 1);
+  const axisTicks = [0, 0.2, 0.4, 0.6, 0.8, 1];
+  const resourceSeries: ResourceSeries[] = nodes
+    .map((node, index) => {
+      const values = result.frames.map(
+        (historyFrame) =>
+          historyFrame.nodeMetrics[node.id]?.[resourceMetric] ?? 0,
+      );
+      return {
+        id: node.id,
+        label: node.name,
+        color: resourceColors[index % resourceColors.length]!,
+        values,
+        current: values[Math.min(currentSecond, values.length - 1)] ?? 0,
+      };
+    })
+    .filter((item) => item.values.some((value) => value > 0))
+    .sort((left, right) => right.current - left.current)
+    .slice(0, 5);
+
   return (
     <section className="telemetry-panel" aria-label="Simulation telemetry">
       <div className="event-log">
         <header>
-          <strong>Events</strong>
-          <span>{result.events.length} causal changes</span>
+          <div>
+            <span className="panel-index">04 / EVENTS</span>
+            <strong>{result.events.length} causal changes</strong>
+          </div>
+          <time>
+            {String(Math.floor(currentSecond / 60)).padStart(2, "0")}:
+            {String(currentSecond % 60).padStart(2, "0")}
+          </time>
         </header>
         <div className="event-log__list">
           {result.events.map((event) => {
@@ -108,14 +331,14 @@ export function TelemetryPanel({
             return (
               <button
                 type="button"
-                className={selectedEventId === event.id ? "selected" : ""}
+                className={`event-row event-row--${event.severity} ${selectedEventId === event.id ? "selected" : ""}`}
                 key={event.id}
-                onClick={() => onSelectEvent(event.id)}
+                onClick={() => {
+                  onSelectEvent(event.id);
+                  onSeek(event.second);
+                }}
               >
-                <time>
-                  {String(Math.floor(event.second / 60)).padStart(2, "0")}:
-                  {String(event.second % 60).padStart(2, "0")}
-                </time>
+                <time>{formatSecond(event.second)}</time>
                 <Icon size={14} weight="fill" aria-hidden="true" />
                 <span>{event.title}</span>
               </button>
@@ -123,26 +346,146 @@ export function TelemetryPanel({
           })}
         </div>
       </div>
+
       <div className="telemetry-chart">
-        <div className="telemetry-legend">
-          <span className="legend-rps">RPS</span>
-          <span className="legend-latency">p95 latency</span>
-          <span className="legend-error">Error rate</span>
+        <header className="telemetry-toolbar">
+          <div className="telemetry-legend" aria-hidden="true">
+            <span className="legend-rps">RPS</span>
+            <span className="legend-latency">Latency p95</span>
+            <span className="legend-error">Error rate</span>
+            <span className="legend-queue">Queue depth</span>
+          </div>
+          <div className="telemetry-current">
+            <span>Cursor</span>
+            <strong>{formatSecond(currentSecond)}</strong>
+            <small>{Math.round(frame.rps).toLocaleString()} RPS</small>
+          </div>
+        </header>
+        <div className="telemetry-plot">
+          <div className="telemetry-axis" aria-hidden="true">
+            {axisTicks.map((tick) => (
+              <span key={tick}>
+                {formatSecond(Math.round(duration * tick))}
+              </span>
+            ))}
+          </div>
+          <TelemetryCanvas result={result} currentSecond={currentSecond} />
+          <div className="telemetry-markers" aria-label="Incident markers">
+            {milestones.map((event) => (
+              <button
+                type="button"
+                key={event.id}
+                className={`telemetry-marker telemetry-marker--${event.severity} ${selectedEventId === event.id ? "selected" : ""}`}
+                style={{ left: `${(event.second / duration) * 100}%` }}
+                onClick={() => {
+                  onSelectEvent(event.id);
+                  onSeek(event.second);
+                }}
+                aria-label={`${formatSecond(event.second)} ${event.title}`}
+              >
+                <span>{event.title}</span>
+              </button>
+            ))}
+          </div>
         </div>
-        <TelemetryCanvas result={result} />
-        <div className="timeline-events">
-          {result.events.slice(0, 4).map((event) => (
-            <span
-              key={event.id}
-              style={{
-                left: `${(event.second / Math.max(1, result.frames.length - 1)) * 100}%`,
-              }}
+        <footer className="telemetry-footer">
+          <label className="timeline-scrubber">
+            <span>00:00</span>
+            <input
+              type="range"
+              min="0"
+              max={duration}
+              value={currentSecond}
+              onChange={(event) => onSeek(Number(event.target.value))}
+              aria-label="Simulation time"
+            />
+            <span>{formatSecond(duration)}</span>
+          </label>
+          <div className="signal-summary">
+            <Pulse size={13} aria-hidden="true" />
+            {chain.length ? (
+              <span>
+                {chain.length} linked signals · {chain.at(-1)?.title}
+              </span>
+            ) : (
+              <span>Select an event to isolate its causal path</span>
+            )}
+          </div>
+        </footer>
+      </div>
+
+      <section className="resource-chart" aria-label="Resource utilization">
+        <header>
+          <div>
+            <span>Resource utilization</span>
+            <small>Per component</small>
+          </div>
+          <span>Chart</span>
+        </header>
+        <nav aria-label="Resource metric">
+          {resourceMetrics.map((metric) => (
+            <button
+              type="button"
+              className={resourceMetric === metric.key ? "active" : ""}
+              aria-pressed={resourceMetric === metric.key}
+              key={metric.key}
+              onClick={() => setResourceMetric(metric.key)}
             >
-              {event.title}
+              {metric.label}
+            </button>
+          ))}
+        </nav>
+        <div className="resource-chart__plot">
+          <div className="resource-chart__axis" aria-hidden="true">
+            <span>100%</span>
+            <span>50%</span>
+            <span>0%</span>
+          </div>
+          <ResourceCanvas series={resourceSeries} />
+        </div>
+        <div className="resource-chart__legend">
+          {resourceSeries.map((item) => (
+            <span key={item.id} style={{ color: item.color }}>
+              <i /> {item.label} <b>{Math.round(item.current * 100)}%</b>
             </span>
           ))}
         </div>
-      </div>
+      </section>
+
+      <aside className="causal-rail" aria-label="Causal path analysis">
+        <header>
+          <FlowArrow size={14} weight="duotone" /> Causal path analysis
+        </header>
+        {chain.length ? (
+          <>
+            <ol>
+              {chain.map((event) => (
+                <li
+                  className={`causal-rail__event causal-rail__event--${event.severity}`}
+                  key={event.id}
+                >
+                  <span>{formatSecond(event.second)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEvent(event.id);
+                      onSeek(event.second);
+                    }}
+                  >
+                    {event.title}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div className="causal-root">
+              <span>Root signal</span>
+              <strong>{chain[0]?.title}</strong>
+            </div>
+          </>
+        ) : (
+          <p>Select an event to isolate the evidence chain.</p>
+        )}
+      </aside>
     </section>
   );
 }

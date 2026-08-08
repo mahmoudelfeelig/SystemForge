@@ -1,4 +1,5 @@
 import {
+  architectureSchema,
   candidateScenario,
   scenarioSchema,
   type Architecture,
@@ -42,11 +43,22 @@ export function decodeLocalShare(value: string): LocalSharePayload | null {
       fromBase64Url(value),
     ) as Partial<LocalSharePayload>;
     const scenario = scenarioSchema.parse(parsed.scenario);
+    const architecture =
+      parsed.architecture === undefined
+        ? undefined
+        : architectureSchema.parse(parsed.architecture);
     const role = parsed.role === "interviewer" ? "interviewer" : "participant";
-    return { scenario, architecture: parsed.architecture, role };
+    return { scenario, architecture, role };
   } catch {
     return null;
   }
+}
+
+export function scenarioForLocalShare(
+  scenario: Scenario,
+  role: "participant" | "interviewer",
+): Scenario {
+  return role === "interviewer" ? scenario : candidateScenario(scenario);
 }
 
 export function interviewShareLinks(
@@ -56,6 +68,6 @@ export function interviewShareLinks(
   const base = `${window.location.origin}/lab`;
   return {
     interviewer: `${base}#share=${encodeLocalShare({ scenario, architecture, role: "interviewer" })}`,
-    candidate: `${base}#share=${encodeLocalShare({ scenario: candidateScenario(scenario), architecture, role: "participant" })}`,
+    candidate: `${base}#share=${encodeLocalShare({ scenario: scenarioForLocalShare(scenario, "participant"), architecture, role: "participant" })}`,
   };
 }

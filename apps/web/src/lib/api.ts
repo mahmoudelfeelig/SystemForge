@@ -13,11 +13,21 @@ export interface CanonicalRunReceipt {
   statusUrl: string;
 }
 
+export interface CanonicalRunStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  result?: { engineVersion: string; digest?: string };
+  digest?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  createdAt: string;
+}
+
 export interface ScenarioShareReceipt {
   id: string;
   url: string;
   candidateUrl?: string;
-  hostToken?: string;
+  interviewerUrl?: string;
 }
 
 export interface SharedScenario {
@@ -25,9 +35,19 @@ export interface SharedScenario {
   scenario: Scenario;
   architecture: Architecture;
   role: "interviewer" | "participant";
+  revealState: "hidden" | "revealed";
 }
 
+const canonicalReleaseEnabled =
+  import.meta.env.MODE === "test" ||
+  import.meta.env.VITE_CANONICAL_RELEASE_ENABLED === "true";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (!canonicalReleaseEnabled) {
+    throw new Error(
+      "Canonical services are release-locked. Use the browser-local workflow.",
+    );
+  }
   const response = await fetch(path, {
     ...init,
     headers: { "content-type": "application/json", ...init?.headers },
@@ -50,6 +70,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function checkApi(signal?: AbortSignal): Promise<ApiAvailability> {
+  if (!canonicalReleaseEnabled) return "offline";
   try {
     const response = await fetch("/api/health/ready", {
       signal,
@@ -71,6 +92,10 @@ export function submitCanonicalRun(
   });
 }
 
+export function fetchCanonicalRun(id: string): Promise<CanonicalRunStatus> {
+  return request<CanonicalRunStatus>(`/api/runs/${encodeURIComponent(id)}`);
+}
+
 export function shareScenario(
   scenario: Scenario,
   architecture: Architecture,
@@ -85,8 +110,32 @@ export function fetchSharedScenario(
   id: string,
   hostToken?: string,
 ): Promise<SharedScenario> {
-  const query = hostToken ? `?hostToken=${encodeURIComponent(hostToken)}` : "";
   return request<SharedScenario>(
-    `/api/scenarios/${encodeURIComponent(id)}${query}`,
+    `/api/scenarios/${encodeURIComponent(id)}`,
+    hostToken
+      ? { headers: { "x-systemforge-host-token": hostToken } }
+      : undefined,
+  );
+}
+
+export function recordSharedScenarioRun(id: string): Promise<SharedScenario> {
+  return request<SharedScenario>(
+    `/api/scenarios/${encodeURIComponent(id)}/runs`,
+    { method: "POST", body: "{}" },
+  );
+}
+
+export function setSharedScenarioReveal(
+  id: string,
+  hostToken: string,
+  revealed: boolean,
+): Promise<SharedScenario> {
+  return request<SharedScenario>(
+    `/api/scenarios/${encodeURIComponent(id)}/reveal`,
+    {
+      method: "PATCH",
+      headers: { "x-systemforge-host-token": hostToken },
+      body: JSON.stringify({ revealed }),
+    },
   );
 }

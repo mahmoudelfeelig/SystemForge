@@ -1,0 +1,37 @@
+systemforge.elfeel.me {
+	encode zstd gzip
+	log {
+		output stdout
+		format json
+	}
+
+	@direct_origin {
+		not remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+	respond @direct_origin "Cloudflare proxy required" 403
+
+	handle /api/* {
+		reverse_proxy systemforge-api:8080 {
+			# Direct-origin traffic is rejected above, so this Cloudflare-only
+			# header can safely drive Fastify's per-client rate limiting.
+			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+			lb_try_duration 3s
+			lb_try_interval 250ms
+		}
+	}
+
+	handle {
+		reverse_proxy systemforge-web:8080
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
+		Cross-Origin-Opener-Policy "same-origin"
+		X-Frame-Options "DENY"
+		-Server
+	}
+}

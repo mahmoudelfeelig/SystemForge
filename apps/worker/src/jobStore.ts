@@ -25,10 +25,13 @@ export class JobStore {
 
   async ready(): Promise<boolean> {
     try {
-      await this.#pool.query(
-        "SELECT 1 FROM schema_migrations WHERE version = '001_initial'",
+      const result = await this.#pool.query<{ ready: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM schema_migrations
+           WHERE version = '005_legacy_token_rollback_bridge'
+         ) AS ready`,
       );
-      return true;
+      return result.rows[0]?.ready ?? false;
     } catch {
       return false;
     }
@@ -58,6 +61,33 @@ export class JobStore {
     return result.rows[0] ?? null;
   }
 
+  async maintain(retentionDays: number): Promise<number> {
+    const exhausted = await this.#pool.query(
+      `UPDATE simulation_runs
+       SET status = 'failed',
+           failure_code = 'lease_exhausted',
+           failure_message = 'The canonical worker lease expired after three attempts.',
+           completed_at = now(),
+           lease_expires_at = NULL
+       WHERE status = 'running'
+         AND attempts >= 3
+         AND lease_expires_at < now()`,
+    );
+    await this.#pool.query(
+      "DELETE FROM simulation_runs WHERE completed_at < now() - ($1::text || ' days')::interval",
+      [retentionDays],
+    );
+    await this.#pool.query(
+      "DELETE FROM shared_scenarios WHERE expires_at < now()",
+      [],
+    );
+    await this.#pool.query(
+      "DELETE FROM worker_heartbeats WHERE last_seen < now() - interval '1 day'",
+      [],
+    );
+    return exhausted.rowCount ?? 0;
+  }
+
   async complete(
     id: string,
     result: SimulationResult,
@@ -77,21 +107,6 @@ export class JobStore {
        SET status = 'failed', failure_code = $2, failure_message = $3, completed_at = now(), lease_expires_at = NULL
        WHERE id = $1 AND status = 'running'`,
       [id, code.slice(0, 80), message.slice(0, 500)],
-    );
-  }
-
-  async cleanup(retentionDays: number): Promise<void> {
-    await this.#pool.query(
-      "DELETE FROM simulation_runs WHERE completed_at < now() - ($1::text || ' days')::interval",
-      [retentionDays],
-    );
-    await this.#pool.query(
-      "DELETE FROM shared_scenarios WHERE expires_at < now()",
-      [],
-    );
-    await this.#pool.query(
-      "DELETE FROM worker_heartbeats WHERE last_seen < now() - interval '1 day'",
-      [],
     );
   }
 

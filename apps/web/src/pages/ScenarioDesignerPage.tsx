@@ -1,15 +1,25 @@
 import {
   ArrowLeft,
+  ArrowRight,
+  Check,
   CloudArrowUp,
   Copy,
   EyeSlash,
   Plus,
+  ShieldCheck,
   Trash,
-  UsersThree,
+  Warning,
 } from "@phosphor-icons/react";
+import {
+  INCIDENT_KINDS,
+  METRIC_NAMES,
+  scenarioSchema,
+  type Incident,
+  type Requirement,
+  type Scenario,
+} from "@systemforge/contracts";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { Requirement, Scenario } from "@systemforge/contracts";
 import { DEFAULT_ARCHITECTURE, DEFAULT_SCENARIO } from "@systemforge/sim-core";
 import { shareScenario } from "../lib/api";
 import { encodeLocalShare, interviewShareLinks } from "../lib/share";
@@ -18,6 +28,15 @@ import { useLabStore } from "../store/useLabStore";
 interface ScenarioDesignerPageProps {
   mode: "custom" | "interview";
 }
+
+type RequestProfile = NonNullable<Scenario["workload"]["requestMix"]>[number];
+type RegionProfile = Scenario["workload"]["regions"][number];
+
+const titleCase = (value: string) =>
+  value
+    .replaceAll(/([A-Z])/g, " $1")
+    .replaceAll("-", " ")
+    .replace(/^./, (character) => character.toUpperCase());
 
 const requirementTemplate = (
   index: number,
@@ -33,20 +52,42 @@ const requirementTemplate = (
   owner: mode === "interview" ? "interviewer" : "scenario",
 });
 
+const incidentTemplate = (index: number): Incident => ({
+  id: `incident-${Date.now()}-${index}`,
+  atSecond: 30,
+  kind: "traffic-spike",
+  magnitude: 2,
+  durationSeconds: 20,
+  label: "Traffic pressure begins",
+});
+
+const requestTemplate = (index: number): RequestProfile => ({
+  name: `Request class ${index + 1}`,
+  share: 0,
+  readRatio: 0.5,
+  payloadKb: 8,
+  computeMs: 5,
+  databaseQueries: 1,
+  cacheable: false,
+  critical: false,
+});
+
+const formatShare = (value: number) => `${Math.round(value * 100)}%`;
+
 export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
   const navigate = useNavigate();
-  const setScenario = useLabStore((state) => state.setScenario);
+  const loadSharedScenario = useLabStore((state) => state.loadSharedScenario);
   const [scenario, setDraft] = useState<Scenario>(() => ({
     ...structuredClone(DEFAULT_SCENARIO),
     id: `${mode}-${Date.now()}`,
     title:
       mode === "interview"
-        ? "Distributed systems interview"
+        ? "Global ordering system interview"
         : "Untitled systems challenge",
     summary:
       mode === "interview"
-        ? "The candidate should discover the important constraints before committing to an architecture."
-        : "A custom workload and requirement set.",
+        ? "The candidate should discover durability, regional, consistency, and overload constraints before committing to an architecture."
+        : "Model a workload, define the invariants that matter, then schedule the failures the architecture must survive.",
     mode,
     requirements:
       mode === "interview"
@@ -58,7 +99,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             candidateBrief:
               "Design the backend for a global ordering product. Ask questions before choosing an architecture.",
             interviewerBrief:
-              "Evaluate whether the candidate discovers durability, consistency, regional data and overload constraints.",
+              "Evaluate whether the candidate discovers durability, consistency, regional data, recovery, and overload constraints.",
             timeboxMinutes: 45,
             allowCandidateRequirements: true,
             revealPolicy: "interviewer-controlled",
@@ -72,6 +113,14 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
     participant: string;
     interviewer?: string;
   } | null>(null);
+  const validation = useMemo(
+    () => scenarioSchema.safeParse(scenario),
+    [scenario],
+  );
+  const validationMessage = validation.success
+    ? null
+    : `${validation.error.issues[0]?.path.join(".") || "scenario"}: ${validation.error.issues[0]?.message ?? "The scenario contract is invalid."}`;
+
   const links = useMemo(
     () =>
       mode === "interview"
@@ -79,7 +128,20 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
         : null,
     [mode, scenario],
   );
+  const regionalShare = scenario.workload.regions.reduce(
+    (total, region) => total + region.trafficShare,
+    0,
+  );
+  const requestShare = (scenario.workload.requestMix ?? []).reduce(
+    (total, request) => total + request.share,
+    0,
+  );
 
+  const updateWorkload = (patch: Partial<Scenario["workload"]>) =>
+    setDraft((current) => ({
+      ...current,
+      workload: { ...current.workload, ...patch },
+    }));
   const updateRequirement = (id: string, patch: Partial<Requirement>) =>
     setDraft((current) => ({
       ...current,
@@ -87,31 +149,63 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
         requirement.id === id ? { ...requirement, ...patch } : requirement,
       ),
     }));
+  const updateIncident = (id: string, patch: Partial<Incident>) =>
+    setDraft((current) => ({
+      ...current,
+      incidents: current.incidents.map((incident) =>
+        incident.id === id ? { ...incident, ...patch } : incident,
+      ),
+    }));
+  const updateRegion = (index: number, patch: Partial<RegionProfile>) =>
+    updateWorkload({
+      regions: scenario.workload.regions.map((region, currentIndex) =>
+        currentIndex === index ? { ...region, ...patch } : region,
+      ),
+    });
+  const updateRequest = (index: number, patch: Partial<RequestProfile>) =>
+    updateWorkload({
+      requestMix: (scenario.workload.requestMix ?? []).map(
+        (request, currentIndex) =>
+          currentIndex === index ? { ...request, ...patch } : request,
+      ),
+    });
+  const updateDomain = (patch: NonNullable<Scenario["domain"]>) =>
+    setDraft((current) => ({
+      ...current,
+      domain: { ...current.domain, ...patch },
+    }));
   const copy = async (label: string, value: string) => {
+    if (!validation.success) return;
     await navigator.clipboard.writeText(value);
     setCopied(label);
     window.setTimeout(() => setCopied(null), 1800);
   };
   const openLab = () => {
-    localStorage.setItem(
-      "systemforge:draft",
-      JSON.stringify({ scenario, architecture: DEFAULT_ARCHITECTURE }),
+    if (!validation.success) return;
+    loadSharedScenario(
+      validation.data,
+      structuredClone(DEFAULT_ARCHITECTURE),
+      mode === "interview" ? "interviewer" : "participant",
     );
-    setScenario(scenario);
     void navigate("/lab");
   };
   const customLink = `${window.location.origin}/lab#share=${encodeLocalShare({ scenario, architecture: DEFAULT_ARCHITECTURE, role: "participant" })}`;
   const publish = async () => {
+    if (!validation.success) {
+      setPublishError(validationMessage);
+      return;
+    }
     setPublishing(true);
     setPublishError(null);
     try {
-      const receipt = await shareScenario(scenario, DEFAULT_ARCHITECTURE);
+      const receipt = await shareScenario(
+        validation.data,
+        DEFAULT_ARCHITECTURE,
+      );
       setCanonicalLinks({
         participant: receipt.candidateUrl ?? receipt.url,
-        ...(receipt.hostToken
-          ? {
-              interviewer: `${receipt.url}?hostToken=${encodeURIComponent(receipt.hostToken)}`,
-            }
+        ...(receipt.interviewerUrl
+          ? { interviewer: receipt.interviewerUrl }
           : {}),
       });
     } catch (reason) {
@@ -127,81 +221,166 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
 
   return (
     <div className="designer-shell">
-      <header>
-        <Link to="/">
-          <ArrowLeft size={17} /> SystemForge
+      <header className="designer-header">
+        <Link className="wordmark" to="/" aria-label="SystemForge home">
+          <span>SF</span>
+          <strong>SystemForge</strong>
         </Link>
-        <div>
+        <div className="designer-header__title">
           <span>
             {mode === "interview" ? "Interview studio" : "Challenge studio"}
           </span>
           <strong>{scenario.title}</strong>
         </div>
-        <button
-          className="button button--primary"
-          type="button"
-          onClick={openLab}
-        >
-          Open in lab
-        </button>
+        <div className="designer-header__actions">
+          {validationMessage ? (
+            <span className="designer-validation" role="status">
+              Contract blocked · {validationMessage}
+            </span>
+          ) : null}
+          <button
+            className="button button--primary"
+            type="button"
+            onClick={openLab}
+            disabled={!validation.success}
+          >
+            Compile and open lab <ArrowRight size={16} />
+          </button>
+        </div>
       </header>
-      <main>
-        <section className="designer-intro">
-          <span className="eyebrow">
-            {mode === "interview" ? (
-              <UsersThree size={16} />
-            ) : (
-              <Plus size={16} />
-            )}{" "}
-            {mode} scenario
-          </span>
+
+      <main className="designer-workspace">
+        <aside className="designer-rail">
+          <Link to="/">
+            <ArrowLeft size={15} /> Exit studio
+          </Link>
+          <span className="panel-index">MISSION CONTRACT</span>
           <h1>
             {mode === "interview"
-              ? "Give the problem shape without giving away its requirements."
-              : "Define exactly what a successful system must survive."}
+              ? "Control what the candidate knows."
+              : "Author the problem, not the answer."}
           </h1>
           <p>
-            Both flows compile into the same versioned scenario contract.
-            Visibility and facilitation rules change what each participant sees.
+            Every field changes the simulation contract. Nothing here selects a
+            predetermined winning architecture.
           </p>
-        </section>
+          <nav aria-label="Scenario contract sections">
+            <a href="#brief">
+              <span>01</span> Brief
+            </a>
+            {mode === "interview" ? (
+              <a href="#facilitation">
+                <span>02</span> Facilitation
+              </a>
+            ) : null}
+            <a href="#demand">
+              <span>{mode === "interview" ? "03" : "02"}</span> Demand
+            </a>
+            <a href="#requests">
+              <span>{mode === "interview" ? "04" : "03"}</span> Request mix
+            </a>
+            <a href="#regions">
+              <span>{mode === "interview" ? "05" : "04"}</span> Regions
+            </a>
+            <a href="#invariants">
+              <span>{mode === "interview" ? "06" : "05"}</span> Invariants
+            </a>
+            <a href="#failures">
+              <span>{mode === "interview" ? "07" : "06"}</span> Failures
+            </a>
+            <a href="#objectives">
+              <span>{mode === "interview" ? "08" : "07"}</span> Objectives
+            </a>
+            <a href="#share">
+              <span>{mode === "interview" ? "09" : "08"}</span> Handoff
+            </a>
+          </nav>
+          <div className="contract-status">
+            <span
+              className={
+                Math.abs(regionalShare - 1) < 0.001 ? "valid" : "invalid"
+              }
+            >
+              {Math.abs(regionalShare - 1) < 0.001 ? (
+                <Check size={14} />
+              ) : (
+                <Warning size={14} />
+              )}
+              Region split {formatShare(regionalShare)}
+            </span>
+            <span
+              className={
+                Math.abs(requestShare - 1) < 0.001 ? "valid" : "invalid"
+              }
+            >
+              {Math.abs(requestShare - 1) < 0.001 ? (
+                <Check size={14} />
+              ) : (
+                <Warning size={14} />
+              )}
+              Request mix {formatShare(requestShare)}
+            </span>
+            <span className="valid">
+              <Check size={14} /> {scenario.incidents.length} incidents armed
+            </span>
+          </div>
+        </aside>
+
         <form
-          className="designer-grid"
+          className="contract-editor"
           onSubmit={(event) => event.preventDefault()}
         >
-          <section className="form-panel">
+          <section
+            className="contract-section contract-section--brief"
+            id="brief"
+          >
             <header>
-              <span>Brief</span>
-              <small>Visible context</small>
+              <span className="section-number">01</span>
+              <div>
+                <small>CONTEXT ENVELOPE</small>
+                <h2>Mission brief</h2>
+              </div>
+              <p>Visible framing shared with every participant.</p>
             </header>
-            <label>
-              Title
-              <input
-                value={scenario.title}
-                maxLength={120}
-                onChange={(event) =>
-                  setDraft({ ...scenario, title: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              Summary
-              <textarea
-                value={scenario.summary}
-                maxLength={600}
-                rows={4}
-                onChange={(event) =>
-                  setDraft({ ...scenario, summary: event.target.value })
-                }
-              />
-            </label>
-            {scenario.interview ? (
-              <>
-                <label>
+            <div className="contract-fields contract-fields--brief">
+              <label>
+                Mission title
+                <input
+                  value={scenario.title}
+                  maxLength={120}
+                  onChange={(event) =>
+                    setDraft({ ...scenario, title: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Scenario seed
+                <input
+                  type="number"
+                  min="0"
+                  value={scenario.seed}
+                  onChange={(event) =>
+                    setDraft({ ...scenario, seed: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="field-span">
+                Operational summary
+                <textarea
+                  value={scenario.summary}
+                  maxLength={600}
+                  rows={4}
+                  onChange={(event) =>
+                    setDraft({ ...scenario, summary: event.target.value })
+                  }
+                />
+              </label>
+              {scenario.interview ? (
+                <label className="field-span">
                   Candidate brief
                   <textarea
                     value={scenario.interview.candidateBrief}
-                    rows={6}
+                    rows={5}
                     onChange={(event) =>
                       setDraft({
                         ...scenario,
@@ -213,10 +392,29 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     }
                   />
                 </label>
-                <label className="private-field">
-                  <span>
-                    <EyeSlash size={15} /> Interviewer-only notes
-                  </span>
+              ) : null}
+            </div>
+          </section>
+
+          {scenario.interview ? (
+            <section
+              className="contract-section contract-section--private"
+              id="facilitation"
+            >
+              <header>
+                <span className="section-number">02</span>
+                <div>
+                  <small>PRIVATE CHANNEL</small>
+                  <h2>Facilitation controls</h2>
+                </div>
+                <p>Never included in the candidate payload.</p>
+              </header>
+              <div className="private-notice">
+                <EyeSlash size={16} /> Interviewer-only contract
+              </div>
+              <div className="contract-fields">
+                <label className="field-span">
+                  Evaluation brief
                   <textarea
                     value={scenario.interview.interviewerBrief}
                     rows={5}
@@ -231,15 +429,91 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     }
                   />
                 </label>
-              </>
-            ) : null}
-          </section>
-          <section className="form-panel">
+                <label>
+                  Timebox (minutes)
+                  <input
+                    type="number"
+                    min="5"
+                    max="240"
+                    value={scenario.interview.timeboxMinutes}
+                    onChange={(event) =>
+                      setDraft({
+                        ...scenario,
+                        interview: {
+                          ...scenario.interview!,
+                          timeboxMinutes: Number(event.target.value),
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Reveal policy
+                  <select
+                    value={scenario.interview.revealPolicy}
+                    onChange={(event) =>
+                      setDraft({
+                        ...scenario,
+                        interview: {
+                          ...scenario.interview!,
+                          revealPolicy: event.target.value as NonNullable<
+                            Scenario["interview"]
+                          >["revealPolicy"],
+                        },
+                      })
+                    }
+                  >
+                    <option value="interviewer-controlled">
+                      Interviewer controlled
+                    </option>
+                    <option value="after-run">After first run</option>
+                    <option value="never">Never reveal</option>
+                  </select>
+                  <small>
+                    Reveal state is synchronized for canonical interview links.
+                    Browser-local links always keep the private rubric out of
+                    the candidate payload.
+                  </small>
+                </label>
+                <label className="switch-field field-span">
+                  <input
+                    type="checkbox"
+                    checked={scenario.interview.allowCandidateRequirements}
+                    onChange={(event) =>
+                      setDraft({
+                        ...scenario,
+                        interview: {
+                          ...scenario.interview!,
+                          allowCandidateRequirements: event.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  <span>
+                    <strong>Candidate-derived requirements</strong>
+                    <small>
+                      Allow the candidate to record constraints they discover.
+                    </small>
+                  </span>
+                </label>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="contract-section" id="demand">
             <header>
-              <span>Workload</span>
-              <small>Modeled demand</small>
+              <span className="section-number">
+                {mode === "interview" ? "03" : "02"}
+              </span>
+              <div>
+                <small>TRAFFIC GENERATOR</small>
+                <h2>Demand envelope</h2>
+              </div>
+              <p>
+                Arrival shape, concurrency, client patience, and retry pressure.
+              </p>
             </header>
-            <div className="form-columns">
+            <div className="metric-field-grid">
               <label>
                 Base RPS
                 <input
@@ -247,13 +521,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   min="1"
                   value={scenario.workload.baseRps}
                   onChange={(event) =>
-                    setDraft({
-                      ...scenario,
-                      workload: {
-                        ...scenario.workload,
-                        baseRps: Number(event.target.value),
-                      },
-                    })
+                    updateWorkload({ baseRps: Number(event.target.value) })
                   }
                 />
               </label>
@@ -264,31 +532,19 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   min="1"
                   value={scenario.workload.peakRps}
                   onChange={(event) =>
-                    setDraft({
-                      ...scenario,
-                      workload: {
-                        ...scenario.workload,
-                        peakRps: Number(event.target.value),
-                      },
-                    })
+                    updateWorkload({ peakRps: Number(event.target.value) })
                   }
                 />
               </label>
               <label>
-                Read ratio
+                Concurrent users
                 <input
                   type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={scenario.workload.readRatio}
+                  min="1"
+                  value={scenario.workload.concurrentUsers ?? 1}
                   onChange={(event) =>
-                    setDraft({
-                      ...scenario,
-                      workload: {
-                        ...scenario.workload,
-                        readRatio: Number(event.target.value),
-                      },
+                    updateWorkload({
+                      concurrentUsers: Number(event.target.value),
                     })
                   }
                 />
@@ -300,23 +556,656 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   min="15"
                   value={scenario.workload.durationSeconds}
                   onChange={(event) =>
-                    setDraft({
-                      ...scenario,
-                      workload: {
-                        ...scenario.workload,
-                        durationSeconds: Number(event.target.value),
+                    updateWorkload({
+                      durationSeconds: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Arrival pattern
+                <select
+                  value={scenario.workload.arrivalPattern ?? "steady"}
+                  onChange={(event) =>
+                    updateWorkload({
+                      arrivalPattern: event.target
+                        .value as Scenario["workload"]["arrivalPattern"],
+                    })
+                  }
+                >
+                  <option value="steady">Steady</option>
+                  <option value="poisson">Poisson</option>
+                  <option value="bursty">Bursty</option>
+                </select>
+              </label>
+              <label>
+                Read ratio
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={scenario.workload.readRatio}
+                  onChange={(event) =>
+                    updateWorkload({ readRatio: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                Client timeout (ms)
+                <input
+                  type="number"
+                  min="50"
+                  value={scenario.workload.clientTimeoutMs ?? 800}
+                  onChange={(event) =>
+                    updateWorkload({
+                      clientTimeoutMs: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Maximum retries
+                <input
+                  type="number"
+                  min="0"
+                  max="12"
+                  value={scenario.workload.retryPolicy?.maxRetries ?? 0}
+                  onChange={(event) =>
+                    updateWorkload({
+                      retryPolicy: {
+                        maxRetries: Number(event.target.value),
+                        backoffBaseMs:
+                          scenario.workload.retryPolicy?.backoffBaseMs ?? 100,
+                        jitter: scenario.workload.retryPolicy?.jitter ?? true,
+                        retryOnTimeout:
+                          scenario.workload.retryPolicy?.retryOnTimeout ?? true,
                       },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Backoff base (ms)
+                <input
+                  type="number"
+                  min="0"
+                  value={scenario.workload.retryPolicy?.backoffBaseMs ?? 0}
+                  onChange={(event) =>
+                    updateWorkload({
+                      retryPolicy: {
+                        maxRetries:
+                          scenario.workload.retryPolicy?.maxRetries ?? 0,
+                        backoffBaseMs: Number(event.target.value),
+                        jitter: scenario.workload.retryPolicy?.jitter ?? true,
+                        retryOnTimeout:
+                          scenario.workload.retryPolicy?.retryOnTimeout ?? true,
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label className="switch-field">
+                <input
+                  type="checkbox"
+                  checked={scenario.workload.retryPolicy?.jitter ?? false}
+                  onChange={(event) =>
+                    updateWorkload({
+                      retryPolicy: {
+                        maxRetries:
+                          scenario.workload.retryPolicy?.maxRetries ?? 0,
+                        backoffBaseMs:
+                          scenario.workload.retryPolicy?.backoffBaseMs ?? 0,
+                        jitter: event.target.checked,
+                        retryOnTimeout:
+                          scenario.workload.retryPolicy?.retryOnTimeout ?? true,
+                      },
+                    })
+                  }
+                />
+                <span>
+                  <strong>Retry jitter</strong>
+                  <small>Desynchronise retry waves</small>
+                </span>
+              </label>
+              <label className="switch-field">
+                <input
+                  aria-label="Retry on client timeout"
+                  type="checkbox"
+                  checked={
+                    scenario.workload.retryPolicy?.retryOnTimeout ?? true
+                  }
+                  onChange={(event) =>
+                    updateWorkload({
+                      retryPolicy: {
+                        maxRetries:
+                          scenario.workload.retryPolicy?.maxRetries ?? 0,
+                        backoffBaseMs:
+                          scenario.workload.retryPolicy?.backoffBaseMs ?? 0,
+                        jitter: scenario.workload.retryPolicy?.jitter ?? true,
+                        retryOnTimeout: event.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span>
+                  <strong>Retry on client timeout</strong>
+                  <small>Trade recovery attempts for retry amplification</small>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section className="contract-section" id="requests">
+            <header>
+              <span className="section-number">
+                {mode === "interview" ? "04" : "03"}
+              </span>
+              <div>
+                <small>WORKLOAD COMPOSITION</small>
+                <h2>Request mix</h2>
+              </div>
+              <button
+                type="button"
+                disabled={(scenario.workload.requestMix?.length ?? 0) >= 40}
+                onClick={() =>
+                  updateWorkload({
+                    requestMix: [
+                      ...(scenario.workload.requestMix ?? []),
+                      requestTemplate(
+                        scenario.workload.requestMix?.length ?? 0,
+                      ),
+                    ],
+                  })
+                }
+              >
+                <Plus size={14} /> Add class
+              </button>
+            </header>
+            <div className="table-editor request-table">
+              <div className="table-editor__head">
+                <span>Request class</span>
+                <span>Share</span>
+                <span>Reads</span>
+                <span>Payload KB</span>
+                <span>CPU ms</span>
+                <span>DB queries</span>
+                <span>Semantics</span>
+                <span />
+              </div>
+              {(scenario.workload.requestMix ?? []).map((request, index) => (
+                <div
+                  className="table-editor__row"
+                  key={`${request.name}-${index}`}
+                >
+                  <input
+                    aria-label="Request class name"
+                    value={request.name}
+                    onChange={(event) =>
+                      updateRequest(index, { name: event.target.value })
+                    }
+                  />
+                  <input
+                    aria-label="Traffic share"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={request.share}
+                    onChange={(event) =>
+                      updateRequest(index, {
+                        share: Number(event.target.value),
+                      })
+                    }
+                  />
+                  <input
+                    aria-label="Read ratio"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={request.readRatio}
+                    onChange={(event) =>
+                      updateRequest(index, {
+                        readRatio: Number(event.target.value),
+                      })
+                    }
+                  />
+                  <input
+                    aria-label="Payload kilobytes"
+                    type="number"
+                    min="0"
+                    value={request.payloadKb}
+                    onChange={(event) =>
+                      updateRequest(index, {
+                        payloadKb: Number(event.target.value),
+                      })
+                    }
+                  />
+                  <input
+                    aria-label="Compute milliseconds"
+                    type="number"
+                    min="0"
+                    value={request.computeMs}
+                    onChange={(event) =>
+                      updateRequest(index, {
+                        computeMs: Number(event.target.value),
+                      })
+                    }
+                  />
+                  <input
+                    aria-label="Database queries"
+                    type="number"
+                    min="0"
+                    value={request.databaseQueries}
+                    onChange={(event) =>
+                      updateRequest(index, {
+                        databaseQueries: Number(event.target.value),
+                      })
+                    }
+                  />
+                  <div className="inline-toggles">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={request.cacheable}
+                        onChange={(event) =>
+                          updateRequest(index, {
+                            cacheable: event.target.checked,
+                          })
+                        }
+                      />{" "}
+                      cacheable
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={request.critical}
+                        onChange={(event) =>
+                          updateRequest(index, {
+                            critical: event.target.checked,
+                          })
+                        }
+                      />{" "}
+                      critical
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${request.name}`}
+                    onClick={() =>
+                      updateWorkload({
+                        requestMix: (scenario.workload.requestMix ?? []).filter(
+                          (_, currentIndex) => currentIndex !== index,
+                        ),
+                      })
+                    }
+                  >
+                    <Trash size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="contract-section" id="regions">
+            <header>
+              <span className="section-number">
+                {mode === "interview" ? "05" : "04"}
+              </span>
+              <div>
+                <small>GEOGRAPHIC PRESSURE</small>
+                <h2>Regions and latency</h2>
+              </div>
+              <button
+                type="button"
+                disabled={scenario.workload.regions.length >= 12}
+                onClick={() =>
+                  updateWorkload({
+                    regions: [
+                      ...scenario.workload.regions,
+                      { name: "New region", trafficShare: 0, roundTripMs: 80 },
+                    ],
+                  })
+                }
+              >
+                <Plus size={14} /> Add region
+              </button>
+            </header>
+            <div className="table-editor region-table">
+              <div className="table-editor__head">
+                <span>Region</span>
+                <span>Traffic share</span>
+                <span>Round trip</span>
+                <span />
+              </div>
+              {scenario.workload.regions.map((region, index) => (
+                <div
+                  className="table-editor__row"
+                  key={`${region.name}-${index}`}
+                >
+                  <input
+                    aria-label="Region name"
+                    value={region.name}
+                    onChange={(event) =>
+                      updateRegion(index, { name: event.target.value })
+                    }
+                  />
+                  <input
+                    aria-label="Regional traffic share"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={region.trafficShare}
+                    onChange={(event) =>
+                      updateRegion(index, {
+                        trafficShare: Number(event.target.value),
+                      })
+                    }
+                  />
+                  <div className="unit-field">
+                    <input
+                      aria-label="Round-trip latency"
+                      type="number"
+                      min="0"
+                      value={region.roundTripMs}
+                      onChange={(event) =>
+                        updateRegion(index, {
+                          roundTripMs: Number(event.target.value),
+                        })
+                      }
+                    />
+                    <span>ms</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${region.name}`}
+                    disabled={scenario.workload.regions.length === 1}
+                    onClick={() =>
+                      updateWorkload({
+                        regions: scenario.workload.regions.filter(
+                          (_, currentIndex) => currentIndex !== index,
+                        ),
+                      })
+                    }
+                  >
+                    <Trash size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="contract-section" id="invariants">
+            <header>
+              <span className="section-number">
+                {mode === "interview" ? "06" : "05"}
+              </span>
+              <div>
+                <small>DOMAIN SEMANTICS</small>
+                <h2>Non-negotiable invariants</h2>
+              </div>
+              <p>
+                Business meaning the architecture must preserve under failure.
+              </p>
+            </header>
+            <div className="invariant-grid">
+              <label className="switch-field">
+                <input
+                  type="checkbox"
+                  checked={
+                    scenario.domain?.acknowledgedWritesMustSurvive ?? false
+                  }
+                  onChange={(event) =>
+                    updateDomain({
+                      acknowledgedWritesMustSurvive: event.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  <strong>Acknowledged writes survive</strong>
+                  <small>
+                    No successful response may precede durable storage.
+                  </small>
+                </span>
+              </label>
+              <label className="switch-field">
+                <input
+                  type="checkbox"
+                  checked={scenario.domain?.preventOversell ?? false}
+                  onChange={(event) =>
+                    updateDomain({ preventOversell: event.target.checked })
+                  }
+                />
+                <span>
+                  <strong>Prevent oversell</strong>
+                  <small>
+                    Inventory cannot be sold twice during partitions.
+                  </small>
+                </span>
+              </label>
+              <label>
+                PII residency boundary
+                <input
+                  value={scenario.domain?.piiRegion ?? ""}
+                  placeholder="EU"
+                  onChange={(event) =>
+                    updateDomain({ piiRegion: event.target.value || undefined })
+                  }
+                />
+              </label>
+              <label>
+                Stale read tolerance (seconds)
+                <input
+                  type="number"
+                  min="0"
+                  value={scenario.domain?.staleReadToleranceSeconds ?? 0}
+                  onChange={(event) =>
+                    updateDomain({
+                      staleReadToleranceSeconds: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Maximum recovery time (seconds)
+                <input
+                  type="number"
+                  min="0"
+                  value={scenario.domain?.maximumRecoverySeconds ?? 0}
+                  onChange={(event) =>
+                    updateDomain({
+                      maximumRecoverySeconds: Number(event.target.value),
                     })
                   }
                 />
               </label>
             </div>
           </section>
-          <section className="form-panel requirements-editor">
+
+          <section className="contract-section" id="failures">
             <header>
-              <span>Requirements</span>
+              <span className="section-number">
+                {mode === "interview" ? "07" : "06"}
+              </span>
+              <div>
+                <small>INCIDENT SCHEDULE</small>
+                <h2>Failure injection</h2>
+              </div>
               <button
                 type="button"
+                disabled={scenario.incidents.length >= 40}
+                onClick={() =>
+                  setDraft({
+                    ...scenario,
+                    incidents: [
+                      ...scenario.incidents,
+                      incidentTemplate(scenario.incidents.length),
+                    ],
+                  })
+                }
+              >
+                <Plus size={14} /> Arm incident
+              </button>
+            </header>
+            <div className="incident-stack">
+              {scenario.incidents.map((incident, index) => (
+                <div className="incident-row" key={incident.id}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <label>
+                    Failure
+                    <select
+                      value={incident.kind}
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          kind: event.target.value as Incident["kind"],
+                        })
+                      }
+                    >
+                      {INCIDENT_KINDS.map((kind) => (
+                        <option value={kind} key={kind}>
+                          {titleCase(kind)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    At second
+                    <input
+                      type="number"
+                      min="0"
+                      max={scenario.workload.durationSeconds}
+                      value={incident.atSecond}
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          atSecond: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Magnitude
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.1"
+                      value={incident.magnitude}
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          magnitude: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Duration
+                    <input
+                      type="number"
+                      min="1"
+                      value={incident.durationSeconds ?? 1}
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          durationSeconds: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="incident-label">
+                    Operational label
+                    <input
+                      value={incident.label}
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          label: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Target node ID
+                    <input
+                      value={incident.targetId ?? ""}
+                      placeholder="db"
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          targetId: event.target.value || undefined,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Region
+                    <input
+                      value={incident.region ?? ""}
+                      placeholder="EU"
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          region: event.target.value || undefined,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Zone
+                    <input
+                      value={incident.zone ?? ""}
+                      placeholder="eu-1a"
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          zone: event.target.value || undefined,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Failure domain
+                    <input
+                      value={incident.failureDomain ?? ""}
+                      placeholder="payments-cell-a"
+                      onChange={(event) =>
+                        updateIncident(incident.id, {
+                          failureDomain: event.target.value || undefined,
+                        })
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${incident.label}`}
+                    onClick={() =>
+                      setDraft({
+                        ...scenario,
+                        incidents: scenario.incidents.filter(
+                          (current) => current.id !== incident.id,
+                        ),
+                      })
+                    }
+                  >
+                    <Trash size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="contract-section" id="objectives">
+            <header>
+              <span className="section-number">
+                {mode === "interview" ? "08" : "07"}
+              </span>
+              <div>
+                <small>SUCCESS ENVELOPE</small>
+                <h2>Objectives and trade-offs</h2>
+              </div>
+              <p>
+                {mode === "interview"
+                  ? "Author the visible brief and private rubric here. Candidates record derived constraints in the lab."
+                  : "Define the measurable outcomes used to evaluate each run."}
+              </p>
+              <button
+                type="button"
+                disabled={scenario.requirements.length >= 40}
                 onClick={() =>
                   setDraft({
                     ...scenario,
@@ -327,212 +1216,248 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   })
                 }
               >
-                <Plus size={15} /> Add
+                <Plus size={14} /> Add objective
               </button>
             </header>
-            {scenario.requirements.map((requirement) => (
-              <div className="requirement-row" key={requirement.id}>
-                <input
-                  aria-label="Requirement label"
-                  value={requirement.label}
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      label: event.target.value,
-                    })
-                  }
-                />
-                <select
-                  aria-label="Metric"
-                  value={requirement.metric}
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      metric: event.target.value as Requirement["metric"],
-                    })
-                  }
-                >
-                  <option value="availability">Availability</option>
-                  <option value="p95LatencyMs">p95 latency</option>
-                  <option value="p99LatencyMs">p99 latency</option>
-                  <option value="errorRate">Error rate</option>
-                  <option value="monthlyCostEur">Monthly cost</option>
-                  <option value="dataLoss">Data loss</option>
-                  <option value="consistencyViolations">
-                    Consistency violations
-                  </option>
-                  <option value="throughputRps">Throughput</option>
-                  <option value="queueDepth">Queue depth</option>
-                </select>
-                <select
-                  aria-label="Operator"
-                  value={requirement.operator}
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      operator: event.target.value as Requirement["operator"],
-                    })
-                  }
-                >
-                  <option value="lte">at most</option>
-                  <option value="gte">at least</option>
-                  <option value="eq">exactly</option>
-                </select>
-                <input
-                  aria-label="Target"
-                  type="number"
-                  value={requirement.target}
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      target: Number(event.target.value),
-                    })
-                  }
-                />
-                {mode === "interview" ? (
-                  <select
-                    aria-label="Visibility"
-                    value={requirement.visibility}
+            <div className="requirement-stack">
+              {scenario.requirements.map((requirement, index) => (
+                <div className="requirement-row" key={requirement.id}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <input
+                    aria-label="Requirement label"
+                    value={requirement.label}
                     onChange={(event) =>
                       updateRequirement(requirement.id, {
-                        visibility: event.target
-                          .value as Requirement["visibility"],
+                        label: event.target.value,
+                      })
+                    }
+                  />
+                  <select
+                    aria-label="Metric"
+                    value={requirement.metric}
+                    onChange={(event) =>
+                      updateRequirement(requirement.id, {
+                        metric: event.target.value as Requirement["metric"],
                       })
                     }
                   >
-                    <option value="hidden">Interviewer only</option>
-                    <option value="public">Visible</option>
+                    {METRIC_NAMES.map((metric) => (
+                      <option value={metric} key={metric}>
+                        {titleCase(metric)}
+                      </option>
+                    ))}
                   </select>
-                ) : null}
-                <button
-                  type="button"
-                  aria-label={`Remove ${requirement.label}`}
-                  onClick={() =>
-                    setDraft({
-                      ...scenario,
-                      requirements: scenario.requirements.filter(
-                        (current) => current.id !== requirement.id,
-                      ),
-                    })
-                  }
-                >
-                  <Trash size={15} />
-                </button>
-              </div>
-            ))}
-          </section>
-          <section className="form-panel share-panel">
-            <header>
-              <span>Share challenge</span>
-              <small>Local first</small>
-            </header>
-            {links ? (
-              <>
-                <label>
-                  Local interviewer link
-                  <div className="copy-field">
-                    <input readOnly value={links.interviewer} />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void copy("interviewer", links.interviewer)
+                  <select
+                    aria-label="Operator"
+                    value={requirement.operator}
+                    onChange={(event) =>
+                      updateRequirement(requirement.id, {
+                        operator: event.target.value as Requirement["operator"],
+                      })
+                    }
+                  >
+                    <option value="lte">at most</option>
+                    <option value="gte">at least</option>
+                    <option value="eq">exactly</option>
+                  </select>
+                  <input
+                    aria-label="Target"
+                    type="number"
+                    value={requirement.target}
+                    onChange={(event) =>
+                      updateRequirement(requirement.id, {
+                        target: Number(event.target.value),
+                      })
+                    }
+                  />
+                  <input
+                    aria-label="Unit"
+                    value={requirement.unit}
+                    onChange={(event) =>
+                      updateRequirement(requirement.id, {
+                        unit: event.target.value,
+                      })
+                    }
+                  />
+                  {mode === "interview" ? (
+                    <select
+                      aria-label="Visibility"
+                      value={requirement.visibility}
+                      onChange={(event) =>
+                        updateRequirement(requirement.id, {
+                          visibility: event.target
+                            .value as Requirement["visibility"],
+                        })
                       }
                     >
-                      <Copy size={15} />{" "}
-                      {copied === "interviewer" ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                </label>
-                <label>
-                  Local candidate link
-                  <div className="copy-field">
-                    <input readOnly value={links.candidate} />
-                    <button
-                      type="button"
-                      onClick={() => void copy("candidate", links.candidate)}
-                    >
-                      <Copy size={15} />{" "}
-                      {copied === "candidate" ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                </label>
-              </>
-            ) : (
-              <label>
-                Local challenge link
-                <div className="copy-field">
-                  <input readOnly value={customLink} />
+                      <option value="hidden">Interviewer only</option>
+                      <option value="public">Visible</option>
+                    </select>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => void copy("challenge", customLink)}
+                    aria-label={`Remove ${requirement.label}`}
+                    onClick={() =>
+                      setDraft({
+                        ...scenario,
+                        requirements: scenario.requirements.filter(
+                          (current) => current.id !== requirement.id,
+                        ),
+                      })
+                    }
                   >
-                    <Copy size={15} />{" "}
-                    {copied === "challenge" ? "Copied" : "Copy"}
+                    <Trash size={14} />
                   </button>
                 </div>
-              </label>
-            )}
-            <button
-              className="button button--secondary publish-button"
-              type="button"
-              disabled={publishing}
-              onClick={() => void publish()}
-            >
-              <CloudArrowUp size={16} />
-              {publishing ? "Publishing…" : "Create canonical short link"}
-            </button>
-            {publishError ? (
-              <p className="form-error">
-                {publishError} Local links above remain available.
-              </p>
-            ) : null}
-            {canonicalLinks ? (
-              <div className="canonical-links">
-                <label>
-                  {mode === "interview"
-                    ? "Canonical candidate link"
-                    : "Canonical challenge link"}
-                  <div className="copy-field">
-                    <input readOnly value={canonicalLinks.participant} />
-                    <button
-                      type="button"
-                      onClick={() =>
+              ))}
+            </div>
+          </section>
+
+          <section
+            className="contract-section contract-section--handoff"
+            id="share"
+          >
+            <header>
+              <span className="section-number">
+                {mode === "interview" ? "09" : "08"}
+              </span>
+              <div>
+                <small>MISSION HANDOFF</small>
+                <h2>Launch and share</h2>
+              </div>
+              <ShieldCheck size={22} />
+            </header>
+            <div className="handoff-grid">
+              <div className="handoff-local">
+                <strong>Browser-local links</strong>
+                <p>
+                  No backend or account required. Interviewer links contain the
+                  private rubric; candidate links contain only the safe
+                  challenge contract.
+                </p>
+                {links ? (
+                  <>
+                    <CopyField
+                      label="Interviewer link"
+                      value={links.interviewer}
+                      copied={copied === "interviewer"}
+                      onCopy={() => void copy("interviewer", links.interviewer)}
+                      disabled={!validation.success}
+                    />
+                    <CopyField
+                      label="Candidate link"
+                      value={links.candidate}
+                      copied={copied === "candidate"}
+                      onCopy={() => void copy("candidate", links.candidate)}
+                      disabled={!validation.success}
+                    />
+                  </>
+                ) : (
+                  <CopyField
+                    label="Challenge link"
+                    value={customLink}
+                    copied={copied === "challenge"}
+                    onCopy={() => void copy("challenge", customLink)}
+                    disabled={!validation.success}
+                  />
+                )}
+              </div>
+              <div className="handoff-canonical">
+                <strong>Canonical short link</strong>
+                <p>
+                  Requires the private service, which remains closed until
+                  production release is explicitly approved.
+                </p>
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  disabled={publishing || !validation.success}
+                  onClick={() => void publish()}
+                >
+                  <CloudArrowUp size={16} />
+                  {publishing ? "Publishing…" : "Request canonical link"}
+                </button>
+                {publishError ? (
+                  <p className="form-error">
+                    {publishError} The local links remain available.
+                  </p>
+                ) : null}
+                {canonicalLinks ? (
+                  <div className="canonical-links">
+                    <CopyField
+                      label={
+                        mode === "interview"
+                          ? "Candidate canonical link"
+                          : "Canonical challenge link"
+                      }
+                      value={canonicalLinks.participant}
+                      copied={copied === "canonical-participant"}
+                      onCopy={() =>
                         void copy(
                           "canonical-participant",
                           canonicalLinks.participant,
                         )
                       }
-                    >
-                      <Copy size={15} />
-                      {copied === "canonical-participant" ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                </label>
-                {canonicalLinks.interviewer ? (
-                  <label>
-                    Canonical interviewer link
-                    <div className="copy-field">
-                      <input readOnly value={canonicalLinks.interviewer} />
-                      <button
-                        type="button"
-                        onClick={() =>
+                    />
+                    {canonicalLinks.interviewer ? (
+                      <CopyField
+                        label="Interviewer canonical link"
+                        value={canonicalLinks.interviewer}
+                        copied={copied === "canonical-interviewer"}
+                        onCopy={() =>
                           void copy(
                             "canonical-interviewer",
                             canonicalLinks.interviewer!,
                           )
                         }
-                      >
-                        <Copy size={15} />
-                        {copied === "canonical-interviewer" ? "Copied" : "Copy"}
-                      </button>
-                    </div>
-                  </label>
+                      />
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
-            ) : null}
-            <p>
-              Canonical links use the service when it has capacity. Local links
-              require no backend.
-            </p>
+            </div>
+            <button
+              className="compile-action"
+              type="button"
+              onClick={openLab}
+              disabled={!validation.success}
+            >
+              <span>Compile mission contract</span>
+              <strong>Open architecture workspace</strong>
+              <ArrowRight size={20} />
+            </button>
           </section>
         </form>
       </main>
     </div>
+  );
+}
+
+interface CopyFieldProps {
+  label: string;
+  value: string;
+  copied: boolean;
+  onCopy: () => void;
+  disabled?: boolean;
+}
+
+function CopyField({
+  label,
+  value,
+  copied,
+  onCopy,
+  disabled = false,
+}: CopyFieldProps) {
+  return (
+    <label className="copy-field-label">
+      {label}
+      <span className="copy-field">
+        <input readOnly value={value} disabled={disabled} />
+        <button type="button" onClick={onCopy} disabled={disabled}>
+          {copied ? <Check size={15} /> : <Copy size={15} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </span>
+    </label>
   );
 }

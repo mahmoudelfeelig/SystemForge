@@ -4,10 +4,26 @@ import type {
   SimulationResult,
 } from "@systemforge/contracts";
 
+export const LOCAL_SIMULATION_WORK_UNIT_LIMIT = 120_000;
+
+export const localSimulationWorkUnits = (
+  scenario: Scenario,
+  architecture: Architecture,
+): number =>
+  (scenario.workload.durationSeconds + 1) *
+  (architecture.nodes.length + architecture.edges.length * 0.25);
+
 export function runLocalSimulation(
   scenario: Scenario,
   architecture: Architecture,
 ): Promise<SimulationResult> {
+  const workUnits = localSimulationWorkUnits(scenario, architecture);
+  if (workUnits > LOCAL_SIMULATION_WORK_UNIT_LIMIT)
+    return Promise.reject(
+      new Error(
+        `This model exceeds the browser-local safety budget of ${LOCAL_SIMULATION_WORK_UNIT_LIMIT.toLocaleString("en-US")} work units. Reduce the duration or topology size before running it.`,
+      ),
+    );
   return new Promise((resolve, reject) => {
     const worker = new Worker(
       new URL("../workers/simulation.worker.ts", import.meta.url),

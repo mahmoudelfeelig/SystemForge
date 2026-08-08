@@ -1,4 +1,4 @@
-const CACHE = "systemforge-shell-v1";
+const CACHE = "systemforge-shell-v3";
 const SHELL = ["/", "/lab", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -24,21 +24,31 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET" || event.request.url.includes("/api/"))
+  const requestUrl = new URL(event.request.url);
+  if (
+    event.request.method !== "GET" ||
+    requestUrl.origin !== self.location.origin ||
+    requestUrl.pathname.startsWith("/api/")
+  )
     return;
+  const fallback = async () =>
+    (await caches.match(event.request)) ??
+    (event.request.mode === "navigate" ? caches.match("/lab") : null);
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const copy = response.clone();
-        void caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+    (async () => {
+      try {
+        const response = await fetch(event.request);
+        if (response.ok) {
+          const copy = response.clone();
+          void caches
+            .open(CACHE)
+            .then((cache) => cache.put(event.request, copy));
+        }
+        if (response.status >= 500) return (await fallback()) ?? response;
         return response;
-      })
-      .catch(
-        async () =>
-          (await caches.match(event.request)) ??
-          (event.request.mode === "navigate"
-            ? caches.match("/lab")
-            : Response.error()),
-      ),
+      } catch {
+        return (await fallback()) ?? Response.error();
+      }
+    })(),
   );
 });

@@ -12,11 +12,11 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 11.16.0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "24"
           cache: pnpm
@@ -33,52 +33,142 @@ jobs:
   repository:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Lint GitHub Actions workflows
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          install -d "$RUNNER_TEMP/actionlint"
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          actual_sha=$(sha256sum "$RUNNER_TEMP/actionlint.tar.gz")
+          test "${actual_sha%% *}" = "$ACTIONLINT_SHA256"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint"
+          "$RUNNER_TEMP/actionlint/actionlint" .github/workflows/*.yml
       - run: sh -n scripts/*.sh
+      - run: sh scripts/deploy_hetzner.test.sh
+      - run: sh scripts/install_caddy_route.test.sh
+      - run: sh scripts/deploy_workflow_contract.test.sh
+      - run: node scripts/service_worker_contract.test.mjs
+      - run: node scripts/overload_smoke_contract.test.mjs
+      - run: sh scripts/edge_contract.test.sh
+      - run: sh scripts/verify_cloudflare_ranges.sh
+      - name: Prove the production release gate defaults closed
+        run: |
+          set +e
+          sh scripts/deploy_hetzner.sh >/tmp/systemforge-deploy-gate.log 2>&1
+          deploy_status=$?
+          sh scripts/install_caddy_route.sh open >/tmp/systemforge-caddy-gate.log 2>&1
+          caddy_status=$?
+          set -e
+          test "$deploy_status" -eq 78
+          test "$caddy_status" -eq 78
+          grep -q "Release gate is closed" /tmp/systemforge-deploy-gate.log
+          grep -q "Release gate is closed" /tmp/systemforge-caddy-gate.log
       - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml config --quiet
       - run: docker run --rm -v "$PWD/deploy/Caddyfile.systemforge:/etc/caddy/Caddyfile:ro" caddy:2.9-alpine caddy validate --config /etc/caddy/Caddyfile
+      - run: docker run --rm -v "$PWD/deploy/Caddyfile.systemforge.open:/etc/caddy/Caddyfile:ro" caddy:2.9-alpine caddy validate --config /etc/caddy/Caddyfile
 
   containers:
     runs-on: ubuntu-latest
     needs: [quality, repository]
     env:
       POSTGRES_PASSWORD: ci-only-url-safe-password
-      SYSTEMFORGE_IMAGE_TAG: ci
+      SYSTEMFORGE_IMAGE_TAG: ${{ github.sha }}
+      VITE_CANONICAL_RELEASE_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - run: docker network create web
       - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml build
-      - uses: anchore/scan-action@v7.4.0
+      - uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          image: systemforge-api:ci
+          image: systemforge-api:${{ github.sha }}
           fail-build: true
           severity-cutoff: high
           only-fixed: true
           output-format: table
-      - uses: anchore/scan-action@v7.4.0
+      - uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          image: systemforge-web:ci
+          image: systemforge-web:${{ github.sha }}
           fail-build: true
           severity-cutoff: high
           only-fixed: true
           output-format: table
+      - uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: systemforge-worker:${{ github.sha }}
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+      - name: Package the scanned release images
+        run: |
+          mkdir -p "$RUNNER_TEMP/systemforge-release"
+          docker save --output "$RUNNER_TEMP/systemforge-release/systemforge-images.tar" \
+            "systemforge-api:$SYSTEMFORGE_IMAGE_TAG" \
+            "systemforge-web:$SYSTEMFORGE_IMAGE_TAG" \
+            "systemforge-worker:$SYSTEMFORGE_IMAGE_TAG"
+          gzip -1 "$RUNNER_TEMP/systemforge-release/systemforge-images.tar"
+          cd "$RUNNER_TEMP/systemforge-release"
+          sha256sum systemforge-images.tar.gz > systemforge-images.tar.gz.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: systemforge-images-${{ github.sha }}
+          path: ${{ runner.temp }}/systemforge-release/
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
 
   integration:
     runs-on: ubuntu-latest
     needs: [containers]
     env:
       POSTGRES_PASSWORD: ci-only-url-safe-password
-      SYSTEMFORGE_IMAGE_TAG: ci
+      SYSTEMFORGE_IMAGE_TAG: ${{ github.sha }}
+      VITE_CANONICAL_RELEASE_ENABLED: "true"
+      MAX_QUEUED_RUNS: "2"
+      MAX_STORED_RUNS: "2"
+      MAX_CANONICAL_RESULT_BYTES: "100000"
+      WORKER_MAINTENANCE_MS: 1000
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: systemforge-images-${{ github.sha }}
+          path: ${{ runner.temp }}/systemforge-release
+      - name: Verify and load the scanned release images
+        run: |
+          cd "$RUNNER_TEMP/systemforge-release"
+          sha256sum --check systemforge-images.tar.gz.sha256
+          docker load --input systemforge-images.tar.gz
+          docker image inspect "systemforge-api:$SYSTEMFORGE_IMAGE_TAG"
+          docker image inspect "systemforge-web:$SYSTEMFORGE_IMAGE_TAG"
+          docker image inspect "systemforge-worker:$SYSTEMFORGE_IMAGE_TAG"
       - run: docker network create web
-      - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml up -d --build --wait --wait-timeout 180
+      - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml up -d --no-build --wait --wait-timeout 180
       - run: >-
           docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml
           exec -T
           -e SMOKE_API_ORIGIN=http://127.0.0.1:8080
           -e SMOKE_WEB_ORIGIN=http://systemforge-web:8080
-          systemforge-api node /app/scripts/production_smoke.mjs
+          -e SMOKE_VERIFY_STORAGE_CAP=true
+          -e SMOKE_VERIFY_RESULT_CAP=true
+          systemforge-api node /app/apps/api/production_smoke.mjs
+      - name: Prove overload containment and local-shell availability
+        run: >-
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml
+          exec -T
+          -e OVERLOAD_API_ORIGIN=http://127.0.0.1:8080
+          -e OVERLOAD_WEB_ORIGIN=http://systemforge-web:8080
+          systemforge-api node /app/apps/api/overload_smoke.mjs
+      - name: Verify a PostgreSQL backup and disposable restore drill
+        run: |
+          export SYSTEMFORGE_APP_DIR="$PWD"
+          export SYSTEMFORGE_BACKUP_DIR="$RUNNER_TEMP/systemforge-backups"
+          sh scripts/backup_postgres.sh
+          sh scripts/verify_backup_restore.sh
       - if: always()
         run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml logs --no-color
       - if: always()

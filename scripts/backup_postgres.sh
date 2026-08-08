@@ -18,7 +18,9 @@ TEMP="$BACKUP_DIR/systemforge.$STAMP.dump.partial"
 FINAL="$BACKUP_DIR/systemforge.$STAMP.dump"
 trap 'rm -f "$TEMP"' EXIT HUP INT TERM
 
-SYSTEMFORGE_IMAGE_TAG=$(sed -n 's/^SYSTEMFORGE_IMAGE_TAG=//p' "$ENV_FILE" | tail -1)
+if test -z "${SYSTEMFORGE_IMAGE_TAG:-}"; then
+  SYSTEMFORGE_IMAGE_TAG=$(sed -n 's/^SYSTEMFORGE_IMAGE_TAG=//p' "$ENV_FILE" | tail -1)
+fi
 SYSTEMFORGE_IMAGE_TAG=${SYSTEMFORGE_IMAGE_TAG:-local}
 export SYSTEMFORGE_IMAGE_TAG
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T systemforge-db \

@@ -9,11 +9,12 @@ export interface ThreadResult {
 export function runInThread(
   submission: RunSubmission,
   timeoutMilliseconds: number,
+  maximumResultBytes: number,
 ): Promise<ThreadResult> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(
       new URL("./canonicalThread.js", import.meta.url),
-      { workerData: submission },
+      { workerData: { submission, maximumResultBytes } },
     );
     const timeout = setTimeout(() => {
       void worker.terminate();
