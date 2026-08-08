@@ -27,6 +27,7 @@ export function SharedScenarioPage() {
           id: shared.id,
           ...(hostToken ? { hostToken } : {}),
           revealState: shared.revealState,
+          collaboration: shared.collaboration,
         });
         void navigate("/lab", { replace: true });
       })

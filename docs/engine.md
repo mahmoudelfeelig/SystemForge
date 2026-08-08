@@ -93,17 +93,34 @@ provider behavior are represented through configurable primitives rather than
 vendor-accurate implementations. Cost is driven by authored component inputs
 and egress settings, not a live provider catalogue.
 
-The solver currently changes parameters and operating policies inside the
-authored topology. It does not invent new service boundaries, add arbitrary
-nodes or edges, prove a global optimum, run Monte Carlo ensembles, produce
-confidence intervals, or calibrate itself from production traces. A result from
-one seed is reproducible evidence for that modeled scenario, not statistical
-evidence about every workload or outage.
+The solver changes parameters and operating policies inside the authored
+topology and does not prove a global optimum. A separate assistive layer can
+propose three explicit, inspectable topology changes when their preconditions
+are present: a bounded read cache, a durable queue-and-worker lane, or stronger
+database replication. Applying a proposal creates a normal architecture
+version that can be undone or restored; the assistant does not invent service
+boundaries or silently mutate the graph.
 
-These boundaries must remain visible beside solver output. Future topology
-synthesis, multi-seed robustness analysis, provider catalogues, and trace
-calibration should extend the versioned contracts rather than being implied by
-UI copy.
+The workbench also runs bounded deterministic robustness analysis across 2 to
+64 derived seeds, subject to a separate work-unit budget. It reports complete
+run and requirement pass rates plus minimum, median, p95, maximum, and mean
+latency, availability, error, cost, and recovery metrics. This is sensitivity
+analysis over modeled seeds, not a Monte Carlo confidence interval or evidence
+about every production workload.
+
+CSV and OpenTelemetry-like JSON traffic profiles can be imported with strict
+sample, duration, and rate limits. The importer distills the observations into
+the scenario's base rate, peak rate, duration, and an explicit peak incident;
+it does not reproduce an exact trace or calibrate component behavior. Versioned
+EUR provider-catalog snapshots can update a compatible component's modeled
+monthly price, compute shape, egress price, and region. Catalogues are bounded,
+validated user inputs rather than live vendor pricing or purchasing advice.
+`examples/provider-catalog.example.json` documents the accepted snapshot shape.
+
+These boundaries stay visible beside the output. SystemForge does not emulate
+vendor implementations, infer arbitrary service boundaries, generate
+statistical confidence intervals, or claim production capacity from modeled
+evidence.
 
 ## Verification
 
@@ -131,7 +148,10 @@ budget, candidate cap, and serialized-result ceiling. The browser gateway in
 `apps/web/src/lib/solverGateway.ts` falls back to that local worker when the
 canonical service is closed, busy, or unavailable.
 
-The solver transport and state contract are complete. Its approval-sensitive
-candidate comparison and controls are not yet mounted into the Lab page; until
-that visual integration is reviewed, use the focused engine tests or invoke
-the library/API seams directly rather than treating the UI as a solver console.
+The Lab mounts the complete decision workbench behind **Compare** and the
+command palette. It includes policy controls, candidate and Pareto comparison,
+reversible application, named architecture versions, mission loading, traffic
+and provider imports, topology proposals, robustness analysis, session tools,
+and privacy-scoped evidence export. Candidate rows expose exact deltas,
+constraint violations, improvements, regressions, and the policy responsible
+for the ordering; the UI never converts that ordering into a confidence claim.

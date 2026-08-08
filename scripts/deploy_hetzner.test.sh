@@ -74,10 +74,20 @@ printf '%s\n' 'release offsite restore' >> "$FAKE_LOG"
 test "${FAKE_OFFSITE_FAILURE:-false}" != true
 EOF
 
+cat > "$TEST_APP_DIR/scripts/install_caddy_route.sh" <<'EOF'
+#!/bin/sh
+set -eu
+printf 'caddy %s\n' "$1" >> "$FAKE_LOG"
+if test "$1" = open && test "${FAKE_CADDY_FAILURE:-false}" = true; then
+  exit 1
+fi
+EOF
+
 chmod 700 \
   "$TEST_BIN_DIR/git" \
   "$TEST_BIN_DIR/docker" \
   "$TEST_BIN_DIR/curl" \
+  "$TEST_APP_DIR/scripts/install_caddy_route.sh" \
   "$TEST_APP_DIR/scripts/verify_release_backups.sh"
 
 run_deploy() {
@@ -87,6 +97,7 @@ run_deploy() {
     FAKE_HEAD="$NEW_SHA" \
     FAKE_PREVIOUS_IMAGES="${FAKE_PREVIOUS_IMAGES:-none}" \
     FAKE_EXTERNAL_FAILURE="${FAKE_EXTERNAL_FAILURE:-false}" \
+    FAKE_CADDY_FAILURE="${FAKE_CADDY_FAILURE:-false}" \
     SYSTEMFORGE_APP_DIR="$TEST_APP_DIR" \
     SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION \
     SYSTEMFORGE_EXTERNAL_SMOKE_URL="${FAKE_EXTERNAL_SMOKE_URL:-}" \
@@ -104,6 +115,9 @@ grep -q 'https://systemforge.example.test/api/health/ready' "$TEST_LOG"
 grep -q '/app/apps/api/overload_smoke.mjs' "$TEST_LOG"
 grep -q '^release backup$' "$TEST_LOG"
 grep -q '^release offsite restore$' "$TEST_LOG"
+grep -q '^caddy open$' "$TEST_LOG"
+test "$(grep -n '^caddy open$' "$TEST_LOG" | cut -d: -f1)" -lt \
+  "$(grep -n 'https://systemforge.example.test/$' "$TEST_LOG" | cut -d: -f1)"
 
 rm -f "$TEST_APP_DIR/.last-successful-sha" "$TEST_APP_DIR/.previous-successful-sha"
 FAKE_EXTERNAL_SMOKE_URL=""
@@ -152,6 +166,8 @@ run_deploy >/dev/null 2>&1
 FIRST_FAILURE_STATUS=$?
 set -e
 test "$FIRST_FAILURE_STATUS" -ne 0
+grep -q '^caddy open$' "$TEST_LOG"
+grep -q '^caddy closed$' "$TEST_LOG"
 grep -q ' stop systemforge-web systemforge-api systemforge-worker' "$TEST_LOG"
 
 printf '%s\n' "$PREVIOUS_SHA" > "$TEST_APP_DIR/.last-successful-sha"
@@ -162,6 +178,8 @@ run_deploy >/dev/null 2>&1
 ROLLBACK_STATUS=$?
 set -e
 test "$ROLLBACK_STATUS" -ne 0
+grep -q '^caddy open$' "$TEST_LOG"
+test "$(grep -c '^caddy closed$' "$TEST_LOG" || true)" -eq 0
 grep -q "tag=$PREVIOUS_SHA docker .* up .*systemforge-web systemforge-api systemforge-worker" "$TEST_LOG"
 
 FAKE_PREVIOUS_IMAGES=api-only
@@ -171,6 +189,22 @@ run_deploy >/dev/null 2>&1
 INCOMPLETE_ROLLBACK_STATUS=$?
 set -e
 test "$INCOMPLETE_ROLLBACK_STATUS" -ne 0
+grep -q '^caddy closed$' "$TEST_LOG"
+grep -q ' stop systemforge-web systemforge-api systemforge-worker' "$TEST_LOG"
+
+rm -f "$TEST_APP_DIR/.last-successful-sha" "$TEST_APP_DIR/.previous-successful-sha"
+FAKE_PREVIOUS_IMAGES=none
+FAKE_EXTERNAL_FAILURE=false
+FAKE_CADDY_FAILURE=true
+export FAKE_PREVIOUS_IMAGES FAKE_EXTERNAL_FAILURE FAKE_CADDY_FAILURE
+set +e
+run_deploy >/dev/null 2>&1
+CADDY_FAILURE_STATUS=$?
+set -e
+test "$CADDY_FAILURE_STATUS" -ne 0
+test ! -f "$TEST_APP_DIR/.last-successful-sha"
+grep -q '^caddy open$' "$TEST_LOG"
+test "$(grep -c '^caddy closed$' "$TEST_LOG" || true)" -eq 0
 grep -q ' stop systemforge-web systemforge-api systemforge-worker' "$TEST_LOG"
 
 echo "Hetzner deployment rollback tests passed."

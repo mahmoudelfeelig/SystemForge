@@ -20,15 +20,16 @@ canonical overload does not turn into a blank product surface.
 
 ## Production status
 
-The public release is intentionally locked. The checked-in Caddy route returns 404. Every trusted green `main` CI run automatically stages its exact scanned
-images and source revision on Hetzner, but the staging phase reinstalls the
-closed route and stops application services while release approval is absent.
-Starting the production stack still requires the explicit release sentinel;
-canonical UI services stay disabled in ordinary builds, and public monitoring
-remains off. Do not open `systemforge.elfeel.me` until the owner explicitly says
-the product is done and ready for production. The approval and deployment
-procedure is documented in `docs/operations/production.md`; verified and
-still-pending release gates are tracked in `docs/release-readiness.md`.
+The owner authorized the public release on 2026-08-08. Availability is still
+controlled by the exact-SHA release pipeline: a successful same-repository
+`main` CI run must build, scan, integrate, and stage the immutable images before
+the protected production job can start them and replace the hardened 404 route.
+The release sentinel cannot bypass quality, backup, restore, in-network, or
+Cloudflare smoke gates. The current public state should be checked through
+`https://systemforge.elfeel.me/api/health/ready`, not inferred from a local
+checkout. The approval and deployment procedure is documented in
+`docs/operations/production.md`; current evidence and remaining gates are
+tracked in `docs/release-readiness.md`.
 
 ## Workspace
 

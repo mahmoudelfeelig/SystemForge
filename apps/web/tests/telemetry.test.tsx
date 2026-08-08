@@ -26,6 +26,7 @@ describe("operational telemetry workspace", () => {
     render(
       <TelemetryPanel
         result={result}
+        scenario={DEFAULT_SCENARIO}
         nodes={DEFAULT_ARCHITECTURE.nodes}
         selectedEventId={null}
         currentSecond={result.frames.length - 1}

@@ -8,6 +8,11 @@ import {
 
 describe("simulation performance budget", () => {
   it("completes 250 representative simulations within two seconds", () => {
+    // Keep this throughput budget independent from one-time V8 compilation.
+    // Browser build and smoke checks cover cold application startup separately.
+    for (let iteration = 0; iteration < 25; iteration += 1) {
+      simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE);
+    }
     const startedAt = performance.now();
     for (let iteration = 0; iteration < 250; iteration += 1) {
       simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE);

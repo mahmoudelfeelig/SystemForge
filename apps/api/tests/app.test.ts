@@ -388,6 +388,86 @@ describe("control-plane API", () => {
     expect(candidate.json().scenario.interview.interviewerBrief).toBe("");
   });
 
+  it("supports a privacy-separated collaborative interview journal and clock", async () => {
+    const interviewScenario = {
+      ...structuredClone(DEFAULT_SCENARIO),
+      mode: "interview" as const,
+      interview: {
+        candidateBrief: "Design the service.",
+        interviewerBrief: "Private scoring notes.",
+        timeboxMinutes: 45,
+        allowCandidateRequirements: true,
+        revealPolicy: "interviewer-controlled" as const,
+      },
+      requirements: DEFAULT_SCENARIO.requirements.map((requirement) => ({
+        ...requirement,
+        visibility: "hidden" as const,
+        owner: "interviewer" as const,
+      })),
+    };
+    app = await buildApp(config, new MemoryControlStore());
+    const shared = await app.inject({
+      method: "POST",
+      url: "/api/scenarios",
+      payload: {
+        scenario: interviewScenario,
+        architecture: DEFAULT_ARCHITECTURE,
+      },
+    });
+    const id = shared.json().id as string;
+    const hostToken = decodeURIComponent(
+      new URL(shared.json().interviewerUrl).hash.replace("#hostToken=", ""),
+    );
+
+    const candidateUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/scenarios/${id}/collaboration`,
+      payload: {
+        candidateNotes: "Need to clarify ordering and durability.",
+        candidateCursor: "Investigating storage",
+      },
+    });
+    expect(candidateUpdate.statusCode).toBe(200);
+    expect(candidateUpdate.json().collaboration).toMatchObject({
+      candidateNotes: "Need to clarify ordering and durability.",
+      candidateCursor: "Investigating storage",
+    });
+    expect(candidateUpdate.json().collaboration).not.toHaveProperty(
+      "interviewerNotes",
+    );
+
+    const hostUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/scenarios/${id}/collaboration`,
+      headers: { "x-systemforge-host-token": hostToken },
+      payload: {
+        interviewerNotes: "Candidate found durability before scaling.",
+        clockAction: "start",
+      },
+    });
+    expect(hostUpdate.statusCode).toBe(200);
+    expect(hostUpdate.json().collaboration.interviewerNotes).toContain(
+      "found durability",
+    );
+    expect(hostUpdate.json().collaboration.startedAt).toBeTruthy();
+
+    const candidate = await app.inject({
+      method: "GET",
+      url: `/api/scenarios/${id}`,
+    });
+    expect(candidate.json().collaboration.startedAt).toBeTruthy();
+    expect(candidate.json().collaboration).not.toHaveProperty(
+      "interviewerNotes",
+    );
+
+    const deniedPrivateWrite = await app.inject({
+      method: "PATCH",
+      url: `/api/scenarios/${id}/collaboration`,
+      payload: { interviewerNotes: "attempted overwrite" },
+    });
+    expect(deniedPrivateWrite.statusCode).toBe(400);
+  });
+
   it("keeps never-reveal interviews private after candidate runs", async () => {
     const interviewScenario = {
       ...structuredClone(DEFAULT_SCENARIO),

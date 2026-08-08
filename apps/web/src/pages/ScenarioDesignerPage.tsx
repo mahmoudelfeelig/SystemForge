@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  CaretDown,
   Check,
   CloudArrowUp,
   Copy,
@@ -32,6 +33,16 @@ interface ScenarioDesignerPageProps {
 
 type RequestProfile = NonNullable<Scenario["workload"]["requestMix"]>[number];
 type RegionProfile = Scenario["workload"]["regions"][number];
+type DesignerSectionId =
+  | "brief"
+  | "facilitation"
+  | "demand"
+  | "requests"
+  | "regions"
+  | "invariants"
+  | "failures"
+  | "objectives"
+  | "share";
 
 const titleCase = (value: string) =>
   value
@@ -114,6 +125,9 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
     participant: string;
     interviewer?: string;
   } | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<
+    Set<DesignerSectionId>
+  >(new Set());
   const validation = useMemo(
     () => scenarioSchema.safeParse(scenario),
     [scenario],
@@ -136,6 +150,98 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
   const requestShare = (scenario.workload.requestMix ?? []).reduce(
     (total, request) => total + request.share,
     0,
+  );
+  const sectionStates = useMemo(
+    () => [
+      {
+        id: "brief" as const,
+        label: "Brief",
+        complete:
+          scenario.title.trim().length > 2 &&
+          scenario.summary.trim().length > 20,
+      },
+      ...(mode === "interview"
+        ? [
+            {
+              id: "facilitation" as const,
+              label: "Facilitation",
+              complete:
+                Boolean(scenario.interview?.candidateBrief.trim()) &&
+                Boolean(scenario.interview?.interviewerBrief.trim()),
+            },
+          ]
+        : []),
+      {
+        id: "demand" as const,
+        label: "Demand",
+        complete:
+          scenario.workload.baseRps > 0 &&
+          scenario.workload.peakRps >= scenario.workload.baseRps &&
+          scenario.workload.durationSeconds >= 15,
+      },
+      {
+        id: "requests" as const,
+        label: "Request mix",
+        complete:
+          (scenario.workload.requestMix?.length ?? 0) > 0 &&
+          Math.abs(requestShare - 1) < 0.001,
+      },
+      {
+        id: "regions" as const,
+        label: "Regions",
+        complete:
+          scenario.workload.regions.length > 0 &&
+          Math.abs(regionalShare - 1) < 0.001,
+      },
+      {
+        id: "invariants" as const,
+        label: "Invariants",
+        complete: Boolean(
+          scenario.domain?.acknowledgedWritesMustSurvive ||
+          scenario.domain?.preventOversell ||
+          scenario.domain?.piiRegion ||
+          scenario.domain?.maximumRecoverySeconds !== undefined,
+        ),
+      },
+      {
+        id: "failures" as const,
+        label: "Failures",
+        complete: scenario.incidents.length > 0,
+      },
+      {
+        id: "objectives" as const,
+        label: "Objectives",
+        complete: scenario.requirements.length > 0,
+      },
+      {
+        id: "share" as const,
+        label: "Handoff",
+        complete: validation.success,
+      },
+    ],
+    [mode, regionalShare, requestShare, scenario, validation.success],
+  );
+  const completedSections = sectionStates.filter(
+    (section) => section.complete,
+  ).length;
+  const nextIncomplete = sectionStates.find((section) => !section.complete);
+  const toggleSection = (id: DesignerSectionId) =>
+    setCollapsedSections((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const sectionCollapse = (id: DesignerSectionId) => (
+    <button
+      className="section-collapse"
+      type="button"
+      aria-expanded={!collapsedSections.has(id)}
+      aria-label={`${collapsedSections.has(id) ? "Expand" : "Collapse"} ${sectionStates.find((section) => section.id === id)?.label ?? id} section`}
+      onClick={() => toggleSection(id)}
+    >
+      <CaretDown size={15} />
+    </button>
   );
 
   const updateWorkload = (patch: Partial<Scenario["workload"]>) =>
@@ -245,7 +351,9 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             onClick={openLab}
             disabled={!validation.success}
           >
-            Compile and open lab <ArrowRight size={16} />
+            <span className="designer-cta-full">Compile and open lab</span>
+            <span className="designer-cta-compact">Open Lab</span>
+            <ArrowRight size={16} />
           </button>
         </div>
       </header>
@@ -334,6 +442,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           <section
             className="contract-section contract-section--brief"
             id="brief"
+            data-collapsed={collapsedSections.has("brief")}
           >
             <header>
               <span className="section-number">01</span>
@@ -342,6 +451,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 <h2>Mission brief</h2>
               </div>
               <p>Visible framing shared with every participant.</p>
+              {sectionCollapse("brief")}
             </header>
             <div className="contract-fields contract-fields--brief">
               <label>
@@ -401,6 +511,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             <section
               className="contract-section contract-section--private"
               id="facilitation"
+              data-collapsed={collapsedSections.has("facilitation")}
             >
               <header>
                 <span className="section-number">02</span>
@@ -409,6 +520,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   <h2>Facilitation controls</h2>
                 </div>
                 <p>Never included in the candidate payload.</p>
+                {sectionCollapse("facilitation")}
               </header>
               <div className="private-notice">
                 <EyeSlash size={16} /> Interviewer-only contract
@@ -501,7 +613,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             </section>
           ) : null}
 
-          <section className="contract-section" id="demand">
+          <section
+            className="contract-section"
+            id="demand"
+            data-collapsed={collapsedSections.has("demand")}
+          >
             <header>
               <span className="section-number">
                 {mode === "interview" ? "03" : "02"}
@@ -513,6 +629,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               <p>
                 Arrival shape, concurrency, client patience, and retry pressure.
               </p>
+              {sectionCollapse("demand")}
             </header>
             <div className="metric-field-grid">
               <label>
@@ -697,7 +814,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             </div>
           </section>
 
-          <section className="contract-section" id="requests">
+          <section
+            className="contract-section"
+            id="requests"
+            data-collapsed={collapsedSections.has("requests")}
+          >
             <header>
               <span className="section-number">
                 {mode === "interview" ? "04" : "03"}
@@ -722,6 +843,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               >
                 <Plus size={14} /> Add class
               </button>
+              {sectionCollapse("requests")}
             </header>
             <div className="table-editor request-table">
               <div className="table-editor__head">
@@ -849,7 +971,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             </div>
           </section>
 
-          <section className="contract-section" id="regions">
+          <section
+            className="contract-section"
+            id="regions"
+            data-collapsed={collapsedSections.has("regions")}
+          >
             <header>
               <span className="section-number">
                 {mode === "interview" ? "05" : "04"}
@@ -872,6 +998,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               >
                 <Plus size={14} /> Add region
               </button>
+              {sectionCollapse("regions")}
             </header>
             <div className="table-editor region-table">
               <div className="table-editor__head">
@@ -938,7 +1065,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             </div>
           </section>
 
-          <section className="contract-section" id="invariants">
+          <section
+            className="contract-section"
+            id="invariants"
+            data-collapsed={collapsedSections.has("invariants")}
+          >
             <header>
               <span className="section-number">
                 {mode === "interview" ? "06" : "05"}
@@ -950,6 +1081,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               <p>
                 Business meaning the architecture must preserve under failure.
               </p>
+              {sectionCollapse("invariants")}
             </header>
             <div className="invariant-grid">
               <label className="switch-field">
@@ -1025,7 +1157,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             </div>
           </section>
 
-          <section className="contract-section" id="failures">
+          <section
+            className="contract-section"
+            id="failures"
+            data-collapsed={collapsedSections.has("failures")}
+          >
             <header>
               <span className="section-number">
                 {mode === "interview" ? "07" : "06"}
@@ -1049,6 +1185,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               >
                 <Plus size={14} /> Arm incident
               </button>
+              {sectionCollapse("failures")}
             </header>
             <div className="incident-stack">
               {scenario.incidents.map((incident, index) => (
@@ -1190,7 +1327,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             </div>
           </section>
 
-          <section className="contract-section" id="objectives">
+          <section
+            className="contract-section"
+            id="objectives"
+            data-collapsed={collapsedSections.has("objectives")}
+          >
             <header>
               <span className="section-number">
                 {mode === "interview" ? "08" : "07"}
@@ -1219,6 +1360,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               >
                 <Plus size={14} /> Add objective
               </button>
+              {sectionCollapse("objectives")}
             </header>
             <div className="requirement-stack">
               {scenario.requirements.map((requirement, index) => (
@@ -1317,6 +1459,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           <section
             className="contract-section contract-section--handoff"
             id="share"
+            data-collapsed={collapsedSections.has("share")}
           >
             <header>
               <span className="section-number">
@@ -1327,6 +1470,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 <h2>Launch and share</h2>
               </div>
               <ShieldCheck size={22} />
+              {sectionCollapse("share")}
             </header>
             <div className="handoff-grid">
               <div className="handoff-local">
@@ -1429,6 +1573,107 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             </button>
           </section>
         </form>
+        <aside
+          className="designer-summary"
+          aria-label="Live mission contract summary"
+        >
+          <header>
+            <span className="panel-index">LIVE CONTRACT</span>
+            <strong>
+              {completedSections}/{sectionStates.length} sections ready
+            </strong>
+            <div
+              className="designer-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={sectionStates.length}
+              aria-valuenow={completedSections}
+              aria-label="Scenario contract completion"
+            >
+              <i
+                style={{
+                  width: `${(completedSections / sectionStates.length) * 100}%`,
+                }}
+              />
+            </div>
+          </header>
+          <ol>
+            {sectionStates.map((section, index) => (
+              <li
+                className={section.complete ? "complete" : "pending"}
+                key={section.id}
+              >
+                <a
+                  href={`#${section.id}`}
+                  onClick={() => {
+                    if (collapsedSections.has(section.id))
+                      toggleSection(section.id);
+                  }}
+                >
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <strong>{section.label}</strong>
+                  {section.complete ? (
+                    <Check size={14} />
+                  ) : (
+                    <Warning size={14} />
+                  )}
+                </a>
+              </li>
+            ))}
+          </ol>
+          <section className="designer-summary__metrics">
+            <span>Current envelope</span>
+            <dl>
+              <div>
+                <dt>Peak</dt>
+                <dd>{scenario.workload.peakRps.toLocaleString("en-US")} RPS</dd>
+              </div>
+              <div>
+                <dt>Regions</dt>
+                <dd>{scenario.workload.regions.length}</dd>
+              </div>
+              <div>
+                <dt>Incidents</dt>
+                <dd>{scenario.incidents.length}</dd>
+              </div>
+              <div>
+                <dt>Objectives</dt>
+                <dd>{scenario.requirements.length}</dd>
+              </div>
+            </dl>
+          </section>
+          {nextIncomplete ? (
+            <a
+              className="designer-summary__next"
+              href={`#${nextIncomplete.id}`}
+              onClick={() => {
+                if (collapsedSections.has(nextIncomplete.id))
+                  toggleSection(nextIncomplete.id);
+              }}
+            >
+              Continue with <strong>{nextIncomplete.label}</strong>{" "}
+              <ArrowRight size={14} />
+            </a>
+          ) : (
+            <button
+              className="designer-summary__next"
+              type="button"
+              disabled={!validation.success}
+              onClick={openLab}
+            >
+              Contract ready <strong>Open the Lab</strong>{" "}
+              <ArrowRight size={14} />
+            </button>
+          )}
+          <footer>
+            <ShieldCheck size={15} />
+            <span>
+              {mode === "interview"
+                ? "Private rubric remains outside candidate payloads."
+                : "Draft remains in this browser until you request a canonical link."}
+            </span>
+          </footer>
+        </aside>
       </main>
     </div>
   );

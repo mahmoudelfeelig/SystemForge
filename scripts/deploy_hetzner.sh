@@ -27,6 +27,7 @@ case "$DEPLOY_SHA" in
 esac
 
 PREVIOUS_SHA=""
+PUBLIC_ROUTE_INSTALLED=false
 if test -f "$STATE_FILE"; then
   PREVIOUS_SHA=$(sed -n '1p' "$STATE_FILE")
 fi
@@ -70,6 +71,11 @@ rollback() {
       stop_application_fail_closed
     fi
   else
+    if test "$PUBLIC_ROUTE_INSTALLED" = true; then
+      if ! sh "$APP_DIR/scripts/install_caddy_route.sh" closed; then
+        echo "Failed to restore the closed Caddy route after a first-release failure." >&2
+      fi
+    fi
     stop_application_fail_closed
   fi
   exit "$DEPLOYMENT_STATUS"
@@ -106,6 +112,8 @@ compose exec -T \
   -e OVERLOAD_WEB_ORIGIN=http://systemforge-web:8080 \
   systemforge-api node /app/apps/api/overload_smoke.mjs
 sh "$APP_DIR/scripts/verify_release_backups.sh"
+sh "$APP_DIR/scripts/install_caddy_route.sh" open
+PUBLIC_ROUTE_INSTALLED=true
 
 if test -n "${SYSTEMFORGE_EXTERNAL_SMOKE_URL:-}"; then
   EXTERNAL_ORIGIN=${SYSTEMFORGE_EXTERNAL_SMOKE_URL%/}

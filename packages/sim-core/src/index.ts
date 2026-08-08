@@ -18,3 +18,12 @@ export {
   type SolverWeights,
 } from "./solve";
 export { ENGINE_VERSION, simulate } from "./simulate";
+export {
+  analyzeRobustness,
+  DEFAULT_ROBUSTNESS_WORK_UNIT_BUDGET,
+  estimateRobustnessWorkUnits,
+  MAX_ROBUSTNESS_SEEDS,
+  type RobustnessOptions,
+  type RobustnessResult,
+  type RobustnessSummary,
+} from "./robustness";

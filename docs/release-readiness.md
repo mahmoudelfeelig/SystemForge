@@ -1,18 +1,19 @@
 # Release-readiness evidence
 
-SystemForge is engineering-ready for continued private review, but public
-release remains **NO-GO** until the owner explicitly says the product is done
-and ready for production. This document separates current checkout evidence
-from the later public-release actions.
+The owner authorized SystemForge's public release on 2026-08-08. Authorization
+opens the release gate; it does not make an untested checkout deployable. The
+public promotion remains conditional on the exact committed SHA passing every
+CI, image, integration, backup, restore, in-network, and Cloudflare smoke gate
+described here.
 
 ## Current checkout evidence
 
 The 2026-08-08 checkout passed the following checks:
 
-- Complete quality gate: formatting, lint, TypeScript, 94 behavioral tests,
+- Complete quality gate: formatting, lint, TypeScript, 105 behavioral tests,
   all workspace builds, and the four-check Sites packaging contract.
-- `pnpm test:coverage`: 92.39% statements, 82.84% branches, 92.43% functions,
-  and 93.19% lines across the selected simulation, solver, API, worker, browser
+- `pnpm test:coverage`: 92.14% statements, 82.28% branches, 92.79% functions,
+  and 93.02% lines across the selected simulation, solver, API, worker, browser
   worker, and canonical-fallback control paths.
 - `pnpm test:performance`: 250 representative deterministic simulations and
   five bounded 12-candidate architecture searches, each within its separate
@@ -78,10 +79,17 @@ The 2026-08-08 checkout passed the following checks:
   return no recommendation when the baseline dominates. Browser-local solving,
   canonical transport, disposable Node-worker isolation, independent solver
   concurrency, timeout/result caps, overload fallback, Lab result state, and
-  stale-result suppression are implemented. The candidate-comparison controls
-  and presentation are still awaiting the approved visual integration and are
-  not represented as a completed public feature.
-- Microsoft Edge 151 at 1564 by 1070 and 390 by 844: no document overflow,
+  stale-result suppression are implemented. The Lab decision workbench now
+  exposes bounded policy controls, Pareto comparison, exact deltas and
+  violations, reversible candidate application, named versions, topology
+  proposals, multi-seed robustness, traffic and provider imports, mission
+  loading, and privacy-scoped evidence export.
+- Interview collaboration stores a shared candidate journal, candidate phase,
+  and session clock while keeping interviewer notes inaccessible to participant
+  links. The migration, memory store, PostgreSQL store, API role checks, browser
+  hydration, and same-SPA interviewer-role preservation have regression
+  coverage.
+- Microsoft Edge 151 at 1672 by 941 and 390 by 844: no document overflow,
   console errors, or failed network requests across landing, lab, custom, and
   interview flows. A separate 1440 by 1000 pass cleared service-worker state,
   loaded the current production build, forced the browser fully offline,
@@ -157,14 +165,14 @@ The temporary services, private network, database volume, verification images,
 credentials, source archive, and disposable backup were removed after the
 checks. The production SHA and database-only service state remained unchanged.
 
-## Release boundary confirmed closed
+## Release authorization and promotion boundary
 
 - The proxied Cloudflare DNS record for `systemforge.elfeel.me` resolves, and
   the live Caddy origin has a valid certificate for the hostname.
-- The running managed SystemForge Caddy block is the checked-in 404-only route;
-  the public hostname returns that hardened `404` without serving the product.
-- Web, API, worker, and migration services are stopped on the production
-  project. Only its private PostgreSQL container remains healthy.
+- Before promotion, the managed SystemForge Caddy block remains the checked-in
+  404-only route and application services remain stopped. After promotion, the
+  exact image SHA, public readiness response, and monitor run are the evidence
+  of availability; owner approval alone is not.
 - Ordinary web builds compile canonical services off.
 - Every trusted green `main` CI run automatically stages its checksum-verified
   images and exact source revision on Hetzner. With approval absent, staging
@@ -179,7 +187,7 @@ repository, container-scan, and integration jobs succeed. Local checkout
 evidence must not be described as an exact-image CI pass, and an earlier green
 SHA must not be used as evidence for later working-tree changes.
 
-## Gates after explicit owner approval
+## Approved production gates
 
 Public release requires all of the following in order:
 
@@ -199,5 +207,7 @@ Public release requires all of the following in order:
 - confirm the scheduled monitor runs successfully and record the first public
   restore and incident-response evidence.
 
-Until those gates are deliberately opened, the correct production state is the
-closed one described above.
+The release is complete only after those gates pass for the same committed SHA
+and the public shell and readiness endpoint respond through Cloudflare. Any
+failed gate must leave the hardened closed route or restore the last complete
+release rather than expose a partial stack.

@@ -41,6 +41,22 @@ export interface SharedScenario {
   architecture: Architecture;
   role: "interviewer" | "participant";
   revealState: "hidden" | "revealed";
+  collaboration: InterviewCollaboration;
+}
+
+export interface InterviewCollaboration {
+  candidateNotes: string;
+  candidateCursor: string;
+  startedAt: string | null;
+  updatedAt: string;
+  interviewerNotes?: string;
+}
+
+export interface InterviewCollaborationPatch {
+  candidateNotes?: string;
+  candidateCursor?: string;
+  interviewerNotes?: string;
+  clockAction?: "start" | "reset";
 }
 
 export interface CanonicalSolveResponse {
@@ -162,6 +178,23 @@ export function setSharedScenarioReveal(
       method: "PATCH",
       headers: { "x-systemforge-host-token": hostToken },
       body: JSON.stringify({ revealed }),
+    },
+  );
+}
+
+export function updateInterviewCollaboration(
+  id: string,
+  patch: InterviewCollaborationPatch,
+  hostToken?: string,
+): Promise<SharedScenario> {
+  return request<SharedScenario>(
+    `/api/scenarios/${encodeURIComponent(id)}/collaboration`,
+    {
+      method: "PATCH",
+      ...(hostToken
+        ? { headers: { "x-systemforge-host-token": hostToken } }
+        : {}),
+      body: JSON.stringify(patch),
     },
   );
 }

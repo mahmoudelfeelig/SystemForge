@@ -72,7 +72,26 @@ const sharedScenarioResponse = (
   architecture: record.architecture,
   role: record.isHost ? ("interviewer" as const) : ("participant" as const),
   revealState: record.revealState,
+  collaboration: record.collaboration,
 });
+
+const participantCollaborationSchema = z
+  .object({
+    candidateNotes: z.string().max(4_000).optional(),
+    candidateCursor: z.string().max(120).optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0);
+
+const hostCollaborationSchema = z
+  .object({
+    candidateNotes: z.string().max(4_000).optional(),
+    candidateCursor: z.string().max(120).optional(),
+    interviewerNotes: z.string().max(4_000).optional(),
+    clockAction: z.enum(["start", "reset"]).optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0);
 
 const errorBody = (
   code: string,
@@ -454,6 +473,59 @@ export async function buildApp(
             ),
           );
       return sharedScenarioResponse(record);
+    },
+  );
+
+  app.patch(
+    "/api/scenarios/:id/collaboration",
+    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      const hostToken = z
+        .string()
+        .uuid()
+        .optional()
+        .parse(request.headers["x-systemforge-host-token"]);
+      const current = await store.getScenario(id, hostToken);
+      if (!current)
+        return reply
+          .code(404)
+          .send(
+            errorBody(
+              "scenario_not_found",
+              "This shared scenario does not exist or has expired.",
+              request.id,
+            ),
+          );
+      if (current.scenario.mode !== "interview")
+        return reply
+          .code(409)
+          .send(
+            errorBody(
+              "not_an_interview",
+              "Collaboration state only applies to interview sessions.",
+              request.id,
+            ),
+          );
+      const patch = current.isHost
+        ? hostCollaborationSchema.parse(request.body)
+        : participantCollaborationSchema.parse(request.body);
+      const updated = await store.updateScenarioCollaboration(
+        id,
+        hostToken,
+        patch,
+      );
+      if (!updated)
+        return reply
+          .code(404)
+          .send(
+            errorBody(
+              "scenario_not_found",
+              "This shared scenario does not exist or has expired.",
+              request.id,
+            ),
+          );
+      return sharedScenarioResponse(updated);
     },
   );
 

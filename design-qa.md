@@ -43,6 +43,15 @@ There are no remaining actionable P0, P1, or P2 visual findings.
   The canvas remains pan-and-zoom capable, the component rail scrolls
   horizontally, and the document itself does not require horizontal scrolling.
 
+The release-candidate pass also covered the new decision workbench and expanded
+authoring flow. The workbench keeps the dense mission-control hierarchy while
+giving comparison, versions, missions, calibration, interview session, and
+evidence their own functional tabs instead of repeating generic cards. The
+custom scenario authoring route uses an asymmetric form-and-contract layout
+with a sticky live summary on wide screens and a linear single-column sequence
+on narrow screens. The interview session clearly separates the shared candidate
+journal from the violet, interviewer-only evidence area.
+
 ## Required fidelity surfaces
 
 ### Fonts and typography
@@ -145,9 +154,13 @@ a claim of a complete assistive-technology audit.
 - Focused same-coordinate crops confirm topology/node anatomy, the complete
   inspector hierarchy, and the full events/telemetry/resource/causal band.
 - Fresh Microsoft Edge responsive captures cover 1024 by 900 and 390 by 844.
-- The final desktop run recorded zero console errors and zero failed network
-  requests.
-- No deployment, public share, DNS change, or production-access action occurred.
+- Fresh release-candidate captures additionally cover the Lab, candidate
+  comparison, custom dossier, interview session, and mobile workbench at 1672
+  by 941 and 390 by 844. They recorded zero unnamed focusable controls, console
+  errors, runtime exceptions, failed network requests, or document-level
+  horizontal overflow.
+- The visual captures occurred before public promotion and did not use the
+  canonical service as evidence for UI correctness.
 
 ## Primary interactions tested
 
@@ -159,13 +172,23 @@ a claim of a complete assistive-technology audit.
   causal event.
 - Verify the inspector overview, config/metrics/why tabs, release-locked
   canonical action, responsive component rail, and pan-and-zoom topology.
+- Compare bounded solver candidates, inspect the Pareto set and exact trade-off
+  deltas, then apply the selected candidate through the reversible history.
+- Restore named architecture snapshots, load a mission, import bounded traffic
+  and provider snapshots, apply an explicit topology proposal, run multi-seed
+  robustness analysis, and export participant-safe evidence.
+- Exercise the interview session clock, candidate phase and shared journal while
+  confirming interviewer notes remain private and participant links expose no
+  hidden criteria.
 
 ## Engineering verification
 
-- `pnpm --filter @systemforge/web test`: 6 files and 23 tests passed.
+- `pnpm quality`: passed the combined formatting, lint, typecheck, functional,
+  performance, build, and Sites packaging gate.
+- `pnpm test`: 21 files and 105 tests passed.
 - `pnpm typecheck`: passed.
 - `pnpm lint`: passed with zero warnings.
-- `pnpm --filter @systemforge/web build`: passed; 4,850 modules transformed and
+- `pnpm --filter @systemforge/web build`: passed; 4,862 modules transformed and
   the existing local Sites packaging artifacts were prepared.
 - `pnpm --filter @systemforge/web test:sites`: 4 tests passed.
 

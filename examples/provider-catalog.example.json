@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1",
+  "provider": "Example infrastructure snapshot",
+  "currency": "EUR",
+  "retrievedAt": "2026-08-08T00:00:00Z",
+  "services": [
+    {
+      "sku": "compute-balanced-4",
+      "name": "Balanced compute, 4 vCPU",
+      "componentKinds": ["api", "worker"],
+      "region": "EU",
+      "monthlyEur": 96,
+      "cpuCores": 4,
+      "memoryGb": 8,
+      "egressPerGbEur": 0.02
+    },
+    {
+      "sku": "database-managed-8",
+      "name": "Managed database, 8 vCPU",
+      "componentKinds": ["database"],
+      "region": "EU",
+      "monthlyEur": 640,
+      "cpuCores": 8,
+      "memoryGb": 32,
+      "egressPerGbEur": 0.02
+    },
+    {
+      "sku": "cache-managed-4",
+      "name": "Managed cache, 4 vCPU",
+      "componentKinds": ["cache"],
+      "region": "EU",
+      "monthlyEur": 220,
+      "cpuCores": 4,
+      "memoryGb": 16,
+      "egressPerGbEur": 0.02
+    }
+  ]
+}

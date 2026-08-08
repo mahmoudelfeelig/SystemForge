@@ -22,8 +22,11 @@ import {
   recordSharedScenarioRun,
   setSharedScenarioReveal,
   submitCanonicalRun,
+  updateInterviewCollaboration as updateCanonicalInterviewCollaboration,
   type ApiAvailability,
   type CanonicalRunStatus,
+  type InterviewCollaboration,
+  type InterviewCollaborationPatch,
 } from "../lib/api";
 import { runLocalSimulation } from "../lib/localSimulation";
 import { decodeLocalShare } from "../lib/share";
@@ -31,9 +34,19 @@ import { solveArchitectureWithFallback } from "../lib/solverGateway";
 
 export type WorkspaceMode = "build" | "run" | "investigate";
 
+export interface ArchitectureSnapshot {
+  id: string;
+  label: string;
+  createdAt: string;
+  architecture: Architecture;
+}
+
 interface LabState {
   scenario: Scenario;
   architecture: Architecture;
+  architectureUndo: Architecture[];
+  architectureRedo: Architecture[];
+  architectureSnapshots: ArchitectureSnapshot[];
   result: SimulationResult | null;
   solverResult: SolveArchitectureResult | null;
   selectedNodeId: string | null;
@@ -51,6 +64,7 @@ interface LabState {
   sharedScenarioId: string | null;
   sharedHostToken: string | null;
   revealState: "hidden" | "revealed";
+  collaboration: InterviewCollaboration;
   hydrate: () => void;
   loadSharedScenario: (
     scenario: Scenario,
@@ -60,10 +74,18 @@ interface LabState {
       id: string;
       hostToken?: string;
       revealState: "hidden" | "revealed";
+      collaboration?: InterviewCollaboration;
     },
   ) => void;
   setScenario: (scenario: Scenario) => void;
   setArchitecture: (architecture: Architecture) => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  undoArchitecture: () => void;
+  redoArchitecture: () => void;
+  saveArchitectureSnapshot: (label: string) => void;
+  restoreArchitectureSnapshot: (id: string) => void;
+  removeArchitectureSnapshot: (id: string) => void;
   setSelectedNodeId: (id: string | null) => void;
   setSelectedEventId: (id: string | null) => void;
   setWorkspaceMode: (mode: WorkspaceMode) => void;
@@ -71,6 +93,9 @@ interface LabState {
   removeRequirement: (id: string) => void;
   refreshSharedScenario: () => Promise<void>;
   setInterviewReveal: (revealed: boolean) => Promise<void>;
+  updateInterviewCollaboration: (
+    patch: InterviewCollaborationPatch,
+  ) => Promise<void>;
   checkService: () => Promise<void>;
   runLocal: () => Promise<void>;
   solveAlternatives: (options?: SolveArchitectureOptions) => Promise<void>;
@@ -94,6 +119,57 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 let solverRequestSequence = 0;
+
+const HISTORY_LIMIT = 40;
+const SNAPSHOT_STORAGE_KEY = "systemforge:architecture-snapshots";
+const emptyCollaboration = (): InterviewCollaboration => ({
+  candidateNotes: "",
+  candidateCursor: "Preparing workspace",
+  startedAt: null,
+  updatedAt: new Date(0).toISOString(),
+});
+
+const persistDraft = (scenario: Scenario, architecture: Architecture) =>
+  localStorage.setItem(
+    "systemforge:draft",
+    JSON.stringify({ scenario, architecture }),
+  );
+
+const parseArchitectureSnapshots = (
+  value: string | null,
+): ArchitectureSnapshot[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, 24).flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const candidate = entry as Record<string, unknown>;
+      if (
+        typeof candidate.id !== "string" ||
+        typeof candidate.label !== "string" ||
+        typeof candidate.createdAt !== "string"
+      )
+        return [];
+      const architecture = architectureSchema.safeParse(candidate.architecture);
+      return architecture.success
+        ? [
+            {
+              id: candidate.id,
+              label: candidate.label.slice(0, 80),
+              createdAt: candidate.createdAt,
+              architecture: architecture.data,
+            },
+          ]
+        : [];
+    });
+  } catch {
+    return [];
+  }
+};
+
+const persistSnapshots = (snapshots: ArchitectureSnapshot[]) =>
+  localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshots));
 
 const parseStoredSession = (
   value: string | null,
@@ -129,6 +205,9 @@ const parseStoredSession = (
 
 export const useLabStore = create<LabState>((set, get) => ({
   ...cloneDefaults(),
+  architectureUndo: [],
+  architectureRedo: [],
+  architectureSnapshots: [],
   result: null,
   solverResult: null,
   selectedNodeId: "api",
@@ -146,7 +225,12 @@ export const useLabStore = create<LabState>((set, get) => ({
   sharedScenarioId: null,
   sharedHostToken: null,
   revealState: "hidden",
+  collaboration: emptyCollaboration(),
   hydrate: () => {
+    const architectureSnapshots = parseArchitectureSnapshots(
+      localStorage.getItem(SNAPSHOT_STORAGE_KEY),
+    );
+    set({ architectureSnapshots });
     const sessionValue = sessionStorage.getItem("systemforge:session");
     const session = parseStoredSession(sessionValue);
     if (sessionValue && !session)
@@ -170,6 +254,7 @@ export const useLabStore = create<LabState>((set, get) => ({
           sharedScenarioId: null,
           sharedHostToken: null,
           revealState: "hidden",
+          collaboration: emptyCollaboration(),
         });
         return;
       }
@@ -179,6 +264,12 @@ export const useLabStore = create<LabState>((set, get) => ({
       });
       return;
     }
+    if (
+      !session &&
+      get().role === "interviewer" &&
+      get().scenario.mode === "interview"
+    )
+      return;
     const draft = localStorage.getItem("systemforge:draft");
     if (draft) {
       try {
@@ -200,6 +291,7 @@ export const useLabStore = create<LabState>((set, get) => ({
           sharedScenarioId: session?.id ?? null,
           sharedHostToken: session?.hostToken ?? null,
           revealState,
+          collaboration: emptyCollaboration(),
         });
       } catch {
         localStorage.removeItem("systemforge:draft");
@@ -210,6 +302,7 @@ export const useLabStore = create<LabState>((set, get) => ({
           sharedScenarioId: null,
           sharedHostToken: null,
           revealState: "hidden",
+          collaboration: emptyCollaboration(),
           notice:
             "The saved draft was invalid or from an unsupported version, so SystemForge restored a safe local workspace.",
         });
@@ -242,6 +335,7 @@ export const useLabStore = create<LabState>((set, get) => ({
       sharedScenarioId: session?.id ?? null,
       sharedHostToken: session?.hostToken ?? null,
       revealState: session?.revealState ?? "hidden",
+      collaboration: session?.collaboration ?? emptyCollaboration(),
     });
     if (session) {
       sessionStorage.setItem(
@@ -257,7 +351,7 @@ export const useLabStore = create<LabState>((set, get) => ({
       sessionStorage.removeItem("systemforge:session");
     }
   },
-  setScenario: (scenario) =>
+  setScenario: (scenario) => {
     set({
       scenario,
       result: null,
@@ -268,10 +362,18 @@ export const useLabStore = create<LabState>((set, get) => ({
       canonicalRunId: null,
       canonicalRunStatus: "idle",
       canonicalRunDigest: null,
-    }),
+    });
+    persistDraft(scenario, get().architecture);
+  },
   setArchitecture: (architecture) => {
+    const current = get().architecture;
     set({
       architecture,
+      architectureUndo: [
+        ...get().architectureUndo,
+        structuredClone(current),
+      ].slice(-HISTORY_LIMIT),
+      architectureRedo: [],
       result: null,
       solverResult: null,
       runState: "idle",
@@ -281,10 +383,85 @@ export const useLabStore = create<LabState>((set, get) => ({
       canonicalRunStatus: "idle",
       canonicalRunDigest: null,
     });
-    localStorage.setItem(
-      "systemforge:draft",
-      JSON.stringify({ scenario: get().scenario, architecture }),
+    persistDraft(get().scenario, architecture);
+  },
+  canUndo: () => get().architectureUndo.length > 0,
+  canRedo: () => get().architectureRedo.length > 0,
+  undoArchitecture: () => {
+    const undo = get().architectureUndo;
+    const previous = undo.at(-1);
+    if (!previous) return;
+    const current = get().architecture;
+    set({
+      architecture: structuredClone(previous),
+      architectureUndo: undo.slice(0, -1),
+      architectureRedo: [
+        structuredClone(current),
+        ...get().architectureRedo,
+      ].slice(0, HISTORY_LIMIT),
+      result: null,
+      solverResult: null,
+      runState: "idle",
+      solverState: "idle",
+      solverExecution: null,
+      notice: "Architecture change undone.",
+    });
+    persistDraft(get().scenario, previous);
+  },
+  redoArchitecture: () => {
+    const redo = get().architectureRedo;
+    const next = redo[0];
+    if (!next) return;
+    const current = get().architecture;
+    set({
+      architecture: structuredClone(next),
+      architectureUndo: [
+        ...get().architectureUndo,
+        structuredClone(current),
+      ].slice(-HISTORY_LIMIT),
+      architectureRedo: redo.slice(1),
+      result: null,
+      solverResult: null,
+      runState: "idle",
+      solverState: "idle",
+      solverExecution: null,
+      notice: "Architecture change restored.",
+    });
+    persistDraft(get().scenario, next);
+  },
+  saveArchitectureSnapshot: (rawLabel) => {
+    const label = rawLabel.trim().slice(0, 80);
+    if (!label) return;
+    const snapshot: ArchitectureSnapshot = {
+      id: crypto.randomUUID(),
+      label,
+      createdAt: new Date().toISOString(),
+      architecture: structuredClone(get().architecture),
+    };
+    const architectureSnapshots = [
+      snapshot,
+      ...get().architectureSnapshots,
+    ].slice(0, 24);
+    set({
+      architectureSnapshots,
+      notice: `Saved architecture snapshot “${label}”.`,
+    });
+    persistSnapshots(architectureSnapshots);
+  },
+  restoreArchitectureSnapshot: (id) => {
+    const snapshot = get().architectureSnapshots.find(
+      (candidate) => candidate.id === id,
     );
+    if (!snapshot) return;
+    get().setArchitecture(structuredClone(snapshot.architecture));
+    set({ notice: `Restored snapshot “${snapshot.label}”.` });
+  },
+  removeArchitectureSnapshot: (id) => {
+    const architectureSnapshots = get().architectureSnapshots.filter(
+      (snapshot) => snapshot.id !== id,
+    );
+    set({ architectureSnapshots });
+    persistSnapshots(architectureSnapshots);
   },
   setSelectedNodeId: (selectedNodeId) => set({ selectedNodeId }),
   setSelectedEventId: (selectedEventId) =>
@@ -369,6 +546,7 @@ export const useLabStore = create<LabState>((set, get) => ({
         scenario,
         role: shared.role,
         revealState: shared.revealState,
+        collaboration: shared.collaboration,
         solverResult: null,
         solverState: "idle",
         solverExecution: null,
@@ -406,6 +584,7 @@ export const useLabStore = create<LabState>((set, get) => ({
       const shared = await setSharedScenarioReveal(id, hostToken, revealed);
       set({
         revealState: shared.revealState,
+        collaboration: shared.collaboration,
         notice: revealed
           ? "Candidate criteria revealed for this canonical interview session."
           : "Candidate criteria concealed for this canonical interview session.",
@@ -416,6 +595,34 @@ export const useLabStore = create<LabState>((set, get) => ({
           error instanceof Error
             ? error.message
             : "The interview reveal state could not be updated.",
+      });
+    }
+  },
+  updateInterviewCollaboration: async (patch) => {
+    const id = get().sharedScenarioId;
+    if (!id) {
+      set({
+        notice:
+          "Publish this interview to open its shared journal, cursor, and clock.",
+      });
+      return;
+    }
+    try {
+      const shared = await updateCanonicalInterviewCollaboration(
+        id,
+        patch,
+        get().sharedHostToken ?? undefined,
+      );
+      set({
+        collaboration: shared.collaboration,
+        notice: "Interview session state synchronized.",
+      });
+    } catch (error) {
+      set({
+        notice:
+          error instanceof Error
+            ? error.message
+            : "The interview session state could not be synchronized.",
       });
     }
   },

@@ -494,16 +494,19 @@ export function simulate(
       node: ArchitectureNode,
       down: Incident["kind"],
       up: Incident["kind"],
-    ): Incident | undefined =>
-      scenario.incidents
-        .filter(
-          (incident) =>
-            incident.atSecond <= second &&
-            (incident.kind === down || incident.kind === up) &&
-            incidentAffectsNode(incident, node),
+    ): Incident | undefined => {
+      let latest: Incident | undefined;
+      for (const incident of scenario.incidents) {
+        if (
+          incident.atSecond <= second &&
+          (incident.kind === down || incident.kind === up) &&
+          incidentAffectsNode(incident, node) &&
+          (!latest || incident.atSecond >= latest.atSecond)
         )
-        .sort((left, right) => left.atSecond - right.atSecond)
-        .at(-1);
+          latest = incident;
+      }
+      return latest;
+    };
 
     const arrivalPattern = scenario.workload.arrivalPattern ?? "bursty";
     const phase = second / scenario.workload.durationSeconds;

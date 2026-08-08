@@ -10,6 +10,7 @@ import {
   QueueCapacityError,
   SharedScenarioCapacityError,
   type ControlStore,
+  type InterviewCollaborationPatch,
   type RunRecord,
   type SharedScenarioRecord,
   type SharedScenarioView,
@@ -32,7 +33,16 @@ interface ScenarioRow {
   architecture: Architecture;
   candidate_revealed: boolean;
   first_run_at: Date | null;
+  candidate_notes: string;
+  candidate_cursor: string;
+  interviewer_notes: string;
+  session_started_at: Date | null;
+  collaboration_updated_at: Date;
 }
+
+const scenarioColumns = `id, host_token_hash, scenario, architecture,
+  candidate_revealed, first_run_at, candidate_notes, candidate_cursor,
+  interviewer_notes, session_started_at, collaboration_updated_at`;
 
 const hashHostToken = (token: string): string =>
   createHash("sha256").update(token).digest("hex");
@@ -65,7 +75,7 @@ export class PostgresControlStore implements ControlStore {
         `SELECT
            EXISTS (
              SELECT 1 FROM schema_migrations
-           WHERE version = '005_legacy_token_rollback_bridge'
+           WHERE version = '006_interview_collaboration'
            )
            AND EXISTS (
              SELECT 1 FROM worker_heartbeats
@@ -179,7 +189,8 @@ export class PostgresControlStore implements ControlStore {
     hostToken?: string,
   ): Promise<SharedScenarioView | null> {
     const result = await this.#pool.query<ScenarioRow>(
-      "SELECT id, host_token_hash, scenario, architecture, candidate_revealed, first_run_at FROM shared_scenarios WHERE id = $1 AND expires_at > now()",
+      `SELECT ${scenarioColumns}
+       FROM shared_scenarios WHERE id = $1 AND expires_at > now()`,
       [id],
     );
     const row = result.rows[0];
@@ -191,7 +202,7 @@ export class PostgresControlStore implements ControlStore {
       `UPDATE shared_scenarios
        SET first_run_at = COALESCE(first_run_at, now())
        WHERE id = $1 AND expires_at > now()
-       RETURNING id, host_token_hash, scenario, architecture, candidate_revealed, first_run_at`,
+       RETURNING ${scenarioColumns}`,
       [id],
     );
     const row = result.rows[0];
@@ -209,8 +220,46 @@ export class PostgresControlStore implements ControlStore {
        WHERE id = $1
          AND host_token_hash = $2
          AND expires_at > now()
-       RETURNING id, host_token_hash, scenario, architecture, candidate_revealed, first_run_at`,
+       RETURNING ${scenarioColumns}`,
       [id, hashHostToken(hostToken), revealed],
+    );
+    const row = result.rows[0];
+    return row ? this.#mapScenario(row, hostToken) : null;
+  }
+
+  async updateScenarioCollaboration(
+    id: string,
+    hostToken: string | undefined,
+    patch: InterviewCollaborationPatch,
+  ): Promise<SharedScenarioView | null> {
+    const current = await this.getScenario(id, hostToken);
+    if (!current) return null;
+    const modifiesPrivateState =
+      patch.interviewerNotes !== undefined || patch.clockAction !== undefined;
+    if (modifiesPrivateState && !current.isHost) return null;
+    const result = await this.#pool.query<ScenarioRow>(
+      `UPDATE shared_scenarios
+       SET candidate_notes = COALESCE($3, candidate_notes),
+           candidate_cursor = COALESCE($4, candidate_cursor),
+           interviewer_notes = COALESCE($5, interviewer_notes),
+           session_started_at = CASE
+             WHEN $6 = 'start' THEN now()
+             WHEN $6 = 'reset' THEN NULL
+             ELSE session_started_at
+           END,
+           collaboration_updated_at = now()
+       WHERE id = $1
+         AND expires_at > now()
+         AND ($2::text IS NULL OR host_token_hash = $2)
+       RETURNING ${scenarioColumns}`,
+      [
+        id,
+        modifiesPrivateState && hostToken ? hashHostToken(hostToken) : null,
+        patch.candidateNotes ?? null,
+        patch.candidateCursor ?? null,
+        patch.interviewerNotes ?? null,
+        patch.clockAction ?? null,
+      ],
     );
     const row = result.rows[0];
     return row ? this.#mapScenario(row, hostToken) : null;
@@ -234,14 +283,22 @@ export class PostgresControlStore implements ControlStore {
       row.scenario.mode === "interview" &&
       ((policy === "after-run" && row.first_run_at !== null) ||
         (policy === "interviewer-controlled" && row.candidate_revealed));
+    const isHost = hostToken
+      ? hashHostToken(hostToken) === row.host_token_hash
+      : false;
     return {
       id: row.id,
       scenario: row.scenario,
       architecture: row.architecture,
-      isHost: hostToken
-        ? hashHostToken(hostToken) === row.host_token_hash
-        : false,
+      isHost,
       revealState: revealed ? "revealed" : "hidden",
+      collaboration: {
+        candidateNotes: row.candidate_notes,
+        candidateCursor: row.candidate_cursor,
+        startedAt: row.session_started_at?.toISOString() ?? null,
+        updatedAt: row.collaboration_updated_at.toISOString(),
+        ...(isHost ? { interviewerNotes: row.interviewer_notes } : {}),
+      },
     };
   }
 }

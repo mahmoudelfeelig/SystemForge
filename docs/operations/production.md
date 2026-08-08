@@ -4,10 +4,11 @@ The production target is `systemforge.elfeel.me` on the existing Hetzner host. T
 
 ## Required GitHub production configuration
 
-Production is intentionally release-locked. The proxied DNS record is already
-provisioned, but the live managed route must remain the hardened 404-only route.
-Do not start the application containers or install the open Caddy route until
-the owner explicitly says the product is done and ready for production.
+Production remains release-gated even after owner approval. The owner authorized
+the public release on 2026-08-08, but the proxied DNS record must continue to
+serve the hardened 404 route until the exact approved commit passes CI, image
+scanning, integration, backup, restore, and in-network smoke checks. Only the
+protected deployment job may start the application and install the open route.
 
 Create a protected `production` environment and configure these host variables
 before enabling automatic staging:
@@ -18,15 +19,15 @@ before enabling automatic staging:
 - `HETZNER_SSH_KNOWN_HOSTS=65.21.109.224 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBbsWzd5va1/wwTeM1P1K6AqPaGzG9GlgIpO7pBPBhX6`
 
 Add `HETZNER_SSH_PRIVATE_KEY` as an environment secret. Use a dedicated key
-whose public half is present in `feel`'s `authorized_keys`. Leave the following
-public-release variables unset until the explicit owner approval:
+whose public half is present in `feel`'s `authorized_keys`. After explicit owner
+approval, set both public-release variables exactly as follows:
 
 - `HETZNER_DEPLOY_ENABLED=true`
 - `SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION`
 
-Leave `SYSTEMFORGE_EXTERNAL_SMOKE_URL` unset during the first approved
+Leave `SYSTEMFORGE_EXTERNAL_SMOKE_URL` unset only during a first approved
 bootstrap. After the open Caddy route and proxied DNS record are serving
-correctly through Cloudflare, set the repository variable to
+correctly through Cloudflare, set the protected environment variable to
 `https://systemforge.elfeel.me`. Future deployments will then require the
 public shell and readiness smoke to pass before accepting a revision, and the
 scheduled production monitor will become active.
@@ -80,7 +81,6 @@ Clone the repository to `/opt/systemforge`. Copy `deploy/.env.example` to `deplo
 cd /opt/systemforge
 sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0700 /opt/systemforge-backups
 SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION sh scripts/deploy_hetzner.sh "$(git rev-parse HEAD)"
-SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION sh scripts/install_caddy_route.sh open
 sh scripts/install_backup_cron.sh
 ```
 
@@ -140,11 +140,13 @@ temporarily restored. Remove that bridge only in a later, separately validated
 contract migration after the previous image is no longer a rollback target.
 
 During the first explicitly approved bootstrap, the automatic deployment runs
-the complete in-network smoke while the public route can remain closed. This
-avoids a bootstrap deadlock where a release would need a working public route
-before the first healthy containers existed. After the open Caddy route and
-proxied DNS are verified, setting `SYSTEMFORGE_EXTERNAL_SMOKE_URL` makes future
-automatic deployments verify the public browser shell and readiness endpoint
+the complete in-network smoke and backup/restore gate while the public route
+remains closed. It then validates and installs the checked-in open Caddy route
+before attempting the external smoke. A failed first-release smoke restores the
+hardened closed route and stops the application services; an update failure
+restores the last complete application image set behind the existing open
+route. Setting `SYSTEMFORGE_EXTERNAL_SMOKE_URL` to the approved origin makes
+the same deployment verify the public browser shell and readiness endpoint
 through Cloudflare before accepting the new revision.
 An external-smoke failure keeps the deployment trap active and restores the
 last successful application images when they are still present locally.

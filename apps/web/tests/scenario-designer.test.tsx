@@ -111,6 +111,15 @@ describe("scenario workload controls", () => {
         }),
       ],
     });
+    useLabStore.getState().hydrate();
+    expect(useLabStore.getState()).toMatchObject({ role: "interviewer" });
+    expect(
+      useLabStore
+        .getState()
+        .scenario.requirements.some(
+          (requirement) => requirement.visibility === "hidden",
+        ),
+    ).toBe(true);
   });
 
   it("keeps the local challenge link available when canonical publishing is busy", async () => {

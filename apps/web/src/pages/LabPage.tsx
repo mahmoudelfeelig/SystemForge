@@ -10,6 +10,7 @@ import {
   Play,
   Plus,
   Pulse,
+  Scales,
   SlidersHorizontal,
   Trash,
   Warning,
@@ -40,6 +41,8 @@ import {
 } from "../components/ComponentNode";
 import { BrandIcon } from "../components/BrandIcon";
 import { COMPONENT_ICONS } from "../components/componentIcons";
+import { CommandPalette } from "../components/CommandPalette";
+import { DecisionWorkbench } from "../components/DecisionWorkbench";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ServiceBanner } from "../components/ServiceBanner";
 import { TelemetryPanel } from "../components/TelemetryPanel";
@@ -369,6 +372,8 @@ export function LabPage() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [cursorSecond, setCursorSecond] = useState(0);
+  const [decisionOpen, setDecisionOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
 
   useEffect(() => {
     hydrate();
@@ -378,6 +383,28 @@ export function LabPage() {
   useEffect(() => {
     if (result) setCursorSecond(result.frames.length - 1);
   }, [result]);
+
+  useEffect(() => {
+    const density = localStorage.getItem("systemforge:density");
+    document.documentElement.dataset.systemforgeDensity =
+      density === "comfortable" ? "comfortable" : "compact";
+    const openDecisionWorkbench = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setDecisionOpen(true);
+      }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "p"
+      ) {
+        event.preventDefault();
+        setCommandOpen(true);
+      }
+    };
+    window.addEventListener("keydown", openDecisionWorkbench);
+    return () => window.removeEventListener("keydown", openDecisionWorkbench);
+  }, []);
 
   useEffect(() => {
     if (
@@ -606,7 +633,10 @@ export function LabPage() {
 
   return (
     <div className="lab-shell">
-      <header className="lab-header">
+      <header
+        className="lab-header"
+        inert={decisionOpen || commandOpen ? true : undefined}
+      >
         <Link to="/" className="lab-brand">
           <ArrowLeft className="lab-brand__back" size={14} />
           <BrandIcon className="lab-brand__mark" />
@@ -669,6 +699,24 @@ export function LabPage() {
             {copied ? <span>Copied</span> : null}
           </button>
           <button
+            className="icon-button command-trigger"
+            type="button"
+            onClick={() => setCommandOpen(true)}
+            aria-label="Open command palette"
+            aria-keyshortcuts="Control+Shift+P Meta+Shift+P"
+          >
+            <MagnifyingGlass size={16} />
+          </button>
+          <button
+            className="decision-trigger"
+            type="button"
+            onClick={() => setDecisionOpen(true)}
+            aria-keyshortcuts="Control+K Meta+K"
+          >
+            <Scales size={15} /> Compare
+            <kbd>⌘K</kbd>
+          </button>
+          <button
             className="button button--run"
             type="button"
             disabled={runState === "running"}
@@ -712,7 +760,19 @@ export function LabPage() {
         notice={notice}
         onDismiss={dismissNotice}
       />
-      <main className="lab-grid">
+      <DecisionWorkbench
+        open={decisionOpen}
+        onClose={() => setDecisionOpen(false)}
+      />
+      <CommandPalette
+        open={commandOpen}
+        onClose={() => setCommandOpen(false)}
+        onOpenDecisionWorkbench={() => setDecisionOpen(true)}
+      />
+      <main
+        className="lab-grid"
+        inert={decisionOpen || commandOpen ? true : undefined}
+      >
         <aside className="component-palette">
           <header>
             <div>
@@ -724,6 +784,7 @@ export function LabPage() {
           <label className="palette-search">
             <MagnifyingGlass size={14} />
             <input
+              aria-label="Filter system primitives"
               value={paletteFilter}
               onChange={(event) => setPaletteFilter(event.target.value)}
               placeholder="Filter primitives"
@@ -987,6 +1048,7 @@ export function LabPage() {
         />
         <TelemetryPanel
           result={result}
+          scenario={scenario}
           nodes={architecture.nodes}
           selectedEventId={selectedEventId}
           currentSecond={cursorSecond}

@@ -50,8 +50,9 @@ grep -Fq "github.event.workflow_run.head_branch == 'main'" "$DEPLOY_BLOCK"
 grep -Fq "github.event.workflow_run.head_repository.full_name == github.repository" "$DEPLOY_BLOCK"
 grep -Fq 'DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}' "$WORKFLOW"
 
-# A first approved bootstrap has no public route to smoke yet. The public URL
-# must therefore be opt-in instead of hard-coded into every deployment.
+# The release script opens the approved route only after in-network smoke and
+# backup/restore gates. The external origin remains an explicit protected value
+# rather than a hard-coded alternate destination.
 grep -Fq 'EXTERNAL_SMOKE_URL: ${{ vars.SYSTEMFORGE_EXTERNAL_SMOKE_URL }}' "$WORKFLOW"
 grep -Fq 'SYSTEMFORGE_EXTERNAL_SMOKE_URL=$EXTERNAL_SMOKE_URL' "$WORKFLOW"
 if grep -Fq 'SYSTEMFORGE_EXTERNAL_SMOKE_URL=https://' "$WORKFLOW"; then
@@ -79,6 +80,8 @@ grep -Fq 'sh scripts/stage_hetzner.test.sh' "$CI_WORKFLOW"
 grep -Fq 'systemforge-api node /app/apps/api/overload_smoke.mjs' "$CI_WORKFLOW"
 grep -Fq 'systemforge-api node /app/apps/api/overload_smoke.mjs' scripts/deploy_hetzner.sh
 grep -Fq 'sh "$APP_DIR/scripts/verify_release_backups.sh"' scripts/deploy_hetzner.sh
+grep -Fq 'sh "$APP_DIR/scripts/install_caddy_route.sh" open' scripts/deploy_hetzner.sh
+grep -Fq 'sh "$APP_DIR/scripts/install_caddy_route.sh" closed' scripts/deploy_hetzner.sh
 grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8' "$WORKFLOW"
 grep -Fq 'actions: read' "$WORKFLOW"
 grep -Fq 'run-id: ${{ github.event.workflow_run.id }}' "$WORKFLOW"

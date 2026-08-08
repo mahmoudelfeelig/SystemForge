@@ -28,6 +28,22 @@ export interface SharedScenarioView {
   architecture: Architecture;
   isHost: boolean;
   revealState: "hidden" | "revealed";
+  collaboration: InterviewCollaborationState;
+}
+
+export interface InterviewCollaborationState {
+  candidateNotes: string;
+  candidateCursor: string;
+  startedAt: string | null;
+  updatedAt: string;
+  interviewerNotes?: string;
+}
+
+export interface InterviewCollaborationPatch {
+  candidateNotes?: string;
+  candidateCursor?: string;
+  interviewerNotes?: string;
+  clockAction?: "start" | "reset";
 }
 
 export class QueueCapacityError extends Error {
@@ -66,6 +82,11 @@ export interface ControlStore {
     id: string,
     hostToken: string,
     revealed: boolean,
+  ): Promise<SharedScenarioView | null>;
+  updateScenarioCollaboration(
+    id: string,
+    hostToken: string | undefined,
+    patch: InterviewCollaborationPatch,
   ): Promise<SharedScenarioView | null>;
   close(): Promise<void>;
 }

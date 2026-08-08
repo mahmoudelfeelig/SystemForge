@@ -8,6 +8,7 @@ import {
   QueueCapacityError,
   SharedScenarioCapacityError,
   type ControlStore,
+  type InterviewCollaborationPatch,
   type RunRecord,
   type SharedScenarioRecord,
   type SharedScenarioView,
@@ -18,7 +19,15 @@ export class MemoryControlStore implements ControlStore {
   readonly scenarios = new Map<string, SharedScenarioRecord>();
   readonly scenarioState = new Map<
     string,
-    { candidateRevealed: boolean; firstRunAt: string | null }
+    {
+      candidateRevealed: boolean;
+      firstRunAt: string | null;
+      candidateNotes: string;
+      candidateCursor: string;
+      interviewerNotes: string;
+      sessionStartedAt: string | null;
+      updatedAt: string;
+    }
   >();
   available = true;
 
@@ -73,6 +82,11 @@ export class MemoryControlStore implements ControlStore {
     this.scenarioState.set(record.id, {
       candidateRevealed: false,
       firstRunAt: null,
+      candidateNotes: "",
+      candidateCursor: "Preparing workspace",
+      interviewerNotes: "",
+      sessionStartedAt: null,
+      updatedAt: new Date().toISOString(),
     });
     return Promise.resolve(record);
   }
@@ -92,6 +106,15 @@ export class MemoryControlStore implements ControlStore {
             architecture: record.architecture,
             isHost: hostToken === record.hostToken,
             revealState: revealed ? "revealed" : "hidden",
+            collaboration: {
+              candidateNotes: state?.candidateNotes ?? "",
+              candidateCursor: state?.candidateCursor ?? "Preparing workspace",
+              startedAt: state?.sessionStartedAt ?? null,
+              updatedAt: state?.updatedAt ?? new Date(0).toISOString(),
+              ...(hostToken === record.hostToken
+                ? { interviewerNotes: state?.interviewerNotes ?? "" }
+                : {}),
+            },
           }
         : null,
     );
@@ -115,6 +138,34 @@ export class MemoryControlStore implements ControlStore {
     if (!record || !state || hostToken !== record.hostToken)
       return Promise.resolve(null);
     state.candidateRevealed = revealed;
+    return this.getScenario(id, hostToken);
+  }
+
+  updateScenarioCollaboration(
+    id: string,
+    hostToken: string | undefined,
+    patch: InterviewCollaborationPatch,
+  ): Promise<SharedScenarioView | null> {
+    const record = this.scenarios.get(id);
+    const state = this.scenarioState.get(id);
+    if (!record || !state) return Promise.resolve(null);
+    const isHost = hostToken === record.hostToken;
+    if (
+      (patch.interviewerNotes !== undefined ||
+        patch.clockAction !== undefined) &&
+      !isHost
+    )
+      return Promise.resolve(null);
+    if (patch.candidateNotes !== undefined)
+      state.candidateNotes = patch.candidateNotes;
+    if (patch.candidateCursor !== undefined)
+      state.candidateCursor = patch.candidateCursor;
+    if (patch.interviewerNotes !== undefined)
+      state.interviewerNotes = patch.interviewerNotes;
+    if (patch.clockAction === "start")
+      state.sessionStartedAt = new Date().toISOString();
+    if (patch.clockAction === "reset") state.sessionStartedAt = null;
+    state.updatedAt = new Date().toISOString();
     return this.getScenario(id, hostToken);
   }
 

@@ -11,11 +11,13 @@ import type {
   ArchitectureNode,
   CausalEvent,
   NodeMetricSnapshot,
+  Scenario,
   SimulationResult,
 } from "@systemforge/contracts";
 
 interface TelemetryPanelProps {
   result: SimulationResult | null;
+  scenario: Scenario;
   nodes: ArchitectureNode[];
   selectedEventId: string | null;
   currentSecond: number;
@@ -241,6 +243,7 @@ const milestoneEvents = (events: CausalEvent[]): CausalEvent[] => {
 
 export function TelemetryPanel({
   result,
+  scenario,
   nodes,
   selectedEventId,
   currentSecond,
@@ -271,15 +274,86 @@ export function TelemetryPanel({
   if (!result) {
     return (
       <section className="telemetry-panel telemetry-panel--empty">
-        <span className="panel-index">04 / CAUSAL TIME MACHINE</span>
-        <div>
-          <Info size={20} weight="duotone" />
-          <strong>Telemetry is armed</strong>
+        <header className="telemetry-empty__heading">
+          <span className="panel-index">04 / PRE-RUN ENVELOPE</span>
+          <div>
+            <Info size={20} weight="duotone" />
+            <strong>Telemetry is armed</strong>
+            <p>
+              The mission contract is visible before execution; measured traces
+              appear only after a browser-local or canonical run.
+            </p>
+          </div>
+        </header>
+        <section className="telemetry-empty__workload">
+          <header>
+            <span>Demand envelope</span>
+            <strong>{scenario.workload.arrivalPattern ?? "steady"}</strong>
+          </header>
+          <dl>
+            <div>
+              <dt>Base</dt>
+              <dd>{scenario.workload.baseRps.toLocaleString("en-US")} RPS</dd>
+            </div>
+            <div>
+              <dt>Peak</dt>
+              <dd>{scenario.workload.peakRps.toLocaleString("en-US")} RPS</dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd>{formatSecond(scenario.workload.durationSeconds)}</dd>
+            </div>
+            <div>
+              <dt>Read ratio</dt>
+              <dd>{Math.round(scenario.workload.readRatio * 100)}%</dd>
+            </div>
+          </dl>
+          <div
+            className="demand-envelope"
+            aria-label={`Demand rises from ${scenario.workload.baseRps} to ${scenario.workload.peakRps} requests per second`}
+          >
+            {[0.38, 0.46, 0.58, 0.72, 1, 0.81, 0.62, 0.49, 0.42].map(
+              (ratio, index) => (
+                <i
+                  key={index}
+                  style={{ height: `${Math.max(12, ratio * 100)}%` }}
+                />
+              ),
+            )}
+          </div>
+        </section>
+        <section className="telemetry-empty__incidents">
+          <header>
+            <span>Incident schedule</span>
+            <strong>{scenario.incidents.length} armed</strong>
+          </header>
+          <ol>
+            {scenario.incidents.slice(0, 5).map((incident) => (
+              <li key={incident.id}>
+                <time>{formatSecond(incident.atSecond)}</time>
+                <span>{incident.label}</span>
+                <small>{incident.kind.replaceAll("-", " ")}</small>
+              </li>
+            ))}
+          </ol>
+        </section>
+        <section className="telemetry-empty__objectives">
+          <header>
+            <span>Success envelope</span>
+            <strong>{scenario.requirements.length} objectives</strong>
+          </header>
+          <ul>
+            {scenario.requirements
+              .filter((requirement) => requirement.visibility !== "hidden")
+              .slice(0, 5)
+              .map((requirement) => (
+                <li key={requirement.id}>{requirement.label}</li>
+              ))}
+          </ul>
           <p>
-            Run in this browser to generate resource traces, incident evidence
-            and a navigable causal chain. Server access is not required.
+            Run locally to convert this plan into measured modeled evidence.
           </p>
-        </div>
+        </section>
       </section>
     );
   }
@@ -481,6 +555,26 @@ export function TelemetryPanel({
               <span>Root signal</span>
               <strong>{chain[0]?.title}</strong>
             </div>
+            <section className="run-debrief">
+              <span>Run debrief</span>
+              <strong>
+                {result.score.passed === result.score.total
+                  ? "Mission envelope held"
+                  : `${result.score.total - result.score.passed} objectives missed`}
+              </strong>
+              <p>{result.analysis.bottleneckLabel}</p>
+              {result.analysis.risks[0] ? (
+                <small>Risk · {result.analysis.risks[0]}</small>
+              ) : null}
+              {result.analysis.tradeoffs[0] ? (
+                <small>Trade-off · {result.analysis.tradeoffs[0]}</small>
+              ) : null}
+              <b>
+                Next experiment ·{" "}
+                {chain.at(-1)?.recommendations?.[0] ??
+                  "Open Compare to test bounded architecture alternatives."}
+              </b>
+            </section>
           </>
         ) : (
           <p>Select an event to isolate the evidence chain.</p>
