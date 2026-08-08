@@ -83,6 +83,26 @@ describe("control-plane API", () => {
     });
   });
 
+  it("rejects stale browser engines before queueing incomparable canonical work", async () => {
+    const store = new MemoryControlStore();
+    app = await buildApp(config, store);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: { ...submission, clientEngineVersion: "0.2.0" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "engine_version_mismatch",
+        localModeAvailable: true,
+      },
+    });
+    expect(store.runs.size).toBe(0);
+  });
+
   it("evicts the oldest terminal result before durable run storage can grow without bound", async () => {
     const store = new MemoryControlStore();
     const oldId = crypto.randomUUID();

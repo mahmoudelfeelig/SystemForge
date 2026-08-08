@@ -30,6 +30,16 @@ describe("canonical execution", () => {
     ).toThrow();
   });
 
+  it("rejects work queued by an incompatible browser engine", () => {
+    expect(() =>
+      executeCanonical({
+        scenario: DEFAULT_SCENARIO,
+        architecture: DEFAULT_ARCHITECTURE,
+        clientEngineVersion: "0.2.0",
+      }),
+    ).toThrow(`engine_version_mismatch:0.2.0:${ENGINE_VERSION}`);
+  });
+
   it("rejects a canonical result before it can amplify durable storage", () => {
     expect(() =>
       executeCanonical(

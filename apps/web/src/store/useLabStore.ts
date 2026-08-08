@@ -498,6 +498,10 @@ export const useLabStore = create<LabState>((set, get) => ({
         notice: `Canonical run ${receipt.id.slice(0, 8)} is still queued. You can keep working locally and check it again later.`,
       });
     } catch (error) {
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String(error.code)
+          : null;
       const retry =
         typeof error === "object" && error && "retryAfterSeconds" in error
           ? Number(error.retryAfterSeconds)
@@ -509,9 +513,12 @@ export const useLabStore = create<LabState>((set, get) => ({
           get().canonicalRunStatus === "running"
             ? get().canonicalRunStatus
             : "idle",
-        notice: retry
-          ? `Canonical capacity is busy. Try again in about ${retry} seconds; local simulation remains available.`
-          : "The service could not accept this run. Local simulation remains available.",
+        notice:
+          code === "engine_version_mismatch"
+            ? "This browser uses an older simulation engine. Refresh the application before retrying canonical submission; the current architecture still runs locally."
+            : retry
+              ? `Canonical capacity is busy. Try again in about ${retry} seconds; local simulation remains available.`
+              : "The service could not accept this run. Local simulation remains available.",
       });
     }
   },

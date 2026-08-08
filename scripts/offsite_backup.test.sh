@@ -199,6 +199,7 @@ test "$EMPTY_RESTORE_STATUS" -ne 0
 test ! -f "$RESTORE_STATUS_FILE"
 
 CRONTAB_OUTPUT="$TEST_ROOT/crontab.txt"
+CRON_BACKUP_DIR="$TEST_ROOT/cron-backups"
 cat > "$TEST_BIN_DIR/crontab" <<'EOF'
 #!/bin/sh
 set -eu
@@ -213,10 +214,24 @@ chmod 700 "$TEST_BIN_DIR/crontab"
 PATH="$TEST_BIN_DIR:$PATH" \
   FAKE_CRONTAB_OUTPUT="$CRONTAB_OUTPUT" \
   SYSTEMFORGE_APP_DIR=/opt/systemforge \
+  SYSTEMFORGE_BACKUP_DIR="$CRON_BACKUP_DIR" \
   sh scripts/install_backup_cron.sh
+test -d "$CRON_BACKUP_DIR"
+test "$(stat -c '%a' "$CRON_BACKUP_DIR")" = 700
 grep -q '^5 1 \* \* \* unrelated-command$' "$CRONTAB_OUTPUT"
 grep -q '/opt/systemforge/scripts/run_backups.sh' "$CRONTAB_OUTPUT"
+grep -q ">> $CRON_BACKUP_DIR/backup.log 2>&1" "$CRONTAB_OUTPUT"
 test "$(grep -c '# systemforge-postgres-backup' "$CRONTAB_OUTPUT")" -eq 1
+
+set +e
+PATH="$TEST_BIN_DIR:$PATH" \
+  FAKE_CRONTAB_OUTPUT="$CRONTAB_OUTPUT" \
+  SYSTEMFORGE_APP_DIR=/opt/systemforge \
+  SYSTEMFORGE_BACKUP_DIR="$TEST_ROOT/unsafe cron path" \
+  sh scripts/install_backup_cron.sh >/dev/null 2>&1
+UNSAFE_CRON_STATUS=$?
+set -e
+test "$UNSAFE_CRON_STATUS" -eq 64
 
 WRAPPER_APP="$TEST_ROOT/wrapper-app"
 WRAPPER_LOG="$TEST_ROOT/wrapper.log"

@@ -16,6 +16,10 @@ export function executeCanonical(
   maximumResultBytes = Number.POSITIVE_INFINITY,
 ): CanonicalResult {
   const submission = runSubmissionSchema.parse(input);
+  if (submission.clientEngineVersion !== ENGINE_VERSION)
+    throw new Error(
+      `engine_version_mismatch:${submission.clientEngineVersion}:${ENGINE_VERSION}`,
+    );
   const result = simulate(submission.scenario, submission.architecture);
   const manifest = {
     engineVersion: ENGINE_VERSION,

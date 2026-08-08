@@ -8,15 +8,18 @@ FROM toolchain AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/sim-core/package.json packages/sim-core/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/api apps/api
 COPY packages/contracts packages/contracts
+COPY packages/sim-core packages/sim-core
 RUN pnpm --filter @systemforge/api build
 
 FROM toolchain AS production-dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/sim-core/package.json packages/sim-core/package.json
 RUN pnpm install --prod --frozen-lockfile --filter @systemforge/api...
 
 FROM node:24-bookworm-slim

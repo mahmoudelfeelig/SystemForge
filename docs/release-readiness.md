@@ -9,10 +9,10 @@ from the later public-release actions.
 
 The 2026-08-08 checkout passed the following checks:
 
-- Complete quality gate: formatting, lint, TypeScript, 73 behavioral tests,
+- Complete quality gate: formatting, lint, TypeScript, 76 behavioral tests,
   all workspace builds, and the four-check Sites packaging contract.
-- `pnpm test:coverage`: 92.99% statements, 83.61% branches, 94.96% functions,
-  and 93.85% lines across the selected simulation, solver, API, worker, and
+- `pnpm test:coverage`: 93.01% statements, 83.67% branches, 94.96% functions,
+  and 93.87% lines across the selected simulation, solver, API, worker, and
   browser control paths.
 - `pnpm test:performance`: 250 representative deterministic simulations and
   five bounded 12-candidate architecture searches, each within its separate
@@ -35,8 +35,9 @@ The 2026-08-08 checkout passed the following checks:
 - `sh scripts/offsite_backup.test.sh`: insecure credential files, missing or
   uninitialized repositories, integrity-check failures, and empty restores fail
   closed; successful runs apply tagged retention, write mode-`0600` evidence,
-  preserve the local-first cron order, and validate the restored dump through a
-  separate verifier.
+  preserve the local-first cron order, create a mode-`0700` cron output
+  directory, reject unsafe cron paths, and validate the restored dump through
+  a separate verifier.
 - `node scripts/service_worker_contract.test.mjs`: an origin `5xx` navigation
   serves the cached local lab, ordinary `4xx` responses remain visible, and API
   requests bypass the shell cache.
@@ -62,6 +63,9 @@ The 2026-08-08 checkout passed the following checks:
   credential, and participant drafts and links remove hidden rubric material.
 - Browser-local admission rejects pathological duration/topology combinations
   before allocating a simulation worker.
+- Canonical admission rejects stale browser-engine versions before queueing,
+  the worker independently rejects incompatible queued jobs, and the browser
+  keeps local simulation available with explicit refresh guidance.
 - The architecture-solver core deterministically ranks bounded parameter and
   operating-policy alternatives, enforces cost, complexity, component-lock, and
   work-unit limits, excludes hidden interview requirements by default, and may

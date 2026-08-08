@@ -206,6 +206,26 @@ if (
 )
   throw new Error("Interviewer credentials were not stored as digests only.");
 
+const mismatchedEngine = await fetch(`${apiOrigin}/api/runs`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    scenario,
+    architecture,
+    clientEngineVersion: "0.0.0-smoke-mismatch",
+  }),
+  signal: AbortSignal.timeout(5_000),
+});
+const mismatchedEngineBody = await mismatchedEngine.json();
+if (
+  mismatchedEngine.status !== 409 ||
+  mismatchedEngineBody?.error?.code !== "engine_version_mismatch" ||
+  mismatchedEngineBody?.error?.localModeAvailable !== true
+)
+  throw new Error(
+    "The API did not reject an incompatible browser engine with a local fallback.",
+  );
+
 const queued = await request(`${apiOrigin}/api/runs`, {
   method: "POST",
   headers: { "content-type": "application/json" },

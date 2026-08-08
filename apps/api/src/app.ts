@@ -7,6 +7,7 @@ import {
   scenarioSchema,
   type ApiErrorBody,
 } from "@systemforge/contracts";
+import { ENGINE_VERSION } from "@systemforge/sim-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
 import type { ApiConfig } from "./config";
@@ -163,6 +164,16 @@ export async function buildApp(
     { config: { rateLimit: { max: 12, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const submission = runSubmissionSchema.parse(request.body);
+      if (submission.clientEngineVersion !== ENGINE_VERSION)
+        return reply
+          .code(409)
+          .send(
+            errorBody(
+              "engine_version_mismatch",
+              `This browser uses simulation engine ${submission.clientEngineVersion}, while canonical runs require ${ENGINE_VERSION}. Refresh the application before retrying; local simulation remains available.`,
+              request.id,
+            ),
+          );
       const canonicalWorkUnits =
         (submission.scenario.workload.durationSeconds + 1) *
         (submission.architecture.nodes.length +

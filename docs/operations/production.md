@@ -71,6 +71,7 @@ Clone the repository to `/opt/systemforge`. Copy `deploy/.env.example` to `deplo
 
 ```sh
 cd /opt/systemforge
+sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0700 /opt/systemforge-backups
 SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION sh scripts/deploy_hetzner.sh "$(git rev-parse HEAD)"
 SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION sh scripts/install_caddy_route.sh open
 sh scripts/install_backup_cron.sh
@@ -123,7 +124,7 @@ Cloudflare recommends proxying HTTP records so traffic is protected at the edge 
 
 ## Deployment, rollback, and smoke checks
 
-For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the tested Git SHA. In automatic deployments, GitHub transfers the exact scanned and integration-tested SHA-tagged image bundle and sets `SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and never rebuilds them. It then starts the full Compose project with health waits and runs an in-network production smoke. The functional smoke checks the static shell, database readiness, candidate/interviewer privacy separation, controlled reveal and reconceal, digest-only credential storage, queue submission, worker completion, exhausted-lease recovery, engine version, and canonical digest. A second smoke sends 256 concurrent canonical reads from an isolated synthetic visitor while fetching the web shell 48 times. It requires structured capacity or rate-limit responses with retry and local-mode guidance, an unaffected independent visitor, and healthy API and web services after the burst. Only then is `.last-successful-sha` updated.
+For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the tested Git SHA. In automatic deployments, GitHub transfers the exact scanned and integration-tested SHA-tagged image bundle and sets `SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and never rebuilds them. It then starts the full Compose project with health waits and runs an in-network production smoke. The functional smoke checks the static shell, database readiness, candidate/interviewer privacy separation, controlled reveal and reconceal, digest-only credential storage, stale-engine rejection, queue submission, worker completion, exhausted-lease recovery, engine version, and canonical digest. A second smoke sends 256 concurrent canonical reads from an isolated synthetic visitor while fetching the web shell 48 times. It requires structured capacity or rate-limit responses with retry and local-mode guidance, an unaffected independent visitor, and healthy API and web services after the burst. Only then is `.last-successful-sha` updated.
 
 The interviewer-token migration keeps a nullable legacy column and a hashing
 trigger as a one-release rollback bridge. Current images never write raw tokens;
@@ -175,12 +176,18 @@ scoped storage credentials, keep the restic repository password outside the
 VPS, and run the explicit initializer once.
 
 Install restic from its verified official package or binary, then create the
-configuration without placing credentials in the repository:
+configuration without placing credentials in the repository. The directory,
+configuration, and password must belong to the same unprivileged account that
+owns the installed crontab (`feel` on this host); the backup scripts reject
+credentials owned by another user or readable by a group:
 
 ```sh
-sudo install -d -m 0700 /etc/systemforge
-sudo install -m 0600 deploy/offsite-backup.env.example /etc/systemforge/offsite-backup.env
-sudo sh -c 'umask 077; head -c 48 /dev/urandom | base64 > /etc/systemforge/restic-password'
+BACKUP_USER=$(id -un)
+BACKUP_GROUP=$(id -gn)
+sudo install -d -o "$BACKUP_USER" -g "$BACKUP_GROUP" -m 0700 /etc/systemforge
+sudo install -o "$BACKUP_USER" -g "$BACKUP_GROUP" -m 0600 deploy/offsite-backup.env.example /etc/systemforge/offsite-backup.env
+umask 077
+head -c 48 /dev/urandom | base64 > /etc/systemforge/restic-password
 sudo editor /etc/systemforge/offsite-backup.env
 ```
 

@@ -97,7 +97,9 @@ const runLoop = async (slot: number) => {
           ? "timeout"
           : message.startsWith("canonical_result_too_large:")
             ? "result_too_large"
-            : "simulation_error",
+            : message.startsWith("engine_version_mismatch:")
+              ? "engine_version_mismatch"
+              : "simulation_error",
         message,
       );
       log("error", "canonical run failed", {

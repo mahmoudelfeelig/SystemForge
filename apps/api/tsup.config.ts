@@ -8,5 +8,5 @@ export default defineConfig({
   outDir: "dist",
   sourcemap: true,
   clean: true,
-  noExternal: ["@systemforge/contracts"],
+  noExternal: ["@systemforge/contracts", "@systemforge/sim-core"],
 });

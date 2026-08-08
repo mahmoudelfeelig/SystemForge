@@ -355,6 +355,30 @@ describe("browser sharing and fallback", () => {
     expect(useLabStore.getState().notice).toContain("runs locally");
   });
 
+  it("tells a stale browser to refresh while preserving local simulation", async () => {
+    useLabStore.setState({ apiAvailability: "online", notice: null });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "engine_version_mismatch",
+              message: "Refresh the application before retrying.",
+              localModeAvailable: true,
+            },
+          }),
+          { status: 409, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    await useLabStore.getState().submitCanonical();
+
+    expect(useLabStore.getState().apiAvailability).toBe("offline");
+    expect(useLabStore.getState().notice).toMatch(/refresh.*runs locally/i);
+  });
+
   it("follows an accepted canonical run through completion", async () => {
     useLabStore.setState({
       scenario: structuredClone(DEFAULT_SCENARIO),
