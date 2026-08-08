@@ -84,10 +84,18 @@ if grep -Fq 'SYSTEMFORGE_EXTERNAL_SMOKE_URL=https://' "$WORKFLOW"; then
   exit 1
 fi
 
-grep -Fq \
-  "vars.SYSTEMFORGE_EXTERNAL_SMOKE_URL == 'https://systemforge.elfeel.me'" \
-  .github/workflows/production-monitor.yml
-grep -Fq 'environment: production' .github/workflows/production-monitor.yml
+MONITOR_WORKFLOW=.github/workflows/production-monitor.yml
+grep -Fq 'environment: production' "$MONITOR_WORKFLOW"
+grep -Fq 'DEPLOY_ENABLED: ${{ vars.HETZNER_DEPLOY_ENABLED }}' "$MONITOR_WORKFLOW"
+grep -Fq 'EXTERNAL_SMOKE_URL: ${{ vars.SYSTEMFORGE_EXTERNAL_SMOKE_URL }}' "$MONITOR_WORKFLOW"
+grep -Fq 'RELEASE_APPROVAL: ${{ vars.SYSTEMFORGE_RELEASE_APPROVED }}' "$MONITOR_WORKFLOW"
+grep -Fq 'test "$DEPLOY_ENABLED" = true' "$MONITOR_WORKFLOW"
+grep -Fq 'test "$RELEASE_APPROVAL" = I_AM_READY_FOR_PRODUCTION' "$MONITOR_WORKFLOW"
+grep -Fq 'test "$EXTERNAL_SMOKE_URL" = https://systemforge.elfeel.me' "$MONITOR_WORKFLOW"
+if grep -Fq '    if:' "$MONITOR_WORKFLOW"; then
+  echo "Production monitoring must not gate on environment variables before the job starts." >&2
+  exit 1
+fi
 
 # CI must hand the exact scanned and integrated release images to the deployment
 # workflow instead of asking the server to rebuild mutable base-image tags.
