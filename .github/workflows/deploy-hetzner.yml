@@ -15,10 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  stage:
     if: >-
-      vars.HETZNER_DEPLOY_ENABLED == 'true' &&
-      vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
@@ -40,7 +38,7 @@ jobs:
           cd "$RUNNER_TEMP/systemforge-release"
           sha256sum --check systemforge-images.tar.gz.sha256
 
-      - name: Configure deployment SSH identity
+      - name: Configure Hetzner SSH identity
         env:
           SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ vars.HETZNER_SSH_KNOWN_HOSTS }}
@@ -53,10 +51,11 @@ jobs:
           chmod 600 "$HOME/.ssh/systemforge_deploy"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Deploy the tested main revision
+      - name: Stage the tested main revision
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
-          EXTERNAL_SMOKE_URL: ${{ vars.SYSTEMFORGE_EXTERNAL_SMOKE_URL }}
+          DEPLOY_ENABLED: ${{ vars.HETZNER_DEPLOY_ENABLED }}
+          RELEASE_APPROVAL: ${{ vars.SYSTEMFORGE_RELEASE_APPROVED }}
           RELEASE_BUNDLE: ${{ runner.temp }}/systemforge-release/systemforge-images.tar.gz
           SSH_HOST: ${{ vars.HETZNER_HOST }}
           SSH_PORT: ${{ vars.HETZNER_SSH_PORT }}
@@ -66,10 +65,19 @@ jobs:
           test -n "$SSH_HOST"
           test -n "$SSH_USER"
           test -f "$RELEASE_BUNDLE"
-          case "$EXTERNAL_SMOKE_URL" in
-            ""|https://systemforge.elfeel.me) ;;
-            *) echo "SYSTEMFORGE_EXTERNAL_SMOKE_URL is not the approved production origin." >&2; exit 64 ;;
+          case "$DEPLOY_ENABLED" in
+            ""|false|true) ;;
+            *) echo "HETZNER_DEPLOY_ENABLED must be true or false." >&2; exit 64 ;;
           esac
+          case "$RELEASE_APPROVAL" in
+            ""|I_AM_READY_FOR_PRODUCTION) ;;
+            *) echo "SYSTEMFORGE_RELEASE_APPROVED has an invalid value." >&2; exit 64 ;;
+          esac
+          PUBLIC_RELEASE_ENABLED=false
+          if test "$DEPLOY_ENABLED" = true \
+            && test "$RELEASE_APPROVAL" = I_AM_READY_FOR_PRODUCTION; then
+            PUBLIC_RELEASE_ENABLED=true
+          fi
           SSH_PORT="${SSH_PORT:-22}"
           scp \
             -i "$HOME/.ssh/systemforge_deploy" \
@@ -90,10 +98,66 @@ jobs:
              trap 'rm -f /tmp/systemforge-images-$DEPLOY_SHA.tar.gz' EXIT HUP INT TERM
              docker load --input /tmp/systemforge-images-$DEPLOY_SHA.tar.gz
              cd /opt/systemforge
+             test -z \"\$(git status --porcelain)\"
              git fetch origin main
              test \"\$(git rev-parse origin/main)\" = \"$DEPLOY_SHA\"
              git checkout main
              git pull --ff-only origin main
+             test \"\$(git rev-parse HEAD)\" = \"$DEPLOY_SHA\"
+             SYSTEMFORGE_PUBLIC_RELEASE_ENABLED=$PUBLIC_RELEASE_ENABLED \
+             sh scripts/stage_hetzner.sh \"$DEPLOY_SHA\""
+
+  deploy:
+    needs: stage
+    if: >-
+      vars.HETZNER_DEPLOY_ENABLED == 'true' &&
+      vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure deployment SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ vars.HETZNER_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/systemforge_deploy"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/systemforge_deploy"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Deploy the staged main revision
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          EXTERNAL_SMOKE_URL: ${{ vars.SYSTEMFORGE_EXTERNAL_SMOKE_URL }}
+          SSH_HOST: ${{ vars.HETZNER_HOST }}
+          SSH_PORT: ${{ vars.HETZNER_SSH_PORT }}
+          SSH_USER: ${{ vars.HETZNER_USER }}
+        run: |
+          test -n "$DEPLOY_SHA"
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          case "$EXTERNAL_SMOKE_URL" in
+            ""|https://systemforge.elfeel.me) ;;
+            *) echo "SYSTEMFORGE_EXTERNAL_SMOKE_URL is not the approved production origin." >&2; exit 64 ;;
+          esac
+          SSH_PORT="${SSH_PORT:-22}"
+          ssh \
+            -i "$HOME/.ssh/systemforge_deploy" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             cd /opt/systemforge
+             test \"\$(git rev-parse HEAD)\" = \"$DEPLOY_SHA\"
              SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION \
              SYSTEMFORGE_EXTERNAL_SMOKE_URL=$EXTERNAL_SMOKE_URL \
              SYSTEMFORGE_SKIP_BUILD=true \

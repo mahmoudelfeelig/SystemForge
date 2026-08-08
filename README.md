@@ -18,13 +18,15 @@ canonical overload does not turn into a blank product surface.
 
 ## Production status
 
-The public release is intentionally locked. The checked-in Caddy route returns
-404, deployment automation requires an explicit release sentinel, canonical UI
-services stay disabled in ordinary builds, and production monitoring remains
-off. Do not open `systemforge.elfeel.me` until the owner explicitly says the
-product is done and ready for production. The approval and deployment procedure
-is documented in `docs/operations/production.md`; verified and still-pending
-release gates are tracked in `docs/release-readiness.md`.
+The public release is intentionally locked. The checked-in Caddy route returns 404. Every trusted green `main` CI run automatically stages its exact scanned
+images and source revision on Hetzner, but the staging phase reinstalls the
+closed route and stops application services while release approval is absent.
+Starting the production stack still requires the explicit release sentinel;
+canonical UI services stay disabled in ordinary builds, and public monitoring
+remains off. Do not open `systemforge.elfeel.me` until the owner explicitly says
+the product is done and ready for production. The approval and deployment
+procedure is documented in `docs/operations/production.md`; verified and
+still-pending release gates are tracked in `docs/release-readiness.md`.
 
 ## Workspace
 

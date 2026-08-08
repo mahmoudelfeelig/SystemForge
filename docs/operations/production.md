@@ -9,15 +9,20 @@ provisioned, but the live managed route must remain the hardened 404-only route.
 Do not start the application containers or install the open Caddy route until
 the owner explicitly says the product is done and ready for production.
 
-After that approval, create a protected `production` environment and configure
-these repository variables:
+Create a protected `production` environment and configure these host variables
+before enabling automatic staging:
 
-- `HETZNER_DEPLOY_ENABLED=true`
-- `SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION`
 - `HETZNER_HOST=65.21.109.224`
 - `HETZNER_SSH_PORT=22`
 - `HETZNER_USER=feel`
 - `HETZNER_SSH_KNOWN_HOSTS=65.21.109.224 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBbsWzd5va1/wwTeM1P1K6AqPaGzG9GlgIpO7pBPBhX6`
+
+Add `HETZNER_SSH_PRIVATE_KEY` as an environment secret. Use a dedicated key
+whose public half is present in `feel`'s `authorized_keys`. Leave the following
+public-release variables unset until the explicit owner approval:
+
+- `HETZNER_DEPLOY_ENABLED=true`
+- `SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION`
 
 Leave `SYSTEMFORGE_EXTERNAL_SMOKE_URL` unset during the first approved
 bootstrap. After the open Caddy route and proxied DNS record are serving
@@ -26,7 +31,18 @@ correctly through Cloudflare, set the repository variable to
 public shell and readiness smoke to pass before accepting a revision, and the
 scheduled production monitor will become active.
 
-Add `HETZNER_SSH_PRIVATE_KEY` as an environment secret. Use a dedicated key whose public half is present in `feel`'s `authorized_keys`. The deployment workflow only runs for a successful `SystemForge CI` `workflow_run` on `main`, verifies that `origin/main` exactly equals the tested SHA, and then performs a fast-forward-only pull. CI builds canonical-enabled images tagged with that SHA, scans them, packages them as a checksum-addressed two-day artifact, and loads the same images for the PostgreSQL integration and restore drill. The deployment workflow downloads that artifact from the triggering run, verifies it again, transfers it over strict-host-key SSH, and tells the host deployment script to reject any missing image rather than rebuilding a different one.
+The deployment workflow only accepts a successful same-repository
+`SystemForge CI` push on `main`. CI builds canonical-enabled images tagged with
+that SHA, scans them, packages them as a checksum-addressed two-day artifact,
+and loads the same images for the PostgreSQL integration and restore drill. The
+always-on staging job downloads that artifact, verifies it again, transfers it
+over strict-host-key SSH, loads the exact images, verifies `origin/main`, and
+performs a fast-forward-only pull. While either public-release variable is
+absent, staging also reinstalls the checked-in closed Caddy route and stops web,
+API, worker, and migration services while preserving PostgreSQL. When both
+approval variables are present, a dependent deployment job tells the host to
+use the already-staged images and reject any missing image instead of rebuilding
+a different one.
 The checked-in host-key value was recovered from the currently trusted local
 entry; verify its fingerprint through the Hetzner console before enabling the
 workflow. CI uses strict host-key checking and will fail closed if the host

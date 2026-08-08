@@ -9,7 +9,7 @@ from the later public-release actions.
 
 The 2026-08-08 checkout passed the following checks:
 
-- Complete quality gate: formatting, lint, TypeScript, 63 behavioral tests,
+- Complete quality gate: formatting, lint, TypeScript, 66 behavioral tests,
   all workspace builds, and the four-check Sites packaging contract.
 - `pnpm test:coverage`: 93.68% statements, 82.06% branches, 96.31% functions,
   and 94.5% lines across the selected simulation, API, worker, and
@@ -22,6 +22,9 @@ The 2026-08-08 checkout passed the following checks:
 - `sh scripts/deploy_hetzner.test.sh`: successful external shell/readiness
   acceptance, complete previous-image rollback, and first-deploy or incomplete
   rollback failure paths that leave only PostgreSQL running.
+- `sh scripts/stage_hetzner.test.sh`: exact-image admission, approval-aware
+  staging, and the closed-release path that reinstalls the hardened Caddy route
+  before stopping every application service.
 - `sh scripts/install_caddy_route.test.sh`: closed/open route selection,
   stdin-based validation and reload, unique backups, and a failed-reload
   rollback that restores and reloads the previous proxy configuration.
@@ -138,9 +141,13 @@ checks. The production SHA and database-only service state remained unchanged.
 - Web, API, worker, and migration services are stopped on the production
   project. Only its private PostgreSQL container remains healthy.
 - Ordinary web builds compile canonical services off.
-- The auto-deploy job requires both protected GitHub release variables. The
-  scheduled public monitor additionally requires the approved external smoke
-  URL, so a first private bootstrap cannot accidentally be treated as public.
+- Every trusted green `main` CI run automatically stages its checksum-verified
+  images and exact source revision on Hetzner. With approval absent, staging
+  reinstalls the closed Caddy route and stops every application service.
+- The dependent public-deploy job requires both protected GitHub release
+  variables. The scheduled public monitor additionally requires the approved
+  external smoke URL, so a staged revision or first private bootstrap cannot
+  accidentally be treated as public.
 
 A production release must use the exact committed SHA whose quality,
 repository, container-scan, and integration jobs succeed. Local checkout

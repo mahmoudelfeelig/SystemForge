@@ -3,13 +3,46 @@ set -eu
 
 WORKFLOW=.github/workflows/deploy-hetzner.yml
 CI_WORKFLOW=.github/workflows/ci.yml
+TEST_ROOT=$(mktemp -d)
+STAGE_BLOCK="$TEST_ROOT/stage"
+DEPLOY_BLOCK="$TEST_ROOT/deploy"
 
-grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$WORKFLOW"
-grep -Fq "vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION'" "$WORKFLOW"
-grep -Fq "github.event.workflow_run.conclusion == 'success'" "$WORKFLOW"
-grep -Fq "github.event.workflow_run.event == 'push'" "$WORKFLOW"
-grep -Fq "github.event.workflow_run.head_branch == 'main'" "$WORKFLOW"
-grep -Fq "github.event.workflow_run.head_repository.full_name == github.repository" "$WORKFLOW"
+cleanup() {
+  rm -rf "$TEST_ROOT"
+}
+trap cleanup EXIT HUP INT TERM
+
+awk '
+  /^  stage:/ { selected = 1 }
+  /^  deploy:/ { selected = 0 }
+  selected { print }
+' "$WORKFLOW" > "$STAGE_BLOCK"
+awk '
+  /^  deploy:/ { selected = 1 }
+  selected { print }
+' "$WORKFLOW" > "$DEPLOY_BLOCK"
+
+# Every trusted green main CI run stages the immutable image bundle on Hetzner.
+# Public deployment remains a separate job guarded by both approval variables.
+grep -Fq 'github.event.workflow_run.conclusion == '\''success'\''' "$STAGE_BLOCK"
+grep -Fq 'github.event.workflow_run.event == '\''push'\''' "$STAGE_BLOCK"
+grep -Fq 'github.event.workflow_run.head_branch == '\''main'\''' "$STAGE_BLOCK"
+grep -Fq 'github.event.workflow_run.head_repository.full_name == github.repository' "$STAGE_BLOCK"
+grep -Fq 'SYSTEMFORGE_PUBLIC_RELEASE_ENABLED=$PUBLIC_RELEASE_ENABLED' "$STAGE_BLOCK"
+grep -Fq 'sh scripts/stage_hetzner.sh \"$DEPLOY_SHA\"' "$STAGE_BLOCK"
+grep -Fq 'test -z \"\$(git status --porcelain)\"' "$STAGE_BLOCK"
+if grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$STAGE_BLOCK"; then
+  echo "Hetzner staging must not be disabled by the public deployment gate." >&2
+  exit 1
+fi
+
+grep -Fq 'needs: stage' "$DEPLOY_BLOCK"
+grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$DEPLOY_BLOCK"
+grep -Fq "vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION'" "$DEPLOY_BLOCK"
+grep -Fq "github.event.workflow_run.conclusion == 'success'" "$DEPLOY_BLOCK"
+grep -Fq "github.event.workflow_run.event == 'push'" "$DEPLOY_BLOCK"
+grep -Fq "github.event.workflow_run.head_branch == 'main'" "$DEPLOY_BLOCK"
+grep -Fq "github.event.workflow_run.head_repository.full_name == github.repository" "$DEPLOY_BLOCK"
 grep -Fq 'DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}' "$WORKFLOW"
 
 # A first approved bootstrap has no public route to smoke yet. The public URL
@@ -37,6 +70,7 @@ grep -Fq 'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
 grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8' "$CI_WORKFLOW"
 grep -Fq 'docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml up -d --no-build' "$CI_WORKFLOW"
 grep -Fq 'node scripts/overload_smoke_contract.test.mjs' "$CI_WORKFLOW"
+grep -Fq 'sh scripts/stage_hetzner.test.sh' "$CI_WORKFLOW"
 grep -Fq 'systemforge-api node /app/apps/api/overload_smoke.mjs' "$CI_WORKFLOW"
 grep -Fq 'systemforge-api node /app/apps/api/overload_smoke.mjs' scripts/deploy_hetzner.sh
 grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8' "$WORKFLOW"

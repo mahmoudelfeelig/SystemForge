@@ -49,6 +49,7 @@ jobs:
           "$RUNNER_TEMP/actionlint/actionlint" .github/workflows/*.yml
       - run: sh -n scripts/*.sh
       - run: sh scripts/deploy_hetzner.test.sh
+      - run: sh scripts/stage_hetzner.test.sh
       - run: sh scripts/install_caddy_route.test.sh
       - run: sh scripts/deploy_workflow_contract.test.sh
       - run: node scripts/service_worker_contract.test.mjs
