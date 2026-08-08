@@ -54,6 +54,17 @@ grep -Fq "github.event.workflow_run.event == 'push'" "$DEPLOY_BLOCK"
 grep -Fq "github.event.workflow_run.head_branch == 'main'" "$DEPLOY_BLOCK"
 grep -Fq "github.event.workflow_run.head_repository.full_name == github.repository" "$DEPLOY_BLOCK"
 grep -Fq 'DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}' "$WORKFLOW"
+grep -Fq 'R2_ACCESS_KEY_ID: ${{ secrets.SYSTEMFORGE_R2_ACCESS_KEY_ID }}' "$DEPLOY_BLOCK"
+grep -Fq 'R2_ACCOUNT_ID: ${{ vars.SYSTEMFORGE_R2_ACCOUNT_ID }}' "$DEPLOY_BLOCK"
+grep -Fq 'R2_BUCKET: ${{ vars.SYSTEMFORGE_R2_BUCKET }}' "$DEPLOY_BLOCK"
+grep -Fq 'R2_SECRET_ACCESS_KEY: ${{ secrets.SYSTEMFORGE_R2_SECRET_ACCESS_KEY }}' "$DEPLOY_BLOCK"
+grep -Fq 'RESTIC_PASSWORD: ${{ secrets.SYSTEMFORGE_RESTIC_PASSWORD }}' "$DEPLOY_BLOCK"
+grep -Fq 'RESTIC_PASSWORD_FILE=/etc/systemforge/restic-password' "$DEPLOY_BLOCK"
+grep -Fq 'sh scripts/provision_offsite_backup.sh' "$DEPLOY_BLOCK"
+grep -Fq 'sh scripts/provision_offsite_backup.test.sh' "$CI_WORKFLOW"
+PROVISION_LINE=$(grep -nF 'sh scripts/provision_offsite_backup.sh' "$DEPLOY_BLOCK" | cut -d: -f1)
+DEPLOY_LINE=$(grep -nF 'sh scripts/deploy_hetzner.sh' "$DEPLOY_BLOCK" | cut -d: -f1)
+test "$PROVISION_LINE" -lt "$DEPLOY_LINE"
 
 # The release script opens the approved route only after in-network smoke and
 # backup/restore gates. The external origin remains an explicit protected value

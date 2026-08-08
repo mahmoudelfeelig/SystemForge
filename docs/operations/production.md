@@ -184,6 +184,18 @@ initialize a repository automatically. The operator must create independently
 scoped storage credentials, keep the restic repository password outside the
 VPS, and run the explicit initializer once.
 
+The protected GitHub production environment automates that explicit bootstrap
+for Cloudflare R2 before application promotion. Configure
+`SYSTEMFORGE_R2_ACCOUNT_ID` and `SYSTEMFORGE_R2_BUCKET` as environment variables,
+then add `SYSTEMFORGE_R2_ACCESS_KEY_ID`, `SYSTEMFORGE_R2_SECRET_ACCESS_KEY`, and
+`SYSTEMFORGE_RESTIC_PASSWORD` as environment secrets. The R2 token must be
+object-read-write scoped only to the dedicated backup bucket and may be source-IP
+restricted to the Hetzner host. The deployment copies mode-`0600` files over the
+pinned SSH connection, installs restic from the host's signed package repository
+when needed, initializes or verifies the encrypted repository, and installs the
+nightly cron before starting the candidate application release. Failed credential
+rotation restores the previously working host configuration.
+
 An explicitly approved release cannot bypass this setup. Every deployment
 creates and integrity-checks a current encrypted off-site backup. It also runs
 an independent restore when no restore evidence exists, the evidence is older

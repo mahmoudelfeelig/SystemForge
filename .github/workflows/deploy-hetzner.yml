@@ -148,6 +148,87 @@ jobs:
           chmod 600 "$HOME/.ssh/systemforge_deploy"
           chmod 600 "$HOME/.ssh/known_hosts"
 
+      - name: Provision encrypted off-site backups
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          R2_ACCESS_KEY_ID: ${{ secrets.SYSTEMFORGE_R2_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID: ${{ vars.SYSTEMFORGE_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.SYSTEMFORGE_R2_BUCKET }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.SYSTEMFORGE_R2_SECRET_ACCESS_KEY }}
+          RESTIC_PASSWORD: ${{ secrets.SYSTEMFORGE_RESTIC_PASSWORD }}
+          SSH_HOST: ${{ vars.HETZNER_HOST }}
+          SSH_PORT: ${{ vars.HETZNER_SSH_PORT }}
+          SSH_USER: ${{ vars.HETZNER_USER }}
+        run: |
+          test -n "$DEPLOY_SHA"
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          case "$R2_ACCOUNT_ID" in
+            ""|*[!0-9a-f]*)
+              echo "SYSTEMFORGE_R2_ACCOUNT_ID must be exactly 32 lowercase hexadecimal characters." >&2
+              exit 64
+              ;;
+          esac
+          test "${#R2_ACCOUNT_ID}" -eq 32
+          case "$R2_BUCKET" in
+            ""|*[!a-z0-9-]*|-*|*-)
+              echo "SYSTEMFORGE_R2_BUCKET is not a valid bucket name." >&2
+              exit 64
+              ;;
+          esac
+          test "${#R2_BUCKET}" -ge 3
+          test "${#R2_BUCKET}" -le 64
+          case "$R2_ACCESS_KEY_ID" in
+            ""|*[!A-Za-z0-9]*) echo "SYSTEMFORGE_R2_ACCESS_KEY_ID is missing or malformed." >&2; exit 64 ;;
+          esac
+          test "${#R2_ACCESS_KEY_ID}" -eq 32
+          case "$R2_SECRET_ACCESS_KEY" in
+            ""|*[!0-9a-f]*) echo "SYSTEMFORGE_R2_SECRET_ACCESS_KEY is missing or malformed." >&2; exit 64 ;;
+          esac
+          test "${#R2_SECRET_ACCESS_KEY}" -eq 64
+          test -n "$RESTIC_PASSWORD"
+          case "$RESTIC_PASSWORD" in
+            *$'\n'*|*$'\r'*) echo "SYSTEMFORGE_RESTIC_PASSWORD must be one line." >&2; exit 64 ;;
+          esac
+          SSH_PORT="${SSH_PORT:-22}"
+          CONFIG_SOURCE="$RUNNER_TEMP/systemforge-offsite-$DEPLOY_SHA.env"
+          PASSWORD_SOURCE="$RUNNER_TEMP/systemforge-restic-$DEPLOY_SHA.password"
+          umask 077
+          trap 'rm -f "$CONFIG_SOURCE" "$PASSWORD_SOURCE"' EXIT HUP INT TERM
+          {
+            printf 'RESTIC_REPOSITORY=s3:https://%s.r2.cloudflarestorage.com/%s\n' "$R2_ACCOUNT_ID" "$R2_BUCKET"
+            printf 'AWS_ACCESS_KEY_ID=%s\n' "$R2_ACCESS_KEY_ID"
+            printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$R2_SECRET_ACCESS_KEY"
+            printf 'AWS_DEFAULT_REGION=auto\n'
+            printf 'RESTIC_PASSWORD_FILE=/etc/systemforge/restic-password\n'
+            printf 'RESTIC_CACHE_DIR=/opt/systemforge-restic-cache\n'
+          } > "$CONFIG_SOURCE"
+          printf '%s\n' "$RESTIC_PASSWORD" > "$PASSWORD_SOURCE"
+          chmod 600 "$CONFIG_SOURCE" "$PASSWORD_SOURCE"
+          scp \
+            -i "$HOME/.ssh/systemforge_deploy" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -P "$SSH_PORT" \
+            "$CONFIG_SOURCE" \
+            "$PASSWORD_SOURCE" \
+            "$SSH_USER@$SSH_HOST:/tmp/"
+          ssh \
+            -i "$HOME/.ssh/systemforge_deploy" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             trap 'rm -f /tmp/systemforge-offsite-$DEPLOY_SHA.env /tmp/systemforge-restic-$DEPLOY_SHA.password' EXIT HUP INT TERM
+             cd /opt/systemforge
+             test \"\$(git rev-parse HEAD)\" = \"$DEPLOY_SHA\"
+             sh scripts/provision_offsite_backup.sh \
+               /tmp/systemforge-offsite-$DEPLOY_SHA.env \
+               /tmp/systemforge-restic-$DEPLOY_SHA.password"
+
       - name: Deploy the staged main revision
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
