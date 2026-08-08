@@ -11,7 +11,9 @@ SystemForge is a deterministic distributed-systems laboratory. Architectures can
 The local simulator is intentionally independent from the API. If the service is overloaded or unavailable, the installed application keeps editing and running locally while canonical submission and server-backed sharing are disabled.
 The canonical control plane separately bounds request concurrency, queued runs,
 durable records, stored short links, input size, serialized result size, and
-modeled work so server pressure cannot remove the browser-local workflow.
+modeled work. Canonical architecture solving adds a separately bounded worker
+thread and falls back to the browser-local solver when server capacity is not
+available, so server pressure cannot remove the local workflow.
 The static shell is isolated from API capacity, cached by the service worker for
 returning browsers, and carries a separate Cloudflare stale-on-error policy so
 canonical overload does not turn into a blank product surface.

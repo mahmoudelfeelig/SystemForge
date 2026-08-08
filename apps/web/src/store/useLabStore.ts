@@ -11,6 +11,8 @@ import {
   DEFAULT_ARCHITECTURE,
   DEFAULT_SCENARIO,
   ENGINE_VERSION,
+  type SolveArchitectureOptions,
+  type SolveArchitectureResult,
 } from "@systemforge/sim-core";
 import { create } from "zustand";
 import {
@@ -25,6 +27,7 @@ import {
 } from "../lib/api";
 import { runLocalSimulation } from "../lib/localSimulation";
 import { decodeLocalShare } from "../lib/share";
+import { solveArchitectureWithFallback } from "../lib/solverGateway";
 
 export type WorkspaceMode = "build" | "run" | "investigate";
 
@@ -32,10 +35,13 @@ interface LabState {
   scenario: Scenario;
   architecture: Architecture;
   result: SimulationResult | null;
+  solverResult: SolveArchitectureResult | null;
   selectedNodeId: string | null;
   selectedEventId: string | null;
   workspaceMode: WorkspaceMode;
   runState: "idle" | "running" | "complete" | "error";
+  solverState: "idle" | "running" | "complete" | "error";
+  solverExecution: "canonical" | "local" | null;
   apiAvailability: ApiAvailability;
   role: "participant" | "interviewer";
   notice: string | null;
@@ -67,6 +73,7 @@ interface LabState {
   setInterviewReveal: (revealed: boolean) => Promise<void>;
   checkService: () => Promise<void>;
   runLocal: () => Promise<void>;
+  solveAlternatives: (options?: SolveArchitectureOptions) => Promise<void>;
   submitCanonical: () => Promise<void>;
   dismissNotice: () => void;
 }
@@ -85,6 +92,8 @@ interface StoredSession {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+let solverRequestSequence = 0;
 
 const parseStoredSession = (
   value: string | null,
@@ -121,10 +130,13 @@ const parseStoredSession = (
 export const useLabStore = create<LabState>((set, get) => ({
   ...cloneDefaults(),
   result: null,
+  solverResult: null,
   selectedNodeId: "api",
   selectedEventId: null,
   workspaceMode: "build",
   runState: "idle",
+  solverState: "idle",
+  solverExecution: null,
   apiAvailability: "checking",
   role: "participant",
   notice: null,
@@ -214,7 +226,10 @@ export const useLabStore = create<LabState>((set, get) => ({
       architecture,
       role,
       result: null,
+      solverResult: null,
       runState: "idle",
+      solverState: "idle",
+      solverExecution: null,
       notice:
         role === "interviewer"
           ? "Interviewer scenario loaded with private criteria."
@@ -246,7 +261,10 @@ export const useLabStore = create<LabState>((set, get) => ({
     set({
       scenario,
       result: null,
+      solverResult: null,
       runState: "idle",
+      solverState: "idle",
+      solverExecution: null,
       canonicalRunId: null,
       canonicalRunStatus: "idle",
       canonicalRunDigest: null,
@@ -255,7 +273,10 @@ export const useLabStore = create<LabState>((set, get) => ({
     set({
       architecture,
       result: null,
+      solverResult: null,
       runState: "idle",
+      solverState: "idle",
+      solverExecution: null,
       canonicalRunId: null,
       canonicalRunStatus: "idle",
       canonicalRunDigest: null,
@@ -282,7 +303,14 @@ export const useLabStore = create<LabState>((set, get) => ({
         )
       : [...scenario.requirements, requirement];
     const next = { ...scenario, requirements };
-    set({ scenario: next, result: null, runState: "idle" });
+    set({
+      scenario: next,
+      result: null,
+      solverResult: null,
+      runState: "idle",
+      solverState: "idle",
+      solverExecution: null,
+    });
     localStorage.setItem(
       "systemforge:draft",
       JSON.stringify({ scenario: next, architecture: get().architecture }),
@@ -296,7 +324,14 @@ export const useLabStore = create<LabState>((set, get) => ({
         (requirement) => requirement.id !== id,
       ),
     };
-    set({ scenario: next, result: null, runState: "idle" });
+    set({
+      scenario: next,
+      result: null,
+      solverResult: null,
+      runState: "idle",
+      solverState: "idle",
+      solverExecution: null,
+    });
     localStorage.setItem(
       "systemforge:draft",
       JSON.stringify({ scenario: next, architecture: get().architecture }),
@@ -334,6 +369,9 @@ export const useLabStore = create<LabState>((set, get) => ({
         scenario,
         role: shared.role,
         revealState: shared.revealState,
+        solverResult: null,
+        solverState: "idle",
+        solverExecution: null,
       });
       localStorage.setItem(
         "systemforge:draft",
@@ -423,6 +461,9 @@ export const useLabStore = create<LabState>((set, get) => ({
               ],
             },
             revealState: shared.revealState,
+            solverResult: null,
+            solverState: "idle",
+            solverExecution: null,
           });
           localStorage.setItem(
             "systemforge:draft",
@@ -453,6 +494,55 @@ export const useLabStore = create<LabState>((set, get) => ({
           error instanceof Error
             ? error.message
             : "The local simulation failed.",
+      });
+    }
+  },
+  solveAlternatives: async (options = {}) => {
+    const requestSequence = ++solverRequestSequence;
+    const scenario = get().scenario;
+    const architecture = get().architecture;
+    set({
+      solverState: "running",
+      solverResult: null,
+      solverExecution: null,
+      notice: null,
+    });
+    const includeHiddenRequirements = get().role === "interviewer";
+    try {
+      const solved = await solveArchitectureWithFallback(
+        scenario,
+        architecture,
+        { ...options, includeHiddenRequirements },
+        get().apiAvailability === "online" && !includeHiddenRequirements,
+      );
+      if (
+        requestSequence !== solverRequestSequence ||
+        get().scenario !== scenario ||
+        get().architecture !== architecture
+      )
+        return;
+      set({
+        solverResult: solved.result,
+        solverState: "complete",
+        solverExecution: solved.execution,
+        notice: solved.fallbackReason
+          ? `Canonical solving was unavailable, so this comparison ran locally. ${solved.fallbackReason}`
+          : null,
+      });
+    } catch (error) {
+      if (
+        requestSequence !== solverRequestSequence ||
+        get().scenario !== scenario ||
+        get().architecture !== architecture
+      )
+        return;
+      set({
+        solverState: "error",
+        solverExecution: null,
+        notice:
+          error instanceof Error
+            ? error.message
+            : "The architecture solver failed.",
       });
     }
   },

@@ -4,6 +4,11 @@ import type {
   RunSubmission,
   Scenario,
 } from "@systemforge/contracts";
+import {
+  ENGINE_VERSION,
+  type SolveArchitectureOptions,
+  type SolveArchitectureResult,
+} from "@systemforge/sim-core";
 
 export type ApiAvailability = "checking" | "online" | "offline" | "busy";
 
@@ -36,6 +41,11 @@ export interface SharedScenario {
   architecture: Architecture;
   role: "interviewer" | "participant";
   revealState: "hidden" | "revealed";
+}
+
+export interface CanonicalSolveResponse {
+  execution: "canonical";
+  result: SolveArchitectureResult;
 }
 
 const canonicalReleaseEnabled =
@@ -89,6 +99,22 @@ export function submitCanonicalRun(
   return request<CanonicalRunReceipt>("/api/runs", {
     method: "POST",
     body: JSON.stringify(submission),
+  });
+}
+
+export function solveCanonicalArchitecture(
+  scenario: Scenario,
+  architecture: Architecture,
+  options: SolveArchitectureOptions = {},
+): Promise<CanonicalSolveResponse> {
+  return request<CanonicalSolveResponse>("/api/solve", {
+    method: "POST",
+    body: JSON.stringify({
+      scenario,
+      architecture,
+      clientEngineVersion: ENGINE_VERSION,
+      options,
+    }),
   });
 }
 

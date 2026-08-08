@@ -7,15 +7,60 @@ import {
   scenarioSchema,
   type ApiErrorBody,
 } from "@systemforge/contracts";
-import { ENGINE_VERSION } from "@systemforge/sim-core";
+import {
+  ENGINE_VERSION,
+  estimateSolverWorkUnits,
+  MAX_SOLVER_CANDIDATES,
+  SOLVER_STRATEGIES,
+  type SolveArchitectureOptions,
+} from "@systemforge/sim-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
 import type { ApiConfig } from "./config";
+import { runSolverInThread, type SolverRunner } from "./runSolverInThread";
 import {
   QueueCapacityError,
   SharedScenarioCapacityError,
   type ControlStore,
 } from "./store";
+
+export type { SolverRunner } from "./runSolverInThread";
+
+const solverWeightsSchema = z
+  .object({
+    requirements: z.number().finite().nonnegative().optional(),
+    resilience: z.number().finite().nonnegative().optional(),
+    latency: z.number().finite().nonnegative().optional(),
+    cost: z.number().finite().nonnegative().optional(),
+    complexity: z.number().finite().nonnegative().optional(),
+  })
+  .refine(
+    (weights) =>
+      Object.values(weights).length === 0 ||
+      Object.values(weights).some((value) => value > 0),
+    "At least one solver weight must be positive.",
+  );
+
+const solverOptionsSchema = z.object({
+  maxCandidates: z.number().int().min(1).max(MAX_SOLVER_CANDIDATES).optional(),
+  maxChangesPerCandidate: z.union([z.literal(1), z.literal(2)]).optional(),
+  allowedStrategies: z
+    .array(z.enum(SOLVER_STRATEGIES))
+    .min(1)
+    .max(SOLVER_STRATEGIES.length)
+    .optional(),
+  lockedNodeIds: z.array(z.string().min(1).max(80)).max(500).optional(),
+  maximumMonthlyCostEur: z.number().finite().nonnegative().optional(),
+  maximumOperationalComplexity: z.number().finite().nonnegative().optional(),
+  weights: solverWeightsSchema.optional(),
+});
+
+const solveRequestSchema = z.object({
+  scenario: scenarioSchema,
+  architecture: architectureSchema,
+  clientEngineVersion: z.string().min(1).max(32),
+  options: solverOptionsSchema.optional().default({}),
+});
 
 const sharedScenarioResponse = (
   record: NonNullable<Awaited<ReturnType<ControlStore["getScenario"]>>>,
@@ -47,6 +92,7 @@ const errorBody = (
 export async function buildApp(
   config: ApiConfig,
   store: ControlStore,
+  solve: SolverRunner = runSolverInThread,
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
@@ -78,6 +124,7 @@ export async function buildApp(
   });
 
   let concurrentRequests = 0;
+  let concurrentSolves = 0;
   const admittedRequests = new WeakSet<object>();
   app.addHook("onRequest", async (request, reply) => {
     if (request.url.startsWith("/api/health/")) return;
@@ -198,6 +245,111 @@ export async function buildApp(
         status: "queued",
         statusUrl: `${config.publicOrigin}/api/runs/${run.id}`,
       });
+    },
+  );
+
+  app.post(
+    "/api/solve",
+    { config: { rateLimit: { max: 6, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const body = solveRequestSchema.parse(request.body);
+      if (body.clientEngineVersion !== ENGINE_VERSION)
+        return reply
+          .code(409)
+          .send(
+            errorBody(
+              "engine_version_mismatch",
+              `This browser uses simulation engine ${body.clientEngineVersion}, while canonical solves require ${ENGINE_VERSION}. Refresh the application or continue with the browser-local solver.`,
+              request.id,
+            ),
+          );
+      const maxCandidates =
+        body.options.maxCandidates ?? config.maxSolverCandidates;
+      if (maxCandidates > config.maxSolverCandidates)
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "solver_candidate_limit_exceeded",
+              `Canonical solving accepts at most ${config.maxSolverCandidates} candidates per request. Reduce the candidate count or solve locally.`,
+              request.id,
+            ),
+          );
+      const workUnits = estimateSolverWorkUnits(
+        body.scenario,
+        body.architecture,
+        maxCandidates,
+      );
+      if (workUnits > config.maxSolverWorkUnits)
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "solver_workload_too_large",
+              `This solve requires ${Math.ceil(workUnits).toLocaleString("en-US")} estimated work units, above the canonical ${config.maxSolverWorkUnits.toLocaleString("en-US")} limit. Reduce duration, topology size, or candidate count, or solve locally.`,
+              request.id,
+            ),
+          );
+      const knownNodeIds = new Set(
+        body.architecture.nodes.map((node) => node.id),
+      );
+      if (
+        body.options.lockedNodeIds?.some((nodeId) => !knownNodeIds.has(nodeId))
+      )
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "solver_invalid_options",
+              "Every locked solver node must exist in the submitted architecture.",
+              request.id,
+            ),
+          );
+      if (concurrentSolves >= config.maxConcurrentSolves) {
+        reply.header("retry-after", "2");
+        return reply
+          .code(503)
+          .send(
+            errorBody(
+              "solver_capacity_exceeded",
+              "Canonical solver capacity is busy. Continue with the browser-local solver and retry later.",
+              request.id,
+              2,
+            ),
+          );
+      }
+      const options: SolveArchitectureOptions = {
+        ...body.options,
+        maxCandidates,
+        includeHiddenRequirements: false,
+        workUnitBudget: config.maxSolverWorkUnits,
+      };
+      concurrentSolves += 1;
+      try {
+        const result = await solve(
+          body.scenario,
+          body.architecture,
+          options,
+          config.solverTimeoutMs,
+          config.maxSolverResultBytes,
+        );
+        return { execution: "canonical" as const, result };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.startsWith("solver_result_too_large:"))
+          return reply
+            .code(422)
+            .send(
+              errorBody(
+                "solver_result_too_large",
+                "The canonical solver result exceeds its response safety limit. Reduce the candidate count or solve locally.",
+                request.id,
+              ),
+            );
+        throw error;
+      } finally {
+        concurrentSolves = Math.max(0, concurrentSolves - 1);
+      }
     },
   );
 

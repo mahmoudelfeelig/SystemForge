@@ -56,13 +56,20 @@ The private environment also exposes explicit overload budgets:
 - `MAX_CANONICAL_WORK_UNITS=30000`
 - `MAX_CANONICAL_RESULT_BYTES=8500000`
 - `MAX_CONCURRENT_REQUESTS=96`
+- `MAX_CONCURRENT_SOLVES=1`
+- `MAX_SOLVER_CANDIDATES=12`
+- `MAX_SOLVER_WORK_UNITS=120000`
+- `SOLVER_TIMEOUT_MS=10000`
+- `MAX_SOLVER_RESULT_BYTES=4000000`
 
 Change them only after measuring the VPS under the representative integration
 smoke. Raising a canonical limit never changes the browser-local limits or
-availability path. The stored-run ceiling evicts the oldest completed or failed
-result before accepting new work and fails closed if active work occupies the
-entire durable budget. The worker also rejects a serialized canonical result
-above the result-byte ceiling before PostgreSQL persistence, preventing a
+availability path. Canonical solves use their own one-at-a-time admission lane,
+disposable worker thread, timeout, work estimate, candidate cap, and response
+size limit. The stored-run ceiling evicts the oldest completed or failed result
+before accepting new work and fails closed if active work occupies the entire
+durable budget. The run worker also rejects a serialized canonical result above
+its result-byte ceiling before PostgreSQL persistence, preventing a
 maximum-shape request from multiplying into unbounded durable storage.
 
 ## First host bootstrap
@@ -124,7 +131,7 @@ Cloudflare recommends proxying HTTP records so traffic is protected at the edge 
 
 ## Deployment, rollback, and smoke checks
 
-For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the tested Git SHA. In automatic deployments, GitHub transfers the exact scanned and integration-tested SHA-tagged image bundle and sets `SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and never rebuilds them. It then starts the full Compose project with health waits and runs an in-network production smoke. The functional smoke checks the static shell, database readiness, candidate/interviewer privacy separation, controlled reveal and reconceal, digest-only credential storage, stale-engine rejection, queue submission, worker completion, exhausted-lease recovery, engine version, and canonical digest. A second smoke sends 256 concurrent canonical reads from an isolated synthetic visitor while fetching the web shell 48 times. It requires structured capacity or rate-limit responses with retry and local-mode guidance, an unaffected independent visitor, and healthy API and web services after the burst. The deployment then invokes `scripts/verify_release_backups.sh`: it creates a current validated local dump, copies it to the encrypted independent repository, verifies fresh mode-`0600` backup evidence, and requires a successful disposable restore that covers the current migration manifest. Missing, stale, insecure, or mismatched evidence causes deployment rollback. Only after all three gates pass is `.last-successful-sha` updated.
+For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the tested Git SHA. In automatic deployments, GitHub transfers the exact scanned and integration-tested SHA-tagged image bundle and sets `SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and never rebuilds them. It then starts the full Compose project with health waits and runs an in-network production smoke. The functional smoke checks the static shell, database readiness, candidate/interviewer privacy separation, controlled reveal and reconceal, digest-only credential storage, stale-engine rejection, an isolated canonical solve with forced hidden-criteria exclusion, queue submission, worker completion, exhausted-lease recovery, engine version, and canonical digest. A second smoke sends 256 concurrent canonical reads from an isolated synthetic visitor while fetching the web shell 48 times. It requires structured capacity or rate-limit responses with retry and local-mode guidance, an unaffected independent visitor, and healthy API and web services after the burst. The deployment then invokes `scripts/verify_release_backups.sh`: it creates a current validated local dump, copies it to the encrypted independent repository, verifies fresh mode-`0600` backup evidence, and requires a successful disposable restore that covers the current migration manifest. Missing, stale, insecure, or mismatched evidence causes deployment rollback. Only after all three gates pass is `.last-successful-sha` updated.
 
 The interviewer-token migration keeps a nullable legacy column and a hashing
 trigger as a one-release rollback bridge. Current images never write raw tokens;

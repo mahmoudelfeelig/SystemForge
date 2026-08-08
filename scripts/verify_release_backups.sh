@@ -8,7 +8,7 @@ BACKUP_STATUS=${SYSTEMFORGE_OFFSITE_STATUS_FILE:-"$BACKUP_DIR/offsite-backup.sta
 RESTORE_STATUS=${SYSTEMFORGE_OFFSITE_RESTORE_STATUS_FILE:-"$BACKUP_DIR/offsite-restore.status"}
 RUN_BACKUPS=${SYSTEMFORGE_RUN_BACKUPS:-"$APP_DIR/scripts/run_backups.sh"}
 RUN_RESTORE=${SYSTEMFORGE_VERIFY_OFFSITE_RESTORE:-"$APP_DIR/scripts/verify_offsite_restore.sh"}
-NOW_EPOCH=${SYSTEMFORGE_NOW_EPOCH:-$(date -u +%s)}
+NOW_EPOCH_OVERRIDE=${SYSTEMFORGE_NOW_EPOCH:-}
 MAX_BACKUP_AGE_SECONDS=${SYSTEMFORGE_MAX_BACKUP_AGE_SECONDS:-3600}
 MAX_RESTORE_AGE_SECONDS=${SYSTEMFORGE_MAX_RESTORE_AGE_SECONDS:-7776000}
 
@@ -42,6 +42,14 @@ timestamp_epoch() {
   date -u -d "$VALUE" +%s 2>/dev/null
 }
 
+current_epoch() {
+  if test -n "$NOW_EPOCH_OVERRIDE"; then
+    printf '%s\n' "$NOW_EPOCH_OVERRIDE"
+  else
+    date -u +%s
+  fi
+}
+
 require_fresh_status() {
   FILE=$1
   LABEL=$2
@@ -51,7 +59,8 @@ require_fresh_status() {
   TIMESTAMP=$(field "$FILE" "$TIME_FIELD")
   test -n "$TIMESTAMP" || fail "$LABEL does not contain $TIME_FIELD."
   EPOCH=$(timestamp_epoch "$TIMESTAMP") || fail "$LABEL contains an invalid UTC timestamp."
-  AGE=$((NOW_EPOCH - EPOCH))
+  CURRENT_EPOCH=$(current_epoch)
+  AGE=$((CURRENT_EPOCH - EPOCH))
   test "$AGE" -ge 0 || fail "$LABEL timestamp is in the future."
   test "$AGE" -le "$MAX_AGE" || fail "$LABEL is stale by $AGE seconds."
 }
@@ -64,7 +73,7 @@ positive_integer() {
   esac
 }
 
-positive_integer "$NOW_EPOCH" "current epoch"
+positive_integer "$(current_epoch)" "current epoch"
 positive_integer "$MAX_BACKUP_AGE_SECONDS" "maximum backup age"
 positive_integer "$MAX_RESTORE_AGE_SECONDS" "maximum restore age"
 secure_file "$CONFIG_FILE" "off-site configuration"
@@ -104,7 +113,8 @@ if test -f "$RESTORE_STATUS" && test -r "$RESTORE_STATUS"; then
     && test "$RESTORE_OWNER" = "$(id -u)" \
     && test "$RESTORE_MIGRATIONS" = "$MIGRATION_MANIFEST_SHA256" \
     && RESTORE_EPOCH=$(timestamp_epoch "$RESTORE_TIME"); then
-    RESTORE_AGE=$((NOW_EPOCH - RESTORE_EPOCH))
+    CURRENT_EPOCH=$(current_epoch)
+    RESTORE_AGE=$((CURRENT_EPOCH - RESTORE_EPOCH))
     if test "$RESTORE_AGE" -ge 0 && test "$RESTORE_AGE" -le "$MAX_RESTORE_AGE_SECONDS"; then
       RESTORE_REQUIRED=false
     fi

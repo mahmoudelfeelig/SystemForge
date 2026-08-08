@@ -15,9 +15,12 @@ export default defineConfig({
         "packages/sim-core/src/**/*.ts",
         "apps/api/src/app.ts",
         "apps/api/src/memoryStore.ts",
+        "apps/api/src/runSolverInThread.ts",
         "apps/worker/src/execute.ts",
         "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/localSolver.ts",
         "apps/web/src/lib/share.ts",
+        "apps/web/src/lib/solverGateway.ts",
       ],
       thresholds: {
         lines: 80,

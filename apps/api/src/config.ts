@@ -9,6 +9,11 @@ export interface ApiConfig {
   maxSharedScenarios: number;
   maxCanonicalWorkUnits: number;
   maxConcurrentRequests: number;
+  maxConcurrentSolves: number;
+  maxSolverCandidates: number;
+  maxSolverWorkUnits: number;
+  solverTimeoutMs: number;
+  maxSolverResultBytes: number;
   rateLimitMax: number;
   rateLimitWindow: string;
 }
@@ -60,6 +65,26 @@ export function loadConfig(
       96,
       8,
       10_000,
+    ),
+    maxConcurrentSolves: integer(environment.MAX_CONCURRENT_SOLVES, 1, 1, 16),
+    maxSolverCandidates: integer(environment.MAX_SOLVER_CANDIDATES, 12, 1, 64),
+    maxSolverWorkUnits: integer(
+      environment.MAX_SOLVER_WORK_UNITS,
+      120_000,
+      1_000,
+      10_000_000,
+    ),
+    solverTimeoutMs: integer(
+      environment.SOLVER_TIMEOUT_MS,
+      10_000,
+      1_000,
+      120_000,
+    ),
+    maxSolverResultBytes: integer(
+      environment.MAX_SOLVER_RESULT_BYTES,
+      4_000_000,
+      100_000,
+      50_000_000,
     ),
     rateLimitMax: integer(environment.RATE_LIMIT_MAX, 120, 10, 100_000),
     rateLimitWindow: environment.RATE_LIMIT_WINDOW ?? "1 minute",

@@ -25,6 +25,8 @@ cat > "$APP_DIR/scripts/run_backups.sh" <<'EOF'
 #!/bin/sh
 set -eu
 printf '%s\n' backup >> "$FAKE_CALL_LOG"
+# Cross a wall-clock second so the gate cannot reuse a pre-backup timestamp.
+sleep 1.1
 STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 umask 077
 {

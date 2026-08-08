@@ -226,6 +226,30 @@ if (
     "The API did not reject an incompatible browser engine with a local fallback.",
   );
 
+const solved = await request(`${apiOrigin}/api/solve`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    scenario,
+    architecture,
+    clientEngineVersion: expectedEngineVersion,
+    options: {
+      maxCandidates: 2,
+      includeHiddenRequirements: true,
+    },
+  }),
+});
+if (
+  solved.body?.execution !== "canonical" ||
+  solved.body?.result?.engineVersion !== expectedEngineVersion ||
+  solved.body?.result?.solverVersion !== "0.1.0" ||
+  solved.body?.result?.excludedHiddenRequirementCount !== 1 ||
+  solved.body?.result?.options?.includeHiddenRequirements !== false
+)
+  throw new Error(
+    "The isolated canonical solver did not enforce its public hidden-requirement boundary.",
+  );
+
 const queued = await request(`${apiOrigin}/api/runs`, {
   method: "POST",
   headers: { "content-type": "application/json" },

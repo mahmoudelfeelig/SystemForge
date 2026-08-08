@@ -8,6 +8,7 @@ import {
   recordSharedScenarioRun,
   setSharedScenarioReveal,
   shareScenario,
+  solveCanonicalArchitecture,
   submitCanonicalRun,
 } from "../src/lib/api";
 import {
@@ -339,6 +340,38 @@ describe("browser sharing and fallback", () => {
         body: JSON.stringify({
           scenario: DEFAULT_SCENARIO,
           architecture: DEFAULT_ARCHITECTURE,
+        }),
+      }),
+    );
+  });
+
+  it("posts a versioned canonical solver request", async () => {
+    const receipt = {
+      execution: "canonical",
+      result: { engineVersion: "0.3.0", solverVersion: "0.1.0" },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(receipt), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      solveCanonicalArchitecture(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE, {
+        maxCandidates: 4,
+      }),
+    ).resolves.toEqual(receipt);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/solve",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          scenario: DEFAULT_SCENARIO,
+          architecture: DEFAULT_ARCHITECTURE,
+          clientEngineVersion: "0.3.0",
+          options: { maxCandidates: 4 },
         }),
       }),
     );

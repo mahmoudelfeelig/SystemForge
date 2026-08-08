@@ -20,6 +20,11 @@ const config: ApiConfig = {
   maxSharedScenarios: 100,
   maxCanonicalWorkUnits: 30_000,
   maxConcurrentRequests: 8,
+  maxConcurrentSolves: 1,
+  maxSolverCandidates: 12,
+  maxSolverWorkUnits: 120_000,
+  solverTimeoutMs: 10_000,
+  maxSolverResultBytes: 4_000_000,
   rateLimitMax: 100,
   rateLimitWindow: "1 minute",
 };

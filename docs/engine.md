@@ -57,9 +57,11 @@ requirement fit, resilience, latency, cost, and complexity. Candidate generation
 is capped at 64 and additionally constrained by a work-unit budget before a
 simulation worker is allocated.
 
-Hidden interviewer requirements are excluded by default. A trusted interviewer
-must explicitly request their inclusion. This prevents a candidate-facing
-solver call from silently optimizing against a private rubric.
+Hidden interviewer requirements are excluded by default. The direct canonical
+API always forces their exclusion, even if a client submits an inclusion flag.
+The in-browser solver can include them only while the interviewer already holds
+the private local scenario. This prevents a candidate-facing server call from
+silently optimizing against a private rubric.
 
 ```ts
 import { solveArchitecture } from "@systemforge/sim-core";
@@ -116,3 +118,20 @@ pnpm --filter @systemforge/sim-core typecheck
 
 The repository-wide `pnpm quality` command adds formatting, linting, all
 behavioral tests, all workspace builds, and the static-site packaging contract.
+
+## Execution surfaces
+
+The browser-local solver is implemented in
+`apps/web/src/workers/solver.worker.ts`, admitted by
+`apps/web/src/lib/localSolver.ts`, and remains usable without the API. The
+canonical transport is `POST /api/solve`; Fastify admits only a small bounded
+request, then `apps/api/src/runSolverInThread.ts` executes the search in a
+disposable Node worker with an independent concurrency lane, timeout, work
+budget, candidate cap, and serialized-result ceiling. The browser gateway in
+`apps/web/src/lib/solverGateway.ts` falls back to that local worker when the
+canonical service is closed, busy, or unavailable.
+
+The solver transport and state contract are complete. Its approval-sensitive
+candidate comparison and controls are not yet mounted into the Lab page; until
+that visual integration is reviewed, use the focused engine tests or invoke
+the library/API seams directly rather than treating the UI as a solver console.

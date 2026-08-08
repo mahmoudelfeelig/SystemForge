@@ -14,6 +14,11 @@ describe("API capacity configuration", () => {
     expect(config.maxStoredRuns).toBe(250);
     expect(config.maxSharedScenarios).toBe(2_000);
     expect(config.maxCanonicalWorkUnits).toBe(30_000);
+    expect(config.maxConcurrentSolves).toBe(1);
+    expect(config.maxSolverCandidates).toBe(12);
+    expect(config.maxSolverWorkUnits).toBe(120_000);
+    expect(config.solverTimeoutMs).toBe(10_000);
+    expect(config.maxSolverResultBytes).toBe(4_000_000);
   });
 
   it("never configures fewer durable slots than active queue slots", () => {
