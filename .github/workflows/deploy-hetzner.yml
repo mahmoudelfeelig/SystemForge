@@ -25,6 +25,7 @@ jobs:
     environment: production
     outputs:
       staged: ${{ steps.stage.outputs.staged }}
+      public_release_enabled: ${{ steps.stage.outputs.public_release_enabled }}
     steps:
       - name: Download the exact CI-tested release images
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -81,6 +82,7 @@ jobs:
             && test "$RELEASE_APPROVAL" = I_AM_READY_FOR_PRODUCTION; then
             PUBLIC_RELEASE_ENABLED=true
           fi
+          echo "public_release_enabled=$PUBLIC_RELEASE_ENABLED" >> "$GITHUB_OUTPUT"
           SSH_PORT="${SSH_PORT:-22}"
           scp \
             -i "$HOME/.ssh/systemforge_deploy" \
@@ -125,8 +127,7 @@ jobs:
     needs: stage
     if: >-
       needs.stage.outputs.staged == 'true' &&
-      vars.HETZNER_DEPLOY_ENABLED == 'true' &&
-      vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION' &&
+      needs.stage.outputs.public_release_enabled == 'true' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&

@@ -32,9 +32,11 @@ grep -Fq 'SYSTEMFORGE_PUBLIC_RELEASE_ENABLED=$PUBLIC_RELEASE_ENABLED' "$STAGE_BL
 grep -Fq 'sh scripts/stage_hetzner.sh \"$DEPLOY_SHA\"' "$STAGE_BLOCK"
 grep -Fq 'test -z \"\$(git status --porcelain)\"' "$STAGE_BLOCK"
 grep -Fq 'staged: ${{ steps.stage.outputs.staged }}' "$STAGE_BLOCK"
+grep -Fq 'public_release_enabled: ${{ steps.stage.outputs.public_release_enabled }}' "$STAGE_BLOCK"
 grep -Fq 'id: stage' "$STAGE_BLOCK"
 grep -Fq 'exit 75' "$STAGE_BLOCK"
 grep -Fq 'echo "staged=false" >> "$GITHUB_OUTPUT"' "$STAGE_BLOCK"
+grep -Fq 'echo "public_release_enabled=$PUBLIC_RELEASE_ENABLED" >> "$GITHUB_OUTPUT"' "$STAGE_BLOCK"
 if grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$STAGE_BLOCK"; then
   echo "Hetzner staging must not be disabled by the public deployment gate." >&2
   exit 1
@@ -42,8 +44,11 @@ fi
 
 grep -Fq 'needs: stage' "$DEPLOY_BLOCK"
 grep -Fq "needs.stage.outputs.staged == 'true'" "$DEPLOY_BLOCK"
-grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$DEPLOY_BLOCK"
-grep -Fq "vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION'" "$DEPLOY_BLOCK"
+grep -Fq "needs.stage.outputs.public_release_enabled == 'true'" "$DEPLOY_BLOCK"
+if grep -Eq 'vars\.(HETZNER_DEPLOY_ENABLED|SYSTEMFORGE_RELEASE_APPROVED)' "$DEPLOY_BLOCK"; then
+  echo "The deploy job gate must use the stage output because environment variables are unavailable before job start." >&2
+  exit 1
+fi
 grep -Fq "github.event.workflow_run.conclusion == 'success'" "$DEPLOY_BLOCK"
 grep -Fq "github.event.workflow_run.event == 'push'" "$DEPLOY_BLOCK"
 grep -Fq "github.event.workflow_run.head_branch == 'main'" "$DEPLOY_BLOCK"
