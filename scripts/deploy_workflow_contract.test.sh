@@ -31,12 +31,17 @@ grep -Fq 'github.event.workflow_run.head_repository.full_name == github.reposito
 grep -Fq 'SYSTEMFORGE_PUBLIC_RELEASE_ENABLED=$PUBLIC_RELEASE_ENABLED' "$STAGE_BLOCK"
 grep -Fq 'sh scripts/stage_hetzner.sh \"$DEPLOY_SHA\"' "$STAGE_BLOCK"
 grep -Fq 'test -z \"\$(git status --porcelain)\"' "$STAGE_BLOCK"
+grep -Fq 'staged: ${{ steps.stage.outputs.staged }}' "$STAGE_BLOCK"
+grep -Fq 'id: stage' "$STAGE_BLOCK"
+grep -Fq 'exit 75' "$STAGE_BLOCK"
+grep -Fq 'echo "staged=false" >> "$GITHUB_OUTPUT"' "$STAGE_BLOCK"
 if grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$STAGE_BLOCK"; then
   echo "Hetzner staging must not be disabled by the public deployment gate." >&2
   exit 1
 fi
 
 grep -Fq 'needs: stage' "$DEPLOY_BLOCK"
+grep -Fq "needs.stage.outputs.staged == 'true'" "$DEPLOY_BLOCK"
 grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$DEPLOY_BLOCK"
 grep -Fq "vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION'" "$DEPLOY_BLOCK"
 grep -Fq "github.event.workflow_run.conclusion == 'success'" "$DEPLOY_BLOCK"
@@ -77,6 +82,9 @@ grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e
 grep -Fq 'actions: read' "$WORKFLOW"
 grep -Fq 'run-id: ${{ github.event.workflow_run.id }}' "$WORKFLOW"
 grep -Fq 'docker load --input /tmp/systemforge-images-$DEPLOY_SHA.tar.gz' "$WORKFLOW"
+FETCH_LINE=$(grep -nF 'git fetch origin main' "$STAGE_BLOCK" | head -1 | cut -d: -f1)
+LOAD_LINE=$(grep -nF 'docker load --input /tmp/systemforge-images-$DEPLOY_SHA.tar.gz' "$STAGE_BLOCK" | cut -d: -f1)
+test "$FETCH_LINE" -lt "$LOAD_LINE"
 grep -Fq 'SYSTEMFORGE_SKIP_BUILD=true' "$WORKFLOW"
 grep -Fq 'ACTIONLINT_VERSION: 1.7.12' "$CI_WORKFLOW"
 grep -Fq 'ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8' "$CI_WORKFLOW"

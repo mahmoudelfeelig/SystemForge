@@ -23,6 +23,8 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     environment: production
+    outputs:
+      staged: ${{ steps.stage.outputs.staged }}
     steps:
       - name: Download the exact CI-tested release images
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -52,6 +54,7 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Stage the tested main revision
+        id: stage
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
           DEPLOY_ENABLED: ${{ vars.HETZNER_DEPLOY_ENABLED }}
@@ -87,6 +90,7 @@ jobs:
             -P "$SSH_PORT" \
             "$RELEASE_BUNDLE" \
             "$SSH_USER@$SSH_HOST:/tmp/systemforge-images-$DEPLOY_SHA.tar.gz"
+          set +e
           ssh \
             -i "$HOME/.ssh/systemforge_deploy" \
             -o BatchMode=yes \
@@ -96,20 +100,31 @@ jobs:
             "$SSH_USER@$SSH_HOST" \
             "set -eu
              trap 'rm -f /tmp/systemforge-images-$DEPLOY_SHA.tar.gz' EXIT HUP INT TERM
-             docker load --input /tmp/systemforge-images-$DEPLOY_SHA.tar.gz
              cd /opt/systemforge
              test -z \"\$(git status --porcelain)\"
              git fetch origin main
-             test \"\$(git rev-parse origin/main)\" = \"$DEPLOY_SHA\"
+             if test \"\$(git rev-parse origin/main)\" != \"$DEPLOY_SHA\"; then
+               echo \"Staging skipped because $DEPLOY_SHA was superseded by a newer main revision.\"
+               exit 75
+             fi
+             docker load --input /tmp/systemforge-images-$DEPLOY_SHA.tar.gz
              git checkout main
              git pull --ff-only origin main
              test \"\$(git rev-parse HEAD)\" = \"$DEPLOY_SHA\"
              SYSTEMFORGE_PUBLIC_RELEASE_ENABLED=$PUBLIC_RELEASE_ENABLED \
              sh scripts/stage_hetzner.sh \"$DEPLOY_SHA\""
+          STAGE_STATUS=$?
+          set -e
+          case "$STAGE_STATUS" in
+            0) echo "staged=true" >> "$GITHUB_OUTPUT" ;;
+            75) echo "staged=false" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$STAGE_STATUS" ;;
+          esac
 
   deploy:
     needs: stage
     if: >-
+      needs.stage.outputs.staged == 'true' &&
       vars.HETZNER_DEPLOY_ENABLED == 'true' &&
       vars.SYSTEMFORGE_RELEASE_APPROVED == 'I_AM_READY_FOR_PRODUCTION' &&
       github.event.workflow_run.conclusion == 'success' &&
@@ -148,6 +163,7 @@ jobs:
             *) echo "SYSTEMFORGE_EXTERNAL_SMOKE_URL is not the approved production origin." >&2; exit 64 ;;
           esac
           SSH_PORT="${SSH_PORT:-22}"
+          set +e
           ssh \
             -i "$HOME/.ssh/systemforge_deploy" \
             -o BatchMode=yes \
@@ -157,8 +173,19 @@ jobs:
             "$SSH_USER@$SSH_HOST" \
             "set -eu
              cd /opt/systemforge
+             git fetch origin main
+             if test \"\$(git rev-parse origin/main)\" != \"$DEPLOY_SHA\"; then
+               echo \"Deployment skipped because $DEPLOY_SHA was superseded by a newer main revision.\"
+               exit 75
+             fi
              test \"\$(git rev-parse HEAD)\" = \"$DEPLOY_SHA\"
              SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION \
              SYSTEMFORGE_EXTERNAL_SMOKE_URL=$EXTERNAL_SMOKE_URL \
              SYSTEMFORGE_SKIP_BUILD=true \
              sh scripts/deploy_hetzner.sh \"$DEPLOY_SHA\""
+          DEPLOY_STATUS=$?
+          set -e
+          case "$DEPLOY_STATUS" in
+            0|75) exit 0 ;;
+            *) exit "$DEPLOY_STATUS" ;;
+          esac
