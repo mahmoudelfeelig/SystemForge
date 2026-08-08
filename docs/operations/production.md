@@ -159,15 +159,65 @@ curl -fsS https://systemforge.elfeel.me/api/health/ready
 
 ## Backups and restore gate
 
-The installed cron runs at 02:17 UTC. It creates a PostgreSQL custom-format dump in `/opt/systemforge-backups`, validates it with `pg_restore --list`, applies mode `0600`, and removes verified dumps older than 14 days. Run `scripts/backup_postgres.sh` manually before migrations that modify stored data.
+The installed cron runs at 02:17 UTC. `scripts/run_backups.sh` first creates a
+PostgreSQL custom-format dump in `/opt/systemforge-backups`, validates it with
+`pg_restore --list`, applies mode `0600`, and removes verified local dumps older
+than 14 days. If `/etc/systemforge/offsite-backup.env` exists, the same run then
+copies the newest verified dump into an encrypted restic repository, applies the
+configured snapshot-retention policy, and reads a configured subset of remote
+pack data through `restic check`. A remote failure makes the cron run fail and
+leaves the verified same-host dump intact.
 
-A same-host dump does not protect against VPS or disk loss. Before collecting irreplaceable server-backed data, enable Hetzner server backups or copy the encrypted dumps to independently credentialed object storage. Perform a quarterly restore drill into a disposable PostgreSQL database and record the recovery duration. Until the first off-host copy and restore drill pass, the browser-local workflow is production-usable but canonical data disaster recovery remains a release gate.
+The off-site mechanism supports a Hetzner Storage Box through restic's SFTP
+backend or an S3-compatible object store. It deliberately does not select or
+initialize a repository automatically. The operator must create independently
+scoped storage credentials, keep the restic repository password outside the
+VPS, and run the explicit initializer once.
 
-Run `sh scripts/verify_backup_restore.sh` after a manual backup and at least
-quarterly. It restores the newest verified custom-format dump into a uniquely
-named disposable database, checks all migrations and canonical tables, and
-drops only that drill database. CI performs the same backup-and-restore path
-against its disposable Compose stack.
+Install restic from its verified official package or binary, then create the
+configuration without placing credentials in the repository:
+
+```sh
+sudo install -d -m 0700 /etc/systemforge
+sudo install -m 0600 deploy/offsite-backup.env.example /etc/systemforge/offsite-backup.env
+sudo sh -c 'umask 077; head -c 48 /dev/urandom | base64 > /etc/systemforge/restic-password'
+sudo editor /etc/systemforge/offsite-backup.env
+```
+
+For Storage Box, configure a dedicated SSH key and pinned host key in the cron
+user's SSH configuration, then use an `sftp:` repository. For S3-compatible
+storage, set the endpoint repository plus a bucket-scoped access key and secret
+in the mode-`0600` configuration. `deploy/offsite-backup.env.example` contains
+both shapes. The scripts refuse group- or world-readable configuration and
+password files.
+
+Initialize and prove the path explicitly:
+
+```sh
+cd /opt/systemforge
+SYSTEMFORGE_OFFSITE_CONFIG=/etc/systemforge/offsite-backup.env sh scripts/init_offsite_backup.sh
+SYSTEMFORGE_OFFSITE_CONFIG=/etc/systemforge/offsite-backup.env sh scripts/run_backups.sh
+SYSTEMFORGE_OFFSITE_CONFIG=/etc/systemforge/offsite-backup.env sh scripts/verify_offsite_restore.sh
+```
+
+The off-site restore drill downloads the latest tagged snapshot into a unique
+temporary directory, restores its dump into a disposable PostgreSQL database,
+checks the migration ledger and all canonical tables, records a mode-`0600`
+status file, then removes the temporary copy and drill database. Run it after
+initial setup and at least quarterly. Use
+`SYSTEMFORGE_RESTIC_CHECK_SUBSET=100% scripts/backup_offsite.sh` for a deliberate
+full remote-data read rather than the nightly subset.
+
+`scripts/verify_backup_restore.sh` remains available for a same-host drill after
+a manual dump or before a migration. CI exercises the dump/restore path and a
+fake remote repository that proves credential-mode rejection, explicit
+initialization, bounded retention, integrity-check failure propagation, cron
+wiring, and off-site restore cleanup without using production credentials.
+
+A same-host dump does not protect against VPS or disk loss. Repository support
+alone is not release evidence. Until a real off-host copy and independent
+restore drill pass, the browser-local workflow is production-usable but
+canonical data disaster recovery remains a release gate.
 
 ## Monitoring and incident response
 

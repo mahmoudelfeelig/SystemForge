@@ -32,6 +32,11 @@ The 2026-08-08 checkout passed the following checks:
 - `sh scripts/edge_contract.test.sh`: browser revalidation and Cloudflare-only
   stale-shell headers are present, with no `s-maxage` directive that would
   disable the intended stale fallback.
+- `sh scripts/offsite_backup.test.sh`: insecure credential files, missing or
+  uninitialized repositories, integrity-check failures, and empty restores fail
+  closed; successful runs apply tagged retention, write mode-`0600` evidence,
+  preserve the local-first cron order, and validate the restored dump through a
+  separate verifier.
 - `node scripts/service_worker_contract.test.mjs`: an origin `5xx` navigation
   serves the cached local lab, ordinary `4xx` responses remain visible, and API
   requests bypass the shell cache.
@@ -170,7 +175,8 @@ Public release requires all of the following in order:
 - create or verify the protected `production` GitHub environment, variables,
   and dedicated SSH secret;
 - establish an independently recoverable off-host backup or Hetzner backup
-  policy for canonical data;
+  policy for canonical data, then pass the first real encrypted copy and
+  independent restore drill;
 - enable the two production approval variables;
 - deploy the exact tested SHA and pass the in-network smoke while rollback is
   armed;

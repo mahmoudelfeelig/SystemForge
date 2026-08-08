@@ -56,6 +56,7 @@ jobs:
       - run: node scripts/overload_smoke_contract.test.mjs
       - run: sh scripts/edge_contract.test.sh
       - run: sh scripts/verify_cloudflare_ranges.sh
+      - run: sh scripts/offsite_backup.test.sh
       - name: Prove the production release gate defaults closed
         run: |
           set +e

@@ -3,7 +3,7 @@ set -eu
 
 APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
 MARKER="# systemforge-postgres-backup"
-ENTRY="17 2 * * * SYSTEMFORGE_APP_DIR=$APP_DIR $APP_DIR/scripts/backup_postgres.sh >> /opt/systemforge-backups/backup.log 2>&1 $MARKER"
+ENTRY="17 2 * * * SYSTEMFORGE_APP_DIR=$APP_DIR $APP_DIR/scripts/run_backups.sh >> /opt/systemforge-backups/backup.log 2>&1 $MARKER"
 TEMP=$(mktemp)
 trap 'rm -f "$TEMP"' EXIT HUP INT TERM
 crontab -l 2>/dev/null | grep -vF "$MARKER" > "$TEMP" || true
