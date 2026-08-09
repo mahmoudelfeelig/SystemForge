@@ -20,6 +20,7 @@
     "@systemforge/sim-core": "workspace:*",
     "@vitejs/plugin-react": "5.0.4",
     "@xyflow/react": "^12.9.0",
+    "lz-string": "1.5.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-router-dom": "^7.9.4",

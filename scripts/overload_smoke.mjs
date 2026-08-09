@@ -71,7 +71,7 @@ const requireWebShell = async () => {
     );
   if (
     response.headers.get("cache-control") !==
-    "public, max-age=0, must-revalidate"
+    "public, max-age=0, must-revalidate, no-transform"
   )
     throw new Error("The web shell lost its browser revalidation policy.");
   if (

@@ -63,7 +63,10 @@ const api = createServer((request, response) => {
 
 const web = createServer((_request, response) => {
   response.setHeader("content-type", "text/html");
-  response.setHeader("cache-control", "public, max-age=0, must-revalidate");
+  response.setHeader(
+    "cache-control",
+    "public, max-age=0, must-revalidate, no-transform",
+  );
   response.setHeader(
     "cloudflare-cdn-cache-control",
     "public, max-age=300, stale-while-revalidate=60, stale-if-error=86400",

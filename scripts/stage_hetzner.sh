@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+if test "${SYSTEMFORGE_RELEASE_CONFIRMATION:-}" != "AUTHORIZE_SYSTEMFORGE_PRODUCTION_RELEASE"; then
+  echo "Release gate is closed. Exact production confirmation is required." >&2
+  exit 78
+fi
+
 APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
 COMPOSE_FILE="$APP_DIR/deploy/docker-compose.prod.yml"
 ENV_FILE="$APP_DIR/deploy/.env"
@@ -21,20 +26,4 @@ docker image inspect "systemforge-web:$DEPLOY_SHA" >/dev/null
 docker image inspect "systemforge-worker:$DEPLOY_SHA" >/dev/null
 sh "$APP_DIR/scripts/install_backup_cron.sh"
 
-case "${SYSTEMFORGE_PUBLIC_RELEASE_ENABLED:-false}" in
-  true)
-    echo "SystemForge release $DEPLOY_SHA is staged for the approved deployment phase."
-    ;;
-  false|"")
-    sh "$APP_DIR/scripts/install_caddy_route.sh" closed
-    SYSTEMFORGE_IMAGE_TAG="$DEPLOY_SHA" docker compose \
-      --env-file "$ENV_FILE" \
-      -f "$COMPOSE_FILE" \
-      stop systemforge-web systemforge-api systemforge-worker systemforge-migrate
-    echo "SystemForge release $DEPLOY_SHA is staged while the public release remains closed."
-    ;;
-  *)
-    echo "SYSTEMFORGE_PUBLIC_RELEASE_ENABLED must be true or false." >&2
-    exit 64
-    ;;
-esac
+echo "SystemForge release $DEPLOY_SHA is staged for the explicitly authorized deployment."

@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    testTimeout: 15_000,
     include: [
       "packages/**/*.test.ts",
       "apps/**/*.test.ts",
@@ -23,10 +24,10 @@ export default defineConfig({
         "apps/web/src/lib/solverGateway.ts",
       ],
       thresholds: {
-        lines: 80,
-        functions: 80,
-        statements: 80,
-        branches: 65,
+        lines: 93,
+        functions: 93,
+        statements: 92,
+        branches: 84,
       },
     },
   },

@@ -11,6 +11,7 @@ coverage/
 test-results/
 playwright-report/
 design-qa.local/
+.superdesign/tmp/
 .last-successful-sha
 .previous-successful-sha
 .DS_Store

@@ -10,7 +10,9 @@ import {
   WarningOctagon,
   X,
 } from "@phosphor-icons/react";
+import { componentOwnsState } from "@systemforge/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { lintArchitecture } from "../lib/architectureLint";
 import { useLabStore } from "../store/useLabStore";
 
 interface CommandPaletteProps {
@@ -47,24 +49,61 @@ export function CommandPalette({
   const canUndo = useLabStore((state) => state.architectureUndo.length > 0);
   const saveSnapshot = useLabStore((state) => state.saveArchitectureSnapshot);
   const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const modifierLabel =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad/.test(navigator.platform)
+      ? "⌘ ⇧ P"
+      : "Ctrl Shift P";
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
     setQuery("");
+    setActiveIndex(0);
     inputRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), [href]',
+        ),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previous?.focus();
+    };
   }, [onClose, open]);
 
   const commands = useMemo<PaletteCommand[]>(() => {
+    const graphErrorCount = lintArchitecture(scenario, architecture).filter(
+      (issue) => issue.severity === "error",
+    ).length;
     const lowRedundancy = architecture.nodes.find(
       (node) =>
         ["api", "database", "load-balancer", "queue"].includes(node.kind) &&
-        node.config.instances + node.config.replicas < 2,
+        (componentOwnsState(node.kind)
+          ? node.config.replicas < 1
+          : node.config.instances < 2),
     );
     const outageTarget =
       architecture.nodes.find((node) => node.id === selectedNodeId) ??
@@ -72,10 +111,12 @@ export function CommandPalette({
     return [
       {
         id: "run",
-        label: "Run local simulation",
-        detail: "Execute the current mission in a disposable browser worker.",
+        label: "Run locally",
+        detail: graphErrorCount
+          ? `Resolve ${graphErrorCount} blocking graph-lint error${graphErrorCount === 1 ? "" : "s"} first.`
+          : "Run this scenario in the browser.",
         icon: Play,
-        disabled: runState === "running",
+        disabled: runState === "running" || graphErrorCount > 0,
         run: () => {
           setWorkspaceMode("run");
           void runLocal();
@@ -83,33 +124,33 @@ export function CommandPalette({
       },
       {
         id: "compare",
-        label: "Compare architecture candidates",
-        detail: "Open bounded solver, robustness and decision evidence tools.",
+        label: "Compare designs",
+        detail: "Search bounded architecture changes.",
         icon: Scales,
         run: onOpenDecisionWorkbench,
       },
       {
         id: "undo",
-        label: "Undo architecture edit",
-        detail: "Restore the previous topology or configuration state.",
+        label: "Undo change",
+        detail: "Restore the previous topology.",
         icon: ArrowCounterClockwise,
         disabled: !canUndo,
         run: undo,
       },
       {
         id: "snapshot",
-        label: "Save named architecture snapshot",
-        detail: "Preserve the current state in this browser.",
+        label: "Save snapshot",
+        detail: "Save this topology in the browser.",
         icon: BookmarkSimple,
         run: () =>
           saveSnapshot(`Manual snapshot ${new Date().toLocaleTimeString()}`),
       },
       {
         id: "spof",
-        label: "Inspect low-redundancy component",
+        label: "Inspect low redundancy",
         detail: lowRedundancy
-          ? `Select ${lowRedundancy.name} in the configuration inspector.`
-          : "No obvious low-redundancy service was found.",
+          ? `Select ${lowRedundancy.name}.`
+          : "No component with fewer than two configured copies was found.",
         icon: Crosshair,
         disabled: !lowRedundancy,
         run: () => {
@@ -120,10 +161,10 @@ export function CommandPalette({
       },
       {
         id: "outage",
-        label: "Arm a selected-node outage",
+        label: "Schedule node outage",
         detail: outageTarget
-          ? `Add a reversible node-failure incident for ${outageTarget.name}.`
-          : "Select a component before arming an outage.",
+          ? `Add a scheduled node-failure incident for ${outageTarget.name}.`
+          : "Select a component before scheduling an outage.",
         icon: WarningOctagon,
         disabled: !outageTarget || scenario.incidents.length >= 40,
         run: () => {
@@ -153,9 +194,8 @@ export function CommandPalette({
       },
       {
         id: "density",
-        label: "Toggle comfortable information density",
-        detail:
-          "Increase essential labels and control text without changing the visual system.",
+        label: "Toggle text size",
+        detail: "Switch between compact and comfortable text.",
         icon: TextAa,
         run: () => {
           const current =
@@ -167,8 +207,8 @@ export function CommandPalette({
       },
       {
         id: "robustness",
-        label: "Open multi-seed robustness",
-        detail: "Use nine bounded seeds to expose modeled outcome variance.",
+        label: "Run seed sweep",
+        detail: "Compare this design across nine seeds.",
         icon: Flask,
         run: onOpenDecisionWorkbench,
       },
@@ -192,6 +232,31 @@ export function CommandPalette({
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
+  const enabledIndices = visibleCommands.flatMap((command, index) =>
+    command.disabled ? [] : [index],
+  );
+  useEffect(() => {
+    if (!open || enabledIndices.includes(activeIndex)) return;
+    setActiveIndex(enabledIndices[0] ?? 0);
+  }, [activeIndex, enabledIndices, open]);
+  const moveSelection = (direction: 1 | -1) => {
+    if (!enabledIndices.length) return;
+    const currentPosition = enabledIndices.indexOf(activeIndex);
+    const nextPosition =
+      currentPosition === -1
+        ? direction === 1
+          ? 0
+          : enabledIndices.length - 1
+        : (currentPosition + direction + enabledIndices.length) %
+          enabledIndices.length;
+    setActiveIndex(enabledIndices[nextPosition] ?? 0);
+  };
+  const activateSelection = () => {
+    const command = visibleCommands[activeIndex];
+    if (!command || command.disabled) return;
+    command.run();
+    onClose();
+  };
 
   if (!open) return null;
   return (
@@ -203,6 +268,7 @@ export function CommandPalette({
       }}
     >
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="command-title"
@@ -215,8 +281,31 @@ export function CommandPalette({
             <input
               ref={inputRef}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Run, compare, inspect, inject…"
+              role="combobox"
+              aria-controls="systemforge-command-list"
+              aria-expanded="true"
+              aria-activedescendant={
+                visibleCommands[activeIndex]
+                  ? `systemforge-command-${visibleCommands[activeIndex].id}`
+                  : undefined
+              }
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActiveIndex(0);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  moveSelection(1);
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  moveSelection(-1);
+                } else if (event.key === "Enter") {
+                  event.preventDefault();
+                  activateSelection();
+                }
+              }}
+              placeholder="Search commands"
             />
           </label>
           <button
@@ -227,13 +316,19 @@ export function CommandPalette({
             <X size={17} />
           </button>
         </header>
-        <div>
+        <div id="systemforge-command-list" role="listbox">
           {visibleCommands.map(
-            ({ id, label, detail, icon: Icon, disabled, run }) => (
+            ({ id, label, detail, icon: Icon, disabled, run }, index) => (
               <button
+                id={`systemforge-command-${id}`}
                 type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={index === activeIndex}
                 disabled={disabled}
                 key={id}
+                className={index === activeIndex ? "active" : ""}
+                onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => {
                   run();
                   onClose();
@@ -252,9 +347,9 @@ export function CommandPalette({
           ) : null}
         </div>
         <footer>
-          <span>Enter to activate</span>
+          <span>Arrow keys to choose · Enter to activate</span>
           <span>Esc to close</span>
-          <span>Ctrl Shift P to reopen</span>
+          <span>{modifierLabel} to reopen</span>
         </footer>
       </section>
     </div>

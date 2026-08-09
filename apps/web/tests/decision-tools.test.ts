@@ -50,7 +50,7 @@ describe("decision workbench tools", () => {
     );
   });
 
-  it("exports a privacy-safe evidence report", () => {
+  it("exports a privacy-safe run report", () => {
     const scenario = structuredClone(DEFAULT_SCENARIO);
     scenario.mode = "interview";
     scenario.interview = {
@@ -77,7 +77,7 @@ describe("decision workbench tools", () => {
       format: "markdown",
     });
 
-    expect(markdown).toContain("SystemForge evidence report");
+    expect(markdown).toContain("SystemForge run report");
     expect(markdown).not.toContain("SECRET-RUBRIC");
     expect(markdown).not.toContain("Private rubric");
   });

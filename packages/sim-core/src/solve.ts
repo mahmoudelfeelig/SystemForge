@@ -1,9 +1,10 @@
-import type {
-  Architecture,
-  ArchitectureNode,
-  RequirementResult,
-  Scenario,
-  SimulationResult,
+import {
+  estimateSimulationExecutionWorkUnits,
+  type Architecture,
+  type ArchitectureNode,
+  type RequirementResult,
+  type Scenario,
+  type SimulationResult,
 } from "@systemforge/contracts";
 import { ENGINE_VERSION, simulate } from "./simulate";
 
@@ -64,8 +65,11 @@ export interface SolverMetricDeltas {
   resilienceFitness: number;
   p95LatencyMs: number;
   availability: number;
+  errorRate: number;
   monthlyCostEur: number;
   dataLoss: number;
+  durabilityPercent: number;
+  recoveryTimeSeconds: number;
   operationalComplexity: number;
 }
 
@@ -343,7 +347,7 @@ const mutationCatalog = (
           strategy: "elastic-scale",
           nodeIds: [node.id],
           title: `Add elastic headroom to ${node.name}`,
-          detail: `Enable measured-utilization scaling up to ${nextMaximum} instances with explicit startup and cooldown behavior.`,
+          detail: `Enable modeled-utilization scaling up to ${nextMaximum} instances with explicit startup and cooldown behavior.`,
         },
         apply: (candidate) =>
           updateNode(candidate, node.id, (target) => {
@@ -417,15 +421,8 @@ const mutationCatalog = (
   }
 
   if (permits("durable-replication")) {
-    const stateKinds = new Set<ArchitectureNode["kind"]>([
-      "cache",
-      "database",
-      "queue",
-      "stream",
-      "object-store",
-    ]);
     for (const node of nodes) {
-      if (!stateKinds.has(node.kind) || !canChange(node.id)) continue;
+      if (node.kind !== "database" || !canChange(node.id)) continue;
       const storage = node.config.behavior?.storage;
       const topology = node.config.behavior?.topology;
       const alreadyDurable =
@@ -437,9 +434,9 @@ const mutationCatalog = (
         change: {
           strategy: "durable-replication",
           nodeIds: [node.id],
-          title: `Make ${node.name} quorum durable`,
+          title: `Add replicated failover to ${node.name}`,
           detail:
-            "Use at least two replicas, quorum replication, bounded failover, and multi-zone placement; this trades recurring cost and coordination for recovery and acknowledged-write safety.",
+            "Add durable copies, bounded failover, and multi-zone placement to reduce the modeled database-loss window. Quorum mode also adds coordination latency and capacity cost.",
         },
         apply: (candidate) =>
           updateNode(candidate, node.id, (target) => {
@@ -860,8 +857,16 @@ const deltasFrom = (
   ),
   p95LatencyMs: rounded(candidate.p95LatencyMs - baseline.p95LatencyMs),
   availability: rounded(candidate.availability - baseline.availability, 6),
+  errorRate: rounded(candidate.errorRate - baseline.errorRate, 6),
   monthlyCostEur: rounded(candidate.monthlyCostEur - baseline.monthlyCostEur),
   dataLoss: rounded(candidate.dataLoss - baseline.dataLoss),
+  durabilityPercent: rounded(
+    candidate.durabilityPercent - baseline.durabilityPercent,
+    6,
+  ),
+  recoveryTimeSeconds: rounded(
+    candidate.recoveryTimeSeconds - baseline.recoveryTimeSeconds,
+  ),
   operationalComplexity: rounded(
     candidate.operationalComplexity - baseline.operationalComplexity,
   ),
@@ -926,9 +931,7 @@ const explain = (
       `Average modeled availability falls by ${rounded(before.availability - after.availability, 5)} percentage points.`,
     );
   if (improvements.length === 0)
-    improvements.push(
-      "No measured objective improves over the current design.",
-    );
+    improvements.push("No modeled objective improves over the current design.");
   if (tradeoffs.length === 0)
     tradeoffs.push(
       "No modeled cost, complexity, latency, availability, or requirement regression was detected.",
@@ -941,8 +944,7 @@ export const estimateSolverWorkUnits = (
   architecture: Architecture,
   candidateCount: number,
 ): number =>
-  (scenario.workload.durationSeconds + 1) *
-  (architecture.nodes.length + architecture.edges.length * 0.25) *
+  estimateSimulationExecutionWorkUnits(scenario, architecture) *
   (candidateCount + 1);
 
 export function solveArchitecture(
@@ -961,13 +963,6 @@ export function solveArchitecture(
       (requirement) => requirement.visibility !== "hidden",
     );
 
-  const baseline = summarize(simulate(scenario, architecture));
-  const mutations = mutationCatalog(
-    architecture,
-    baseline.analysis.bottleneckNodeId,
-    new Set(options.allowedStrategies),
-    new Set(options.lockedNodeIds),
-  );
   const singleEvaluationWorkUnits = estimateSolverWorkUnits(
     scenario,
     architecture,
@@ -977,6 +972,15 @@ export function solveArchitecture(
     throw new Error(
       `The baseline alone requires ${rounded(singleEvaluationWorkUnits, 2)} solver work units, above the ${rounded(options.workUnitBudget, 2)} budget. Reduce duration or topology size.`,
     );
+  const baseline = summarize(
+    simulate(scenario, architecture, { includeTraces: false }),
+  );
+  const mutations = mutationCatalog(
+    architecture,
+    baseline.analysis.bottleneckNodeId,
+    new Set(options.allowedStrategies),
+    new Set(options.lockedNodeIds),
+  );
   const budgetCandidateLimit = Math.max(
     0,
     Math.floor(options.workUnitBudget / singleEvaluationWorkUnits) - 1,
@@ -989,7 +993,9 @@ export function solveArchitecture(
   );
   const selected = generation.blueprints;
   const candidates: InternalCandidate[] = selected.map((blueprint) => {
-    const evaluation = summarize(simulate(scenario, blueprint.architecture));
+    const evaluation = summarize(
+      simulate(scenario, blueprint.architecture, { includeTraces: false }),
+    );
     const violations = constraintViolations(evaluation.metrics, options);
     return {
       ...blueprint,

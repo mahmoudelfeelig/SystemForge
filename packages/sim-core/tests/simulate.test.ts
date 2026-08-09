@@ -11,7 +11,7 @@ type NonRecoveryIncident = Exclude<
 
 const incidentTargets: Record<
   NonRecoveryIncident,
-  { targetId?: string; magnitude: number }
+  { targetId?: string; magnitude: number; region?: string; zone?: string }
 > = {
   "traffic-spike": { magnitude: 4 },
   "bot-attack": { magnitude: 4 },
@@ -20,7 +20,7 @@ const incidentTargets: Record<
   "large-payload": { magnitude: 8 },
   "cache-failure": { targetId: "cache", magnitude: 1 },
   "cache-eviction-storm": { targetId: "cache", magnitude: 8 },
-  "cache-stampede": { targetId: "cache", magnitude: 4 },
+  "cache-stampede": { targetId: "cache", magnitude: 1 },
   "hot-key": { targetId: "cache", magnitude: 8 },
   "database-degradation": { targetId: "db", magnitude: 5 },
   "database-lock-contention": { targetId: "db", magnitude: 8 },
@@ -32,8 +32,8 @@ const incidentTargets: Record<
   "poison-message": { targetId: "queue", magnitude: 4 },
   "partition-imbalance": { targetId: "queue", magnitude: 20 },
   "node-failure": { targetId: "api", magnitude: 1 },
-  "zone-outage": { targetId: "api", magnitude: 1 },
-  "region-outage": { targetId: "api", magnitude: 1 },
+  "zone-outage": { targetId: "api", magnitude: 1, zone: "multi-az" },
+  "region-outage": { targetId: "api", magnitude: 1, region: "EU" },
   "network-partition": { targetId: "api", magnitude: 1 },
   "packet-loss": { targetId: "api", magnitude: 40 },
   "slow-network": { targetId: "api", magnitude: 8 },
@@ -43,7 +43,7 @@ const incidentTargets: Record<
   "memory-leak": { targetId: "api", magnitude: 100 },
   "deployment-regression": { targetId: "api", magnitude: 6 },
   "bad-autoscaling": { targetId: "api", magnitude: 1 },
-  "retry-storm": { targetId: "api", magnitude: 4 },
+  "retry-storm": { magnitude: 4 },
   "third-party-slowdown": { targetId: "third-party", magnitude: 8 },
   "third-party-outage": { targetId: "third-party", magnitude: 1 },
 };
@@ -123,6 +123,32 @@ const behavioralSignature = (result: ReturnType<typeof simulate>) =>
   }));
 
 describe("deterministic behavioral simulation", () => {
+  it("ships the checkout scenario with bounded topology traces", () => {
+    const result = simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE);
+    const withoutTraces = simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE, {
+      includeTraces: false,
+    });
+
+    expect(result.traces).toBeDefined();
+    expect(result.inputFingerprint).toMatch(/^sf-input-v2:[0-9a-f]{16}$/);
+    expect(result.traces).not.toHaveLength(0);
+    expect(result.traces!.length).toBeLessThanOrEqual(16);
+    expect(
+      result.traces!.some((trace) =>
+        trace.spans.some(
+          (span) =>
+            span.kind === "edge" &&
+            span.sourceNodeId === "users" &&
+            span.targetNodeId === "cdn",
+        ),
+      ),
+    ).toBe(true);
+    expect(withoutTraces.traces).toBeUndefined();
+    const resultWithoutTraceEvidence = structuredClone(result);
+    delete resultWithoutTraceEvidence.traces;
+    expect(resultWithoutTraceEvidence).toEqual(withoutTraces);
+  });
+
   it("gives every supported incident a measurable behavioral consequence", () => {
     expect(
       [
@@ -156,6 +182,8 @@ describe("deterministic behavioral simulation", () => {
           durationSeconds: 30,
           label: `Audit ${kind}`,
           ...(target.targetId ? { targetId: target.targetId } : {}),
+          ...(target.region ? { region: target.region } : {}),
+          ...(target.zone ? { zone: target.zone } : {}),
         },
       ];
       expect(
@@ -174,7 +202,7 @@ describe("deterministic behavioral simulation", () => {
           id: failure,
           atSecond: 5,
           kind: failure,
-          magnitude: 5,
+          magnitude: failure === "cache-failure" ? 1 : 5,
           durationSeconds: 40,
           targetId,
           label: failure,
@@ -201,6 +229,194 @@ describe("deterministic behavioral simulation", () => {
     expect(simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE)).toEqual(
       simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE),
     );
+  });
+
+  it("expires finite cache and database toggle incidents without a recovery event", () => {
+    const cacheScenario = structuredClone(DEFAULT_SCENARIO);
+    cacheScenario.workload.durationSeconds = 15;
+    cacheScenario.workload.baseRps = 1_000;
+    cacheScenario.workload.peakRps = 1_000;
+    cacheScenario.workload.arrivalPattern = "steady";
+    cacheScenario.incidents = [
+      {
+        id: "finite-cache-failure",
+        atSecond: 1,
+        kind: "cache-failure",
+        magnitude: 1,
+        durationSeconds: 2,
+        targetId: "cache",
+        label: "Finite cache failure",
+      },
+    ];
+    const cacheResult = simulate(cacheScenario, DEFAULT_ARCHITECTURE);
+    expect(cacheResult.frames[1]!.nodeMetrics.cache!.state).toBe("offline");
+    expect(cacheResult.frames[2]!.nodeMetrics.cache!.state).toBe("offline");
+    expect(cacheResult.frames[3]!.nodeMetrics.cache!.state).not.toBe("offline");
+
+    const databaseScenario = structuredClone(cacheScenario);
+    databaseScenario.incidents = [
+      {
+        id: "finite-database-degradation",
+        atSecond: 1,
+        kind: "database-degradation",
+        magnitude: 5,
+        durationSeconds: 2,
+        targetId: "db",
+        label: "Finite database degradation",
+      },
+    ];
+    const databaseResult = simulate(databaseScenario, DEFAULT_ARCHITECTURE);
+    expect(
+      databaseResult.frames[2]!.nodeMetrics.db!.cpuUtilization,
+    ).toBeGreaterThan(databaseResult.frames[3]!.nodeMetrics.db!.cpuUtilization);
+  });
+
+  it("uses finite failover timing for leader election and effective replica lag", () => {
+    const electionScenario = structuredClone(DEFAULT_SCENARIO);
+    electionScenario.workload.durationSeconds = 15;
+    electionScenario.workload.baseRps = 1_000;
+    electionScenario.workload.peakRps = 1_000;
+    electionScenario.workload.arrivalPattern = "steady";
+    electionScenario.incidents = [
+      {
+        id: "queue-election",
+        atSecond: 1,
+        durationSeconds: 5,
+        kind: "leader-election",
+        magnitude: 1,
+        targetId: "queue",
+        label: "Queue leader election",
+      },
+    ];
+    const fast = structuredClone(DEFAULT_ARCHITECTURE);
+    const fastQueue = fast.nodes.find((node) => node.id === "queue")!;
+    fastQueue.config.behavior!.storage = {
+      ...fastQueue.config.behavior?.storage,
+      failoverSeconds: 1,
+    };
+    const slow = structuredClone(fast);
+    const slowQueue = slow.nodes.find((node) => node.id === "queue")!;
+    slowQueue.config.behavior!.storage = {
+      ...slowQueue.config.behavior?.storage,
+      failoverSeconds: 100,
+    };
+
+    const fastElection = simulate(electionScenario, fast);
+    const slowElection = simulate(electionScenario, slow);
+    expect(fastElection.frames[2]!.nodeMetrics.queue!.state).not.toBe(
+      "offline",
+    );
+    expect(slowElection.frames[2]!.nodeMetrics.queue!.state).toBe("offline");
+    expect(fastElection.frames[1]!.recoveryTimeSeconds).toBe(1);
+    expect(slowElection.frames[1]!.recoveryTimeSeconds).toBe(5);
+
+    const lagScenario = structuredClone(electionScenario);
+    lagScenario.domain = {
+      ...lagScenario.domain,
+      staleReadToleranceSeconds: 0.002,
+    };
+    lagScenario.incidents = [
+      {
+        id: "lag-spike",
+        atSecond: 1,
+        durationSeconds: 3,
+        kind: "replication-lag",
+        magnitude: 100,
+        targetId: "db",
+        label: "Replica lag spike",
+      },
+    ];
+    const lagged = structuredClone(DEFAULT_ARCHITECTURE);
+    const laggedDb = lagged.nodes.find((node) => node.id === "db")!;
+    laggedDb.config.consistency = "eventual";
+    laggedDb.config.replicas = 1;
+    laggedDb.config.behavior!.storage = {
+      ...laggedDb.config.behavior?.storage,
+      replicationMode: "async",
+      replicationLagMs: 1,
+    };
+    const laggedResult = simulate(lagScenario, lagged);
+    expect(laggedResult.frames[1]!.nodeMetrics.db!.replicaLagMs).toBe(100);
+    expect(laggedResult.frames[1]!.consistencyViolations).toBeGreaterThan(0);
+
+    laggedDb.config.replicas = 0;
+    laggedDb.config.behavior!.storage = {
+      ...laggedDb.config.behavior?.storage,
+      replicationMode: "none",
+    };
+    const unreplicated = simulate(lagScenario, lagged);
+    expect(unreplicated.frames[1]!.nodeMetrics.db!.replicaLagMs).toBe(0);
+  });
+
+  it("limits state semantics in analysis to components that own state", () => {
+    const result = simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE);
+    const analysis = [
+      ...result.analysis.strengths,
+      ...result.analysis.risks,
+      ...result.analysis.tradeoffs,
+    ].join("\n");
+
+    for (const statelessName of [
+      "Users",
+      "CDN",
+      "Load Balancer",
+      "API Gateway",
+      "Worker Pool",
+    ]) {
+      expect(analysis).not.toContain(`${statelessName} favors consistency`);
+      expect(analysis).not.toContain(`${statelessName} lowers coordination`);
+      expect(analysis).not.toContain(`${statelessName} buys failure tolerance`);
+      expect(analysis).not.toContain(
+        `${statelessName} remains a single failure domain`,
+      );
+    }
+
+    expect(analysis).toContain(
+      "PostgreSQL Primary avoids modeled stale-read violations",
+    );
+    expect(analysis).not.toContain("Redis Cluster avoids modeled stale-read");
+    expect(analysis).toContain("Kafka Orders adds modeled failure tolerance");
+    expect(analysis).not.toContain("Kafka Orders may violate the stale-read");
+  });
+
+  it("keeps replica lag local to applicable state-owning components", () => {
+    const result = simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE);
+    const frame = result.frames[0]!;
+
+    expect(frame.nodeMetrics.db!.replicaLagMs).toBeGreaterThan(0);
+    expect(frame.nodeMetrics.queue!.replicaLagMs).toBe(0);
+    expect(frame.nodeMetrics.worker!.replicaLagMs).toBe(0);
+    expect(frame.replicaLagMs).toBe(frame.nodeMetrics.db!.replicaLagMs);
+  });
+
+  it("treats legacy replicas on stateless services as inert", () => {
+    const scenario = structuredClone(DEFAULT_SCENARIO);
+    scenario.workload.durationSeconds = 15;
+    scenario.incidents = [
+      {
+        id: "api-node-failure",
+        atSecond: 1,
+        durationSeconds: 10,
+        kind: "node-failure",
+        magnitude: 1,
+        targetId: "api",
+        label: "API node failure",
+      },
+    ];
+    const withoutReplicas = structuredClone(DEFAULT_ARCHITECTURE);
+    withoutReplicas.nodes.find((node) => node.id === "api")!.config.replicas =
+      0;
+    const withLegacyReplicas = structuredClone(withoutReplicas);
+    withLegacyReplicas.nodes.find(
+      (node) => node.id === "api",
+    )!.config.replicas = 5;
+
+    const legacyResult = simulate(scenario, withLegacyReplicas);
+    const baselineResult = simulate(scenario, withoutReplicas);
+    expect({ ...legacyResult, inputFingerprint: undefined }).toEqual({
+      ...baselineResult,
+      inputFingerprint: undefined,
+    });
   });
 
   it("derives a causal cache, database and retry chain instead of scripting the outcome", () => {
@@ -609,6 +825,7 @@ describe("deterministic behavioral simulation", () => {
         kind: "zone-outage",
         magnitude: 1,
         durationSeconds: 20,
+        zone: "multi-az",
         label: "Availability zone unavailable",
       },
     ];
@@ -627,8 +844,10 @@ describe("deterministic behavioral simulation", () => {
       failoverSeconds: 300,
     };
 
+    const singleZoneScenario = structuredClone(scenario);
+    singleZoneScenario.incidents[0]!.zone = "eu-1a";
     const resilientResult = simulate(scenario, resilient);
-    const singleZoneResult = simulate(scenario, singleZone);
+    const singleZoneResult = simulate(singleZoneScenario, singleZone);
 
     expect(
       singleZoneResult.frames.reduce(
@@ -647,7 +866,9 @@ describe("deterministic behavioral simulation", () => {
       ),
     ).toBe(true);
     expect(
-      singleZoneResult.analysis.risks.some((risk) => risk.includes("300s")),
+      singleZoneResult.analysis.strengths.some((strength) =>
+        strength.includes("within the 60s domain limit"),
+      ),
     ).toBe(true);
   });
 });

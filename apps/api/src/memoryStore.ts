@@ -5,9 +5,12 @@ import type {
   Scenario,
 } from "@systemforge/contracts";
 import {
+  AiUsageBudgetExceededError,
   QueueCapacityError,
   SharedScenarioCapacityError,
   type ControlStore,
+  type AiUsageBudgetState,
+  type AiUsageReservation,
   type InterviewCollaborationPatch,
   type RunRecord,
   type SharedScenarioRecord,
@@ -16,6 +19,7 @@ import {
 
 export class MemoryControlStore implements ControlStore {
   readonly runs = new Map<string, RunRecord>();
+  readonly runSubmissions = new Map<string, RunSubmission>();
   readonly scenarios = new Map<string, SharedScenarioRecord>();
   readonly scenarioState = new Map<
     string,
@@ -30,13 +34,69 @@ export class MemoryControlStore implements ControlStore {
     }
   >();
   available = true;
+  readonly aiUsageReservations: Array<{
+    createdAt: Date;
+    reservedCostCents: number;
+  }> = [];
 
   ready(): Promise<boolean> {
     return Promise.resolve(this.available);
   }
 
+  async reserveAiUsage(
+    reservation: AiUsageReservation,
+  ): Promise<AiUsageBudgetState> {
+    await Promise.resolve();
+    const now = new Date();
+    const dayStart = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const dailyRequests = this.aiUsageReservations.filter(
+      (entry) => entry.createdAt.getTime() >= dayStart,
+    ).length;
+    const monthlyReservedCostCents = this.aiUsageReservations
+      .filter((entry) => entry.createdAt.getTime() >= monthStart)
+      .reduce((total, entry) => total + entry.reservedCostCents, 0);
+    if (
+      dailyRequests >= reservation.maximumDailyRequests ||
+      monthlyReservedCostCents + reservation.reservedCostCents >
+        reservation.maximumMonthlyCostCents
+    ) {
+      const nextDay = dayStart + 86_400_000;
+      const nextMonth = Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth() + 1,
+        1,
+      );
+      throw new AiUsageBudgetExceededError(
+        Math.max(
+          1,
+          Math.ceil(
+            ((dailyRequests >= reservation.maximumDailyRequests
+              ? nextDay
+              : nextMonth) -
+              now.getTime()) /
+              1_000,
+          ),
+        ),
+      );
+    }
+    this.aiUsageReservations.push({
+      createdAt: now,
+      reservedCostCents: reservation.reservedCostCents,
+    });
+    return {
+      dailyRequests: dailyRequests + 1,
+      monthlyReservedCostCents:
+        monthlyReservedCostCents + reservation.reservedCostCents,
+    };
+  }
+
   queueRun(
-    _submission: RunSubmission,
+    submission: RunSubmission,
     maximumQueued: number,
     maximumStored: number,
   ): Promise<RunRecord> {
@@ -49,7 +109,10 @@ export class MemoryControlStore implements ControlStore {
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
     while (this.runs.size >= maximumStored && terminal.length > 0) {
       const oldest = terminal.shift();
-      if (oldest) this.runs.delete(oldest.id);
+      if (oldest) {
+        this.runs.delete(oldest.id);
+        this.runSubmissions.delete(oldest.id);
+      }
     }
     if (this.runs.size >= maximumStored) throw new QueueCapacityError();
     const run: RunRecord = {
@@ -58,11 +121,17 @@ export class MemoryControlStore implements ControlStore {
       createdAt: new Date().toISOString(),
     };
     this.runs.set(run.id, run);
+    this.runSubmissions.set(run.id, structuredClone(submission));
     return Promise.resolve(run);
   }
 
   getRun(id: string): Promise<RunRecord | null> {
     return Promise.resolve(this.runs.get(id) ?? null);
+  }
+
+  getRunSubmission(id: string): Promise<RunSubmission | null> {
+    const submission = this.runSubmissions.get(id);
+    return Promise.resolve(submission ? structuredClone(submission) : null);
   }
 
   shareScenario(

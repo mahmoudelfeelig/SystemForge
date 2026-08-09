@@ -19,20 +19,34 @@ import {
   Warning,
   X,
 } from "@phosphor-icons/react";
+import { componentOwnsState } from "@systemforge/contracts";
 import {
   SOLVER_STRATEGIES,
-  analyzeRobustness,
   type RobustnessResult,
   type SolverCandidate,
   type SolverStrategy,
 } from "@systemforge/sim-core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { downloadEvidenceReport } from "../lib/evidenceReport";
+import {
+  downloadCompletedRunManifest,
+  downloadEvidenceReport,
+} from "../lib/evidenceReport";
+import {
+  completedRunReplayExportAvailability,
+  downloadCompletedRunReplayBundle,
+} from "../lib/replayBundle";
 import {
   applyProviderSku,
   parseProviderCatalog,
   type ProviderCatalog,
 } from "../lib/providerCatalog";
+import {
+  RobustnessAnalysisCancelledError,
+  startRobustnessAnalysis,
+  type RobustnessAnalysisIdentity,
+  type RobustnessAnalysisProgress,
+  type RobustnessAnalysisSession,
+} from "../lib/robustnessAnalysis";
 import { SCENARIO_LIBRARY } from "../lib/scenarioLibrary";
 import {
   applyTrafficProfile,
@@ -43,9 +57,17 @@ import {
   proposeTopologyChanges,
 } from "../lib/topologySynthesis";
 import { useLabStore } from "../store/useLabStore";
+import { InterviewAiFacilitator, RunAiDebriefPanel } from "./AiAssistantPanels";
+import { RunHistoryPanel } from "./RunHistoryPanel";
 
 type DecisionTab =
-  "solve" | "history" | "missions" | "calibrate" | "session" | "report";
+  | "solve"
+  | "runs"
+  | "history"
+  | "missions"
+  | "calibrate"
+  | "session"
+  | "report";
 
 interface DecisionWorkbenchProps {
   open: boolean;
@@ -58,11 +80,12 @@ const tabs: Array<{
   icon: typeof Scales;
 }> = [
   { id: "solve", label: "Compare", icon: Scales },
+  { id: "runs", label: "Runs", icon: Timer },
   { id: "history", label: "Versions", icon: GitBranch },
-  { id: "missions", label: "Missions", icon: Books },
-  { id: "calibrate", label: "Calibrate", icon: Flask },
+  { id: "missions", label: "Scenarios", icon: Books },
+  { id: "calibrate", label: "Imports", icon: Flask },
   { id: "session", label: "Session", icon: UsersThree },
-  { id: "report", label: "Evidence", icon: FileText },
+  { id: "report", label: "Report", icon: FileText },
 ];
 
 const strategyLabels: Record<SolverStrategy, string> = {
@@ -82,6 +105,8 @@ const metricDeltaClass = (value: number, lowerIsBetter = false) => {
   if (Math.abs(value) < 0.000_001) return "neutral";
   return (lowerIsBetter ? value < 0 : value > 0) ? "positive" : "negative";
 };
+
+let robustnessRequestSequence = 0;
 
 function CandidateRow({
   candidate,
@@ -107,22 +132,28 @@ function CandidateRow({
           {candidate.changes.map((change) => change.title).join(" + ")}
         </small>
       </span>
-      <span>
+      <span data-label="Objectives">
         {candidate.evaluation.metrics.requirementsPassed}/
         {candidate.evaluation.metrics.requirementsTotal}
       </span>
-      <span className={metricDeltaClass(candidate.deltas.p95LatencyMs, true)}>
+      <span
+        data-label="p95 change"
+        className={metricDeltaClass(candidate.deltas.p95LatencyMs, true)}
+      >
         {candidate.deltas.p95LatencyMs > 0 ? "+" : ""}
         {formatMetric(candidate.deltas.p95LatencyMs, " ms")}
       </span>
-      <span className={metricDeltaClass(candidate.deltas.monthlyCostEur, true)}>
+      <span
+        data-label="Cost change"
+        className={metricDeltaClass(candidate.deltas.monthlyCostEur, true)}
+      >
         {candidate.deltas.monthlyCostEur > 0 ? "+" : ""}
         {formatMetric(candidate.deltas.monthlyCostEur, " EUR")}
       </span>
-      <span className="candidate-flags">
-        {recommended ? <b>Recommended</b> : null}
+      <span className="candidate-flags" data-label="State">
+        {recommended ? <b>Top-ranked</b> : null}
         {candidate.paretoOptimal ? <i>Pareto</i> : null}
-        {!candidate.eligible ? <em>Blocked</em> : null}
+        {!candidate.eligible ? <em>Ineligible</em> : null}
       </span>
     </button>
   );
@@ -131,10 +162,20 @@ function CandidateRow({
 export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   const scenario = useLabStore((state) => state.scenario);
   const architecture = useLabStore((state) => state.architecture);
+  const scenarioRevision = useLabStore((state) => state.scenarioRevision);
+  const architectureRevision = useLabStore(
+    (state) => state.architectureRevision,
+  );
   const result = useLabStore((state) => state.result);
+  const runState = useLabStore((state) => state.runState);
+  const completedRunArtifact = useLabStore(
+    (state) => state.completedRunArtifact,
+  );
+  const completedRunFork = useLabStore((state) => state.completedRunFork);
   const solverResult = useLabStore((state) => state.solverResult);
   const solverState = useLabStore((state) => state.solverState);
   const solverExecution = useLabStore((state) => state.solverExecution);
+  const notice = useLabStore((state) => state.notice);
   const role = useLabStore((state) => state.role);
   const sharedScenarioId = useLabStore((state) => state.sharedScenarioId);
   const collaboration = useLabStore((state) => state.collaboration);
@@ -143,6 +184,8 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   const redoCount = useLabStore((state) => state.architectureRedo.length);
   const setScenario = useLabStore((state) => state.setScenario);
   const setArchitecture = useLabStore((state) => state.setArchitecture);
+  const replayCompletedRun = useLabStore((state) => state.replayCompletedRun);
+  const forkCompletedRun = useLabStore((state) => state.forkCompletedRun);
   const solveAlternatives = useLabStore((state) => state.solveAlternatives);
   const undoArchitecture = useLabStore((state) => state.undoArchitecture);
   const redoArchitecture = useLabStore((state) => state.redoArchitecture);
@@ -158,7 +201,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   );
   const dialogRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<DecisionTab>("solve");
-  const [maxCandidates, setMaxCandidates] = useState(16);
+  const [maxCandidates, setMaxCandidates] = useState(12);
   const [maxChanges, setMaxChanges] = useState<1 | 2>(2);
   const [allowedStrategies, setAllowedStrategies] = useState<SolverStrategy[]>([
     ...SOLVER_STRATEGIES,
@@ -175,6 +218,9 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   const [catalogText, setCatalogText] = useState("");
   const [catalog, setCatalog] = useState<ProviderCatalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [replayExportError, setReplayExportError] = useState<string | null>(
+    null,
+  );
   const [catalogNodeId, setCatalogNodeId] = useState(
     architecture.nodes[0]?.id ?? "",
   );
@@ -182,6 +228,21 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   const [robustness, setRobustness] = useState<RobustnessResult | null>(null);
   const [robustnessError, setRobustnessError] = useState<string | null>(null);
   const [robustnessRunning, setRobustnessRunning] = useState(false);
+  const [robustnessProgress, setRobustnessProgress] =
+    useState<RobustnessAnalysisProgress | null>(null);
+  const robustnessSessionRef = useRef<RobustnessAnalysisSession | null>(null);
+  const robustnessInputRef = useRef({
+    scenarioRevision,
+    architectureRevision,
+    scenarioId: scenario.id,
+    architectureId: architecture.id,
+  });
+  robustnessInputRef.current = {
+    scenarioRevision,
+    architectureRevision,
+    scenarioId: scenario.id,
+    architectureId: architecture.id,
+  };
   const [candidateNotes, setCandidateNotes] = useState(
     collaboration.candidateNotes,
   );
@@ -191,6 +252,8 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   const [candidateCursor, setCandidateCursor] = useState(
     collaboration.candidateCursor,
   );
+  const [interviewAssistantQuestions, setInterviewAssistantQuestions] =
+    useState<string[]>([]);
   const [clockNow, setClockNow] = useState(Date.now());
 
   useEffect(() => {
@@ -240,6 +303,43 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   }, [scenario.mode, tab]);
 
   useEffect(() => {
+    const knownNodeIds = new Set(architecture.nodes.map((node) => node.id));
+    setLockedNodeIds((current) => current.filter((id) => knownNodeIds.has(id)));
+  }, [architecture.nodes]);
+
+  useEffect(() => {
+    const session = robustnessSessionRef.current;
+    robustnessSessionRef.current = null;
+    session?.cancel();
+    setRobustness(null);
+    setRobustnessError(null);
+    setRobustnessRunning(false);
+    setRobustnessProgress(null);
+  }, [architectureRevision, scenarioRevision]);
+
+  useEffect(() => {
+    setInterviewAssistantQuestions([]);
+  }, [architectureRevision, role, scenarioRevision]);
+
+  useEffect(() => {
+    if (open) return;
+    const session = robustnessSessionRef.current;
+    robustnessSessionRef.current = null;
+    session?.cancel();
+    setRobustnessRunning(false);
+    setRobustnessProgress(null);
+  }, [open]);
+
+  useEffect(
+    () => () => {
+      const session = robustnessSessionRef.current;
+      robustnessSessionRef.current = null;
+      session?.cancel();
+    },
+    [],
+  );
+
+  useEffect(() => {
     if (!collaboration.startedAt) return;
     const timer = window.setInterval(() => setClockNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
@@ -261,6 +361,22 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
     () => proposeTopologyChanges(scenario, architecture),
     [architecture, scenario],
   );
+  const baselineMonthlyCost = architecture.nodes.reduce(
+    (total, node) =>
+      total +
+      node.config.monthlyCostEur *
+        (componentOwnsState(node.kind)
+          ? Math.max(node.config.instances, node.config.replicas + 1)
+          : node.config.instances),
+    0,
+  );
+  const replayExportAvailability = completedRunArtifact
+    ? completedRunReplayExportAvailability(completedRunArtifact)
+    : {
+        allowed: false,
+        reason:
+          "Complete a local modeled run before exporting a replay bundle.",
+      };
 
   if (!open) return null;
 
@@ -285,27 +401,89 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
     setSelectedCandidateId(null);
   };
 
-  const runRobustness = () => {
+  const identityIsCurrent = (identity: RobustnessAnalysisIdentity) => {
+    const current = robustnessInputRef.current;
+    return (
+      identity.scenarioRevision === current.scenarioRevision &&
+      identity.architectureRevision === current.architectureRevision &&
+      identity.scenarioId === current.scenarioId &&
+      identity.architectureId === current.architectureId
+    );
+  };
+
+  const runRobustness = async () => {
+    const previous = robustnessSessionRef.current;
+    robustnessSessionRef.current = null;
+    previous?.cancel();
+
+    const identity: RobustnessAnalysisIdentity = {
+      requestId: `robustness-${scenarioRevision}-${architectureRevision}-${++robustnessRequestSequence}`,
+      scenarioRevision,
+      architectureRevision,
+      scenarioId: scenario.id,
+      architectureId: architecture.id,
+    };
     setRobustnessRunning(true);
+    setRobustness(null);
     setRobustnessError(null);
-    window.setTimeout(() => {
-      try {
-        setRobustness(
-          analyzeRobustness(scenario, architecture, {
-            seedCount: 9,
-            seedStride: 7_919,
-          }),
-        );
-      } catch (error) {
-        setRobustnessError(
-          error instanceof Error
+    setRobustnessProgress({ completedSeeds: 0, totalSeeds: 9, progress: 0 });
+
+    const session = startRobustnessAnalysis(scenario, architecture, {
+      identity,
+      seedCount: 9,
+      seedStride: 7_919,
+      onProgress: (progress) => {
+        if (
+          robustnessSessionRef.current?.identity.requestId ===
+            identity.requestId &&
+          identityIsCurrent(identity)
+        )
+          setRobustnessProgress(progress);
+      },
+    });
+    robustnessSessionRef.current = session;
+
+    try {
+      const nextRobustness = await session.result;
+      if (
+        robustnessSessionRef.current !== session ||
+        !identityIsCurrent(identity)
+      )
+        return;
+      setRobustness(nextRobustness);
+    } catch (error) {
+      if (
+        robustnessSessionRef.current !== session ||
+        !identityIsCurrent(identity)
+      )
+        return;
+      setRobustnessError(
+        error instanceof RobustnessAnalysisCancelledError
+          ? "Analysis cancelled. No robustness result was produced."
+          : error instanceof Error
             ? error.message
-            : "Robustness analysis failed.",
-        );
-      } finally {
+            : "Robustness analysis failed without a result.",
+      );
+    } finally {
+      if (robustnessSessionRef.current === session) {
+        robustnessSessionRef.current = null;
         setRobustnessRunning(false);
+        setRobustnessProgress(null);
       }
-    }, 0);
+    }
+  };
+
+  const cancelRobustness = () => {
+    const session = robustnessSessionRef.current;
+    if (!session) return;
+    robustnessSessionRef.current = null;
+    session.cancel();
+    setRobustness(null);
+    setRobustnessRunning(false);
+    setRobustnessProgress(null);
+    setRobustnessError(
+      "Analysis cancelled. No robustness result was produced.",
+    );
   };
 
   const importProfile = () => {
@@ -364,6 +542,28 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
       )
     : 0;
   const elapsedLabel = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
+  const visibleTabs = tabs.filter(
+    ({ id }) => id !== "session" || scenario.mode === "interview",
+  );
+  const moveTabFocus = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentId: DecisionTab,
+  ) => {
+    const currentIndex = visibleTabs.findIndex(({ id }) => id === currentId);
+    let nextIndex: number;
+    if (event.key === "ArrowRight")
+      nextIndex = (currentIndex + 1) % visibleTabs.length;
+    else if (event.key === "ArrowLeft")
+      nextIndex = (currentIndex - 1 + visibleTabs.length) % visibleTabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = visibleTabs.length - 1;
+    else return;
+    event.preventDefault();
+    const nextTab = visibleTabs[nextIndex]?.id;
+    if (!nextTab) return;
+    setTab(nextTab);
+    document.getElementById(`decision-tab-${nextTab}`)?.focus();
+  };
 
   return (
     <div
@@ -383,9 +583,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
         <header className="decision-header">
           <div>
             <span className="panel-index">DECISION WORKBENCH</span>
-            <h2 id="decision-workbench-title">
-              Architecture evidence and alternatives
-            </h2>
+            <h2 id="decision-workbench-title">Compare designs</h2>
           </div>
           <dl aria-label="Current decision state">
             <div>
@@ -397,7 +595,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
               <dd>{architecture.name}</dd>
             </div>
             <div>
-              <dt>Trace</dt>
+              <dt>Run score</dt>
               <dd>
                 {result
                   ? `${result.score.passed}/${result.score.total}`
@@ -420,42 +618,47 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
           role="tablist"
           aria-label="Decision tools"
         >
-          {tabs
-            .filter(
-              ({ id }) => id !== "session" || scenario.mode === "interview",
-            )
-            .map(({ id, label, icon: Icon }) => (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                className={tab === id ? "active" : ""}
-                key={id}
-                onClick={() => setTab(id)}
-              >
-                <Icon size={15} /> {label}
-              </button>
-            ))}
+          {visibleTabs.map(({ id, label, icon: Icon }) => (
+            <button
+              id={`decision-tab-${id}`}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              aria-controls={`decision-panel-${id}`}
+              tabIndex={tab === id ? 0 : -1}
+              className={tab === id ? "active" : ""}
+              key={id}
+              onClick={() => setTab(id)}
+              onKeyDown={(event) => moveTabFocus(event, id)}
+            >
+              <Icon size={15} /> {label}
+            </button>
+          ))}
         </nav>
 
         <div className="decision-body">
           {tab === "solve" ? (
-            <div className="decision-solve" role="tabpanel">
+            <div
+              id="decision-panel-solve"
+              className="decision-solve"
+              role="tabpanel"
+              aria-labelledby="decision-tab-solve"
+            >
               <aside className="solver-controls">
                 <header>
-                  <span>Search contract</span>
-                  <strong>Bound the decision space</strong>
+                  <span>Search limits</span>
+                  <strong>Run bounded search</strong>
                 </header>
                 <label>
                   Candidate budget
                   <input
                     type="number"
                     min="1"
-                    max="64"
+                    max="12"
                     value={maxCandidates}
                     onChange={(event) =>
                       setMaxCandidates(
-                        Math.max(1, Math.min(64, Number(event.target.value))),
+                        Math.max(1, Math.min(12, Number(event.target.value))),
                       )
                     }
                   />
@@ -555,11 +758,11 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
               >
                 <header>
                   <div>
-                    <span>Candidate frontier</span>
+                    <span>Candidate results</span>
                     <strong>
                       {solverResult
                         ? `${solverResult.exploredCandidates} explored · ${solverResult.paretoFrontierIds.length} Pareto`
-                        : "Run a bounded comparison"}
+                        : "The current design is not modified"}
                     </strong>
                   </div>
                   {solverExecution ? (
@@ -574,6 +777,12 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                   <span>Cost Δ</span>
                   <span>State</span>
                 </div>
+                {solverState === "error" ? (
+                  <p className="decision-error" role="alert">
+                    <Warning size={14} />
+                    {notice ?? "The candidate comparison could not complete."}
+                  </p>
+                ) : null}
                 {solverResult ? (
                   <div className="candidate-list">
                     {solverResult.candidates.map((candidate) => (
@@ -588,13 +797,12 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                     ))}
                     {solverResult.candidates.length === 0 ? (
                       <div className="candidate-empty">
-                        <CheckCircle size={22} />
-                        <strong>
-                          The baseline dominates the bounded search.
-                        </strong>
+                        <Scales size={22} />
+                        <strong>No candidate was returned</strong>
                         <p>
-                          No candidate improved the weighted objectives within
-                          the selected constraints.
+                          The bounded search may have had no eligible mutation,
+                          exhausted its budget, or found no qualifying result.
+                          This does not prove the baseline is optimal.
                         </p>
                       </div>
                     ) : null}
@@ -602,12 +810,29 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                 ) : (
                   <div className="candidate-empty">
                     <Scales size={24} />
-                    <strong>Baseline awaiting comparison</strong>
+                    <strong>Current design</strong>
                     <p>
-                      SystemForge will show explicit changes, objective deltas,
-                      constraints and trade-offs. It does not claim a global
-                      optimum.
+                      Run the search to compare explicit changes. It does not
+                      claim a global optimum.
                     </p>
+                    <dl className="baseline-summary">
+                      <div>
+                        <dt>Components</dt>
+                        <dd>{architecture.nodes.length}</dd>
+                      </div>
+                      <div>
+                        <dt>Links</dt>
+                        <dd>{architecture.edges.length}</dd>
+                      </div>
+                      <div>
+                        <dt>Objectives</dt>
+                        <dd>{scenario.requirements.length}</dd>
+                      </div>
+                      <div>
+                        <dt>Configured cost</dt>
+                        <dd>{formatMetric(baselineMonthlyCost, " EUR/mo")}</dd>
+                      </div>
+                    </dl>
                   </div>
                 )}
               </section>
@@ -653,6 +878,69 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                         </dd>
                       </div>
                       <div>
+                        <dt>Peak error</dt>
+                        <dd>
+                          {formatMetric(
+                            selectedCandidate.evaluation.metrics.errorRate,
+                            "%",
+                          )}{" "}
+                          (Δ {selectedCandidate.deltas.errorRate > 0 ? "+" : ""}
+                          {formatMetric(
+                            selectedCandidate.deltas.errorRate,
+                            "%",
+                          )}
+                          )
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Durability</dt>
+                        <dd>
+                          {formatMetric(
+                            selectedCandidate.evaluation.metrics
+                              .durabilityPercent,
+                            "%",
+                          )}{" "}
+                          (Δ{" "}
+                          {selectedCandidate.deltas.durabilityPercent > 0
+                            ? "+"
+                            : ""}
+                          {formatMetric(
+                            selectedCandidate.deltas.durabilityPercent,
+                            "%",
+                          )}
+                          )
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Modeled data loss</dt>
+                        <dd>
+                          {formatMetric(
+                            selectedCandidate.evaluation.metrics.dataLoss,
+                          )}{" "}
+                          (Δ {selectedCandidate.deltas.dataLoss > 0 ? "+" : ""}
+                          {formatMetric(selectedCandidate.deltas.dataLoss)})
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Recovery</dt>
+                        <dd>
+                          {formatMetric(
+                            selectedCandidate.evaluation.metrics
+                              .recoveryTimeSeconds,
+                            " s",
+                          )}{" "}
+                          (Δ{" "}
+                          {selectedCandidate.deltas.recoveryTimeSeconds > 0
+                            ? "+"
+                            : ""}
+                          {formatMetric(
+                            selectedCandidate.deltas.recoveryTimeSeconds,
+                            " s",
+                          )}
+                          )
+                        </dd>
+                      </div>
+                      <div>
                         <dt>Monthly cost</dt>
                         <dd>
                           {formatMetric(
@@ -661,7 +949,65 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                           )}
                         </dd>
                       </div>
+                      <div>
+                        <dt>Complexity</dt>
+                        <dd>
+                          {formatMetric(
+                            selectedCandidate.evaluation.metrics
+                              .operationalComplexity,
+                          )}{" "}
+                          (Δ{" "}
+                          {selectedCandidate.deltas.operationalComplexity > 0
+                            ? "+"
+                            : ""}
+                          {formatMetric(
+                            selectedCandidate.deltas.operationalComplexity,
+                          )}
+                          )
+                        </dd>
+                      </div>
                     </dl>
+                    {solverResult ? (
+                      <section>
+                        <h3>Ranking inputs</h3>
+                        <p>
+                          Requirements{" "}
+                          {Math.round(
+                            solverResult.options.weights.requirements * 100,
+                          )}
+                          %{" · "}resilience{" "}
+                          {Math.round(
+                            solverResult.options.weights.resilience * 100,
+                          )}
+                          %{" · "}latency{" "}
+                          {Math.round(
+                            solverResult.options.weights.latency * 100,
+                          )}
+                          %{" · "}cost{" "}
+                          {Math.round(solverResult.options.weights.cost * 100)}%
+                          {" · "}complexity{" "}
+                          {Math.round(
+                            solverResult.options.weights.complexity * 100,
+                          )}
+                          %.
+                        </p>
+                        <p>
+                          Hard limits:{" "}
+                          {solverResult.options.maximumMonthlyCostEur ===
+                          undefined
+                            ? "no cost ceiling"
+                            : `${formatMetric(solverResult.options.maximumMonthlyCostEur, " EUR/mo")}`}
+                          {" · "}
+                          {solverResult.options.maximumOperationalComplexity ===
+                          undefined
+                            ? "no complexity ceiling"
+                            : `complexity ${formatMetric(solverResult.options.maximumOperationalComplexity)}`}
+                          {" · "}
+                          {solverResult.options.lockedNodeIds.length} locked
+                          nodes.
+                        </p>
+                      </section>
+                    ) : null}
                     <section>
                       <h3>Explicit changes</h3>
                       {selectedCandidate.changes.map((change) => (
@@ -707,27 +1053,35 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                       disabled={!selectedCandidate.eligible}
                       onClick={applyCandidate}
                     >
-                      <Sparkle size={16} /> Apply as a reversible version
+                      <Sparkle size={16} /> Apply candidate
                     </button>
                   </>
                 ) : (
                   <div className="candidate-empty candidate-empty--side">
                     <GitBranch size={22} />
-                    <strong>Select a candidate</strong>
+                    <strong>{architecture.name}</strong>
                     <p>
-                      The baseline remains untouched until you apply an eligible
-                      alternative.
+                      {architecture.nodes.length} components and{" "}
+                      {architecture.edges.length} links are eligible for a
+                      bounded comparison. The baseline stays unchanged until you
+                      apply an eligible candidate.
                     </p>
+                    <dl className="baseline-summary baseline-summary--stacked">
+                      {architecture.nodes.slice(0, 5).map((node) => (
+                        <div key={node.id}>
+                          <dt>{node.kind}</dt>
+                          <dd>{node.name}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   </div>
                 )}
               </aside>
 
               <section className="robustness-strip">
                 <div>
-                  <span>Multi-seed confidence</span>
-                  <strong>
-                    Test whether this result survives controlled RNG variance
-                  </strong>
+                  <span>Seed sensitivity</span>
+                  <strong>Run the same design across nine seeds</strong>
                 </div>
                 {robustness ? (
                   <dl>
@@ -763,33 +1117,45 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                     </div>
                   </dl>
                 ) : (
-                  <p>
-                    {robustnessError ??
-                      "Nine bounded deterministic seeds; results remain modeled rather than production-calibrated."}
+                  <p aria-live="polite">
+                    {robustnessRunning && robustnessProgress
+                      ? `Completed ${robustnessProgress.completedSeeds} of ${robustnessProgress.totalSeeds} deterministic seed runs (${Math.round(robustnessProgress.progress * 100)}%).`
+                      : (robustnessError ??
+                        "Nine bounded deterministic seeds; results remain modeled rather than production-calibrated.")}
                   </p>
                 )}
                 <button
                   type="button"
-                  onClick={runRobustness}
-                  disabled={robustnessRunning}
+                  onClick={
+                    robustnessRunning
+                      ? cancelRobustness
+                      : () => void runRobustness()
+                  }
                 >
                   <Flask size={15} />{" "}
                   {robustnessRunning
-                    ? "Analyzing…"
+                    ? "Cancel analysis"
                     : robustness
                       ? "Run again"
-                      : "Analyze nine seeds"}
+                      : "Analyze seed sensitivity"}
                 </button>
               </section>
             </div>
           ) : null}
 
+          {tab === "runs" ? <RunHistoryPanel onReplay={onClose} /> : null}
+
           {tab === "history" ? (
-            <div className="history-workbench" role="tabpanel">
+            <div
+              id="decision-panel-history"
+              className="history-workbench"
+              role="tabpanel"
+              aria-labelledby="decision-tab-history"
+            >
               <section className="history-controls">
                 <header>
-                  <span>Live edit history</span>
-                  <strong>Every structural edit remains reversible</strong>
+                  <span>Saved versions</span>
+                  <strong>Restore recent edits or a named snapshot</strong>
                 </header>
                 <div>
                   <button
@@ -832,9 +1198,65 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
               </section>
               <section className="snapshot-ledger">
                 <header>
-                  <span>Named snapshots</span>
-                  <strong>{snapshots.length} stored in this browser</strong>
+                  <span>Named versions</span>
+                  <strong>{snapshots.length} saved in this browser</strong>
                 </header>
+                {completedRunFork ? (
+                  <section
+                    className="evidence-boundary"
+                    aria-label="Current completed-run fork"
+                  >
+                    <GitBranch size={18} />
+                    <div>
+                      <strong>
+                        Static run-input fork is the current Lab draft
+                      </strong>
+                      <p>
+                        Source run {completedRunFork.provenance.sourceRunId} at
+                        delivered second{" "}
+                        {completedRunFork.snapshot.deliveredSecond}. The fork
+                        copied captured inputs; it did not restore in-flight
+                        state or recompute the original run.
+                      </p>
+                      <button
+                        type="button"
+                        className="decision-primary"
+                        onClick={onClose}
+                      >
+                        Open current fork draft in Lab
+                      </button>
+                    </div>
+                  </section>
+                ) : completedRunArtifact ? (
+                  <section
+                    className="evidence-boundary"
+                    aria-label="Completed run fork point"
+                  >
+                    <GitBranch size={18} />
+                    <div>
+                      <strong>
+                        Completed run available as a static fork point
+                      </strong>
+                      <p>
+                        The selected delivered frame is provenance only. A fork
+                        copies the captured scenario and architecture without
+                        restoring queues, replicas, memory, or in-flight work.
+                      </p>
+                      <button
+                        type="button"
+                        className="decision-primary"
+                        onClick={() =>
+                          forkCompletedRun(
+                            completedRunArtifact.manifest.snapshot
+                              .deliveredSecond,
+                          )
+                        }
+                      >
+                        Create and apply static fork
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
                 {snapshots.length ? (
                   snapshots.map((snapshot) => (
                     <article key={snapshot.id}>
@@ -875,17 +1297,16 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
           ) : null}
 
           {tab === "missions" ? (
-            <div className="mission-library" role="tabpanel">
+            <div
+              id="decision-panel-missions"
+              className="mission-library"
+              role="tabpanel"
+              aria-labelledby="decision-tab-missions"
+            >
               <header>
-                <span>Curated mission library</span>
-                <strong>
-                  Five progressively different distributed-systems problems
-                </strong>
-                <p>
-                  Loading a mission replaces the current scenario and
-                  architecture after preserving the current topology as a named
-                  snapshot.
-                </p>
+                <span>Scenario library</span>
+                <strong>Five distributed-systems scenarios</strong>
+                <p>Loading a scenario saves the current architecture first.</p>
               </header>
               <div>
                 {SCENARIO_LIBRARY.map((preset, index) => (
@@ -929,7 +1350,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                         setArchitecture(structuredClone(preset.architecture));
                       }}
                     >
-                      {preset.id === scenario.id ? "Loaded" : "Load mission"}
+                      {preset.id === scenario.id ? "Loaded" : "Load scenario"}
                     </button>
                   </article>
                 ))}
@@ -938,19 +1359,24 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
           ) : null}
 
           {tab === "calibrate" ? (
-            <div className="calibration-workbench" role="tabpanel">
+            <div
+              id="decision-panel-calibrate"
+              className="calibration-workbench"
+              role="tabpanel"
+              aria-labelledby="decision-tab-calibrate"
+            >
               <section className="profile-import">
                 <header>
                   <UploadSimple size={18} />
                   <div>
-                    <span>Traffic calibration</span>
-                    <strong>Import CSV or OpenTelemetry-like JSON</strong>
+                    <span>Import workload profile</span>
+                    <strong>Import CSV or sampled RPS JSON</strong>
                   </div>
                 </header>
                 <p>
-                  Accepted observations are distilled into base RPS, peak RPS,
-                  duration and an explicit peak incident. The raw trace is not
-                  retained or represented as exact second-by-second calibration.
+                  Sets duration from the last timestamp, base RPS to the median,
+                  peak RPS to the maximum, and adds one scheduled traffic-spike
+                  incident. Raw samples are not replayed or retained.
                 </p>
                 <textarea
                   value={profileText}
@@ -969,7 +1395,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                   disabled={!profileText.trim()}
                   onClick={importProfile}
                 >
-                  <UploadSimple size={16} /> Calibrate scenario
+                  <UploadSimple size={16} /> Apply workload summary
                 </button>
               </section>
               <section className="topology-assistant">
@@ -1073,9 +1499,10 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                 <header>
                   <Sparkle size={18} />
                   <div>
-                    <span>Assistive synthesis</span>
+                    <span>Suggested configuration changes</span>
                     <strong>
-                      Explicit structural proposals, never an invisible answer
+                      Rule-based suggestions from the current scenario and
+                      component list
                     </strong>
                   </div>
                 </header>
@@ -1103,7 +1530,9 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                 ) : (
                   <div className="candidate-empty">
                     <CheckCircle size={22} />
-                    <strong>No obvious missing structural primitive</strong>
+                    <strong>
+                      No rule-based component suggestion for this scenario
+                    </strong>
                     <p>
                       Use the bounded solver to tune existing capacity,
                       resilience and operating policy.
@@ -1115,19 +1544,24 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
           ) : null}
 
           {tab === "session" && scenario.mode === "interview" ? (
-            <div className="session-workbench" role="tabpanel">
+            <div
+              id="decision-panel-session"
+              className="session-workbench"
+              role="tabpanel"
+              aria-labelledby="decision-tab-session"
+            >
               <header className="session-status">
                 <div>
                   <span>Interview room</span>
                   <strong>
                     {sharedScenarioId
-                      ? "Canonical collaboration connected"
+                      ? "Server-backed interview connected"
                       : "Local interview draft"}
                   </strong>
                   <p>
                     {sharedScenarioId
-                      ? "The candidate journal, location and shared clock synchronize through the canonical API. Interviewer notes never appear in participant responses."
-                      : "Publish this interview from the authoring page to create separate participant and interviewer links."}
+                      ? "The candidate journal, phase, and shared clock synchronize through the online service. Interviewer notes never appear in candidate responses."
+                      : "Create a server-backed interview from the authoring page to get separate candidate and interviewer links."}
                   </p>
                 </div>
                 <div className="session-clock" aria-live="polite">
@@ -1153,6 +1587,16 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                   ) : null}
                 </div>
               </header>
+              <InterviewAiFacilitator
+                candidateNotes={candidateNotes}
+                candidatePhase={candidateCursor}
+                previousQuestions={interviewAssistantQuestions}
+                onQuestionGenerated={(question) =>
+                  setInterviewAssistantQuestions((current) =>
+                    [...current, question].slice(-20),
+                  )
+                }
+              />
               <div className="session-columns">
                 <section>
                   <header>
@@ -1160,7 +1604,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                     <strong>Clarifications, assumptions and decisions</strong>
                   </header>
                   <label>
-                    Candidate location
+                    Candidate phase
                     <select
                       value={candidateCursor}
                       onChange={(event) =>
@@ -1203,7 +1647,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                         })
                       }
                     >
-                      Synchronize journal
+                      Save shared notes
                     </button>
                   </footer>
                 </section>
@@ -1213,7 +1657,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                       <Lock size={16} />
                       <div>
                         <span>Private interviewer notes</span>
-                        <strong>Never returned to participant links</strong>
+                        <strong>Never returned to candidate links</strong>
                       </div>
                     </header>
                     <textarea
@@ -1256,16 +1700,108 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
           ) : null}
 
           {tab === "report" ? (
-            <div className="evidence-workbench" role="tabpanel">
+            <div
+              id="decision-panel-report"
+              className="evidence-workbench"
+              role="tabpanel"
+              aria-labelledby="decision-tab-report"
+            >
               <header>
-                <span>Portable evidence</span>
-                <strong>Export the current modeled decision record</strong>
+                <span>Run report</span>
+                <strong>Export run evidence</strong>
                 <p>
-                  Participant exports automatically remove hidden interview
-                  criteria. Reports distinguish deterministic model output from
-                  production telemetry.
+                  Hidden interview criteria are removed from candidate exports.
                 </p>
               </header>
+              <RunAiDebriefPanel />
+              {completedRunArtifact ? (
+                <section aria-label="Completed run manifest">
+                  <dl className="baseline-summary">
+                    <div>
+                      <dt>Run ID</dt>
+                      <dd>{completedRunArtifact.manifest.runId}</dd>
+                    </div>
+                    <div>
+                      <dt>Engine</dt>
+                      <dd>{completedRunArtifact.manifest.engineVersion}</dd>
+                    </div>
+                    <div>
+                      <dt>Seed</dt>
+                      <dd>
+                        {completedRunArtifact.manifest.seed.toLocaleString(
+                          "en-US",
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Actions</dt>
+                      <dd>
+                        {completedRunArtifact.manifest.actionLog.length.toLocaleString(
+                          "en-US",
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                  <dl className="baseline-summary baseline-summary--stacked">
+                    <div>
+                      <dt>Scenario</dt>
+                      <dd>
+                        {completedRunArtifact.manifest.scenario.id} · schema v
+                        {completedRunArtifact.manifest.scenario.schemaVersion} ·
+                        revision{" "}
+                        {completedRunArtifact.manifest.scenario.revision}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Architecture</dt>
+                      <dd>
+                        {completedRunArtifact.manifest.architecture.id} · schema
+                        v
+                        {
+                          completedRunArtifact.manifest.architecture
+                            .schemaVersion
+                        }{" "}
+                        · revision{" "}
+                        {completedRunArtifact.manifest.architecture.revision}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Result digest</dt>
+                      <dd>
+                        {completedRunArtifact.manifest.resultDigest.algorithm} ·{" "}
+                        {completedRunArtifact.manifest.resultDigest.value}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Snapshot</dt>
+                      <dd>
+                        Delivered second{" "}
+                        {completedRunArtifact.manifest.snapshot.deliveredSecond}{" "}
+                        · {completedRunArtifact.manifest.snapshot.selection}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Replay evidence</dt>
+                      <dd>
+                        {completedRunArtifact.manifest.replay
+                          ? completedRunArtifact.manifest.replay.verified
+                            ? `Verified against ${completedRunArtifact.manifest.replay.sourceRunId}`
+                            : `Not verified against ${completedRunArtifact.manifest.replay.sourceRunId}`
+                          : "Original completed run"}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : (
+                <div className="candidate-empty">
+                  <FileText size={22} />
+                  <strong>No completed run yet</strong>
+                  <p>
+                    Complete a local modeled run to capture its identity,
+                    digest, action log, and a delivered-frame snapshot.
+                  </p>
+                </div>
+              )}
               <div className="evidence-actions">
                 <button
                   type="button"
@@ -1281,7 +1817,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                   }
                 >
                   <DownloadSimple size={19} />
-                  <strong>JSON evidence bundle</strong>
+                  <strong>JSON run bundle</strong>
                   <span>
                     Structured scenario, architecture, outcomes and candidate
                     deltas.
@@ -1313,15 +1849,118 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                     Uses the browser’s native accessible print and PDF workflow.
                   </span>
                 </button>
+                <button
+                  type="button"
+                  disabled={!completedRunArtifact}
+                  onClick={() => {
+                    if (completedRunArtifact)
+                      downloadCompletedRunManifest(completedRunArtifact);
+                  }}
+                >
+                  <DownloadSimple size={19} />
+                  <strong>Completed-run manifest</strong>
+                  <span>
+                    Evidence-only identity, digest, action log, and selected
+                    frame. This file cannot be imported or replayed.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !completedRunArtifact || !replayExportAvailability.allowed
+                  }
+                  onClick={() => {
+                    if (!completedRunArtifact) return;
+                    setReplayExportError(null);
+                    void downloadCompletedRunReplayBundle(
+                      completedRunArtifact,
+                    ).catch((error: unknown) => {
+                      setReplayExportError(
+                        error instanceof Error
+                          ? error.message
+                          : "The replay bundle could not be exported.",
+                      );
+                    });
+                  }}
+                >
+                  <DownloadSimple size={19} />
+                  <strong>Portable replay bundle</strong>
+                  <span>
+                    {replayExportAvailability.allowed
+                      ? "Candidate-safe inputs, action schedule, engine and profile evidence, and source result digest."
+                      : replayExportAvailability.reason}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!completedRunArtifact || runState === "running"}
+                  onClick={() => {
+                    onClose();
+                    void replayCompletedRun();
+                  }}
+                >
+                  <ArrowClockwise size={19} />
+                  <strong>Replay captured inputs</strong>
+                  <span>
+                    Restores the captured scenario and architecture, then starts
+                    a fresh deterministic run at modeled second 0.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!completedRunArtifact}
+                  onClick={() => {
+                    if (completedRunArtifact)
+                      forkCompletedRun(
+                        completedRunArtifact.manifest.snapshot.deliveredSecond,
+                      );
+                  }}
+                >
+                  <GitBranch size={19} />
+                  <strong>Create and apply static fork</strong>
+                  <span>
+                    Copies captured inputs into the current draft. The selected
+                    frame is provenance only; in-flight state is not restored.
+                  </span>
+                </button>
               </div>
+              {replayExportError ? (
+                <p className="field-error" role="alert">
+                  {replayExportError}
+                </p>
+              ) : null}
+              <section className="evidence-boundary">
+                <Warning size={18} />
+                <div>
+                  <strong>Replay and fork boundary</strong>
+                  <p>
+                    Replay starts from modeled second 0. Snapshot selection and
+                    static forks do not restore in-flight queues, replica state,
+                    memory, or requests, and do not recompute mid-run physics.
+                  </p>
+                </div>
+              </section>
+              <section className="evidence-boundary">
+                <BookmarkSimple size={18} />
+                <div>
+                  <strong>Browser-session completed-run evidence</strong>
+                  <p>
+                    The full completed artifact is not persisted across a
+                    reload. Run history keeps a bounded candidate-safe summary
+                    and, when allowed, a separately verified replay bundle.
+                    Private interviewer runs are excluded from persistent Run
+                    history.
+                  </p>
+                </div>
+              </section>
               <section className="evidence-boundary">
                 <CheckCircle size={18} />
                 <div>
-                  <strong>Privacy and evidence boundary enforced</strong>
+                  <strong>Export privacy scope</strong>
                   <p>
                     {role === "interviewer"
-                      ? "This interviewer export may include the private rubric."
-                      : "This participant export cannot include hidden rubric requirements or the interviewer brief."}
+                      ? "Report exports may include the private rubric. Portable replay export remains disabled for any run containing hidden requirements or an interviewer brief."
+                      : "Portable replay export cannot include hidden rubric requirements or the interviewer brief."}
                   </p>
                 </div>
               </section>

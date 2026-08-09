@@ -17,6 +17,9 @@
     "lint": "eslint \"apps/**/*.{ts,tsx,mjs}\" \"packages/**/*.{ts,tsx}\" \"scripts/**/*.mjs\" \"*.config.{mjs,ts}\" --max-warnings=0",
     "test": "vitest run --exclude packages/sim-core/tests/simulate.performance.test.ts",
     "test:coverage": "vitest run --coverage --exclude packages/sim-core/tests/simulate.performance.test.ts",
+    "test:mutations": "node scripts/run-targeted-mutations.mjs",
+    "test:stability": "node scripts/run-test-stability.mjs",
+    "test:browser": "node scripts/browser-acceptance.mjs",
     "test:performance": "vitest run --config vitest.performance.config.ts",
     "typecheck": "tsc -b --pretty false",
     "quality": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:performance && pnpm build && pnpm --filter @systemforge/web test:sites"

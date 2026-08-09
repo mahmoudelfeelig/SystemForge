@@ -11,18 +11,30 @@ import {
   WarningOctagon,
   XCircle,
 } from "@phosphor-icons/react";
+import {
+  componentOwnsState,
+  componentUsesReadConsistency,
+} from "@systemforge/contracts";
 import type {
   ArchitectureEdge,
   ArchitectureNode,
   CausalEvent,
+  EdgeMetricSnapshot,
   MetricFrame,
   NodeMetricSnapshot,
 } from "@systemforge/contracts";
+import {
+  applyBehavioralProfile,
+  behavioralProfileEvidenceForNode,
+  compatibleBehavioralProfiles,
+  getBehavioralProfile,
+} from "@systemforge/sim-core";
 import { useEffect, useRef, useState } from "react";
 
 interface InspectorPanelProps {
   node: ArchitectureNode | null;
   edge?: ArchitectureEdge | null;
+  edgeMetrics?: EdgeMetricSnapshot | null;
   metrics: NodeMetricSnapshot | null;
   metricHistory?: NodeMetricSnapshot[];
   globalFrame?: MetricFrame | null;
@@ -72,8 +84,7 @@ const signalTone = (value: number) =>
 const signalColor = (tone: ReturnType<typeof signalTone>) =>
   tone === "critical" ? "#ff604f" : tone === "warning" ? "#f2b84b" : "#75d48a";
 
-const healthScore = (metrics: NodeMetricSnapshot | undefined): number => {
-  if (!metrics) return 100;
+const healthScore = (metrics: NodeMetricSnapshot): number => {
   const pressure = Math.max(
     metrics.utilization,
     metrics.cpuUtilization,
@@ -82,10 +93,14 @@ const healthScore = (metrics: NodeMetricSnapshot | undefined): number => {
     metrics.iopsUtilization,
     metrics.networkUtilization,
   );
-  return Math.max(
+  const resourceScore = Math.max(
     0,
     Math.min(100, Math.round(100 - Math.max(0, pressure - 0.45) * 113)),
   );
+  const deliveryScore = Math.max(0, Math.round(100 - metrics.errorRate));
+  return metrics.state === "offline"
+    ? 0
+    : Math.min(resourceScore, deliveryScore);
 };
 
 const stateRank = (state: NodeMetricSnapshot["state"]): number =>
@@ -157,6 +172,7 @@ function InspectorSparkline({
 export function InspectorPanel({
   node,
   edge = null,
+  edgeMetrics = null,
   metrics,
   metricHistory = [],
   globalFrame = null,
@@ -193,6 +209,55 @@ export function InspectorPanel({
           <FlowArrow size={20} weight="duotone" />
         </header>
         <div className="inspector__body inspector__fields">
+          <section
+            className="edge-telemetry"
+            aria-label="Modeled link telemetry"
+          >
+            <header>
+              <span>Modeled at cursor</span>
+              <small>{edgeMetrics ? "one-second aggregate" : "not run"}</small>
+            </header>
+            {edgeMetrics ? (
+              <dl>
+                <div>
+                  <dt>Attempted</dt>
+                  <dd>
+                    {Math.round(edgeMetrics.attemptedRps).toLocaleString()} RPS
+                  </dd>
+                </div>
+                <div>
+                  <dt>Delivered</dt>
+                  <dd>
+                    {Math.round(edgeMetrics.throughputRps).toLocaleString()} RPS
+                  </dd>
+                </div>
+                <div>
+                  <dt>Retries</dt>
+                  <dd>
+                    {Math.round(edgeMetrics.retryRps).toLocaleString()} RPS
+                  </dd>
+                </div>
+                <div>
+                  <dt>Lost</dt>
+                  <dd>
+                    {Math.round(edgeMetrics.lostRps).toLocaleString()} RPS
+                  </dd>
+                </div>
+                <div>
+                  <dt>Loss</dt>
+                  <dd>{edgeMetrics.packetLossPercent.toFixed(3)}%</dd>
+                </div>
+                <div>
+                  <dt>Path latency</dt>
+                  <dd>{edgeMetrics.latencyMs.toFixed(2)} ms</dd>
+                </div>
+              </dl>
+            ) : (
+              <p>
+                Run the model to inspect throughput, retries, loss, and delay.
+              </p>
+            )}
+          </section>
           <header>
             <span>Link behavior</span>
             <small>Bandwidth, delay, loss and routing share</small>
@@ -203,6 +268,7 @@ export function InspectorPanel({
               <input
                 type="number"
                 min="1"
+                disabled={workspaceMode !== "build"}
                 value={edge.config?.bandwidthMbps ?? 10_000}
                 onChange={(event_) =>
                   updateEdgeConfig({
@@ -216,6 +282,7 @@ export function InspectorPanel({
               <input
                 type="number"
                 min="0"
+                disabled={workspaceMode !== "build"}
                 value={edge.config?.baseLatencyMs ?? 0}
                 onChange={(event_) =>
                   updateEdgeConfig({
@@ -230,6 +297,7 @@ export function InspectorPanel({
                 type="number"
                 min="0"
                 step="0.1"
+                disabled={workspaceMode !== "build"}
                 value={edge.config?.jitterMs ?? 0}
                 onChange={(event_) =>
                   updateEdgeConfig({ jitterMs: Number(event_.target.value) })
@@ -243,6 +311,7 @@ export function InspectorPanel({
                 min="0"
                 max="1"
                 step="0.0001"
+                disabled={workspaceMode !== "build"}
                 value={edge.config?.packetLossRate ?? 0}
                 onChange={(event_) =>
                   updateEdgeConfig({
@@ -258,6 +327,7 @@ export function InspectorPanel({
                 min="0"
                 max="1"
                 step="0.01"
+                disabled={workspaceMode !== "build"}
                 value={edge.config?.trafficShare ?? 1}
                 onChange={(event_) =>
                   updateEdgeConfig({
@@ -270,6 +340,7 @@ export function InspectorPanel({
           <label className="toggle-field">
             <input
               type="checkbox"
+              disabled={workspaceMode !== "build"}
               checked={edge.config?.asynchronous ?? false}
               onChange={(event_) =>
                 updateEdgeConfig({ asynchronous: event_.target.checked })
@@ -288,12 +359,12 @@ export function InspectorPanel({
         <span className="panel-index">03 / INSPECTOR</span>
         <Pulse size={28} weight="duotone" />
         <strong>No component selected</strong>
-        <p>Select a node or a causal event to open its live evidence.</p>
+        <p>Select a node or linked event to inspect its modeled results.</p>
       </aside>
     );
 
-  const state = metrics?.state ?? "healthy";
-  const StateIcon = stateIcon(state);
+  const state = metrics?.state ?? "not-run";
+  const StateIcon = metrics ? stateIcon(metrics.state) : Pulse;
   const updateConfig = (patch: Partial<ArchitectureNode["config"]>) =>
     onUpdateNode({ ...node, config: { ...node.config, ...patch } });
   const updateNumber = (
@@ -308,6 +379,20 @@ export function InspectorPanel({
     value: number,
   ) => updateConfig({ [field]: value });
   const behavior = node.config.behavior;
+  const profileReference = node.config.behavioralProfile;
+  const compatibleProfiles = compatibleBehavioralProfiles(node.kind);
+  const referencedProfile = profileReference
+    ? getBehavioralProfile(profileReference.id)
+    : undefined;
+  const resolvedProfile =
+    referencedProfile &&
+    referencedProfile.version === profileReference?.version &&
+    referencedProfile.compatibleKinds.includes(node.kind)
+      ? referencedProfile
+      : undefined;
+  const profileEvidence = resolvedProfile
+    ? behavioralProfileEvidenceForNode(node)
+    : null;
   const updateBehavior = <Key extends keyof NodeBehavior>(
     key: Key,
     patch: Partial<NonNullable<NodeBehavior[Key]>>,
@@ -318,15 +403,49 @@ export function InspectorPanel({
         [key]: { ...(behavior?.[key] ?? {}), ...patch },
       },
     });
+  const resolvedReplicationMode =
+    behavior?.storage?.replicationMode ??
+    (node.config.replicas > 0 ? "async" : "none");
+  const updateReplicas = (replicas: number) =>
+    updateConfig({
+      replicas,
+      behavior: {
+        ...behavior,
+        storage: {
+          ...(behavior?.storage ?? {}),
+          replicationMode:
+            replicas === 0
+              ? "none"
+              : resolvedReplicationMode === "none"
+                ? "async"
+                : resolvedReplicationMode,
+        },
+      },
+    });
+  const updateReplicationMode = (
+    replicationMode: "none" | "async" | "sync" | "quorum",
+  ) =>
+    updateConfig({
+      replicas:
+        replicationMode === "none" ? 0 : Math.max(1, node.config.replicas),
+      behavior: {
+        ...behavior,
+        storage: { ...(behavior?.storage ?? {}), replicationMode },
+      },
+    });
   const computeCapable = node.kind !== "users" && node.kind !== "region";
   const cacheCapable = node.kind === "cache" || node.kind === "cdn";
   const storageCapable =
-    node.kind === "database" ||
-    node.kind === "object-store" ||
-    node.kind === "cache";
+    node.kind === "database" || node.kind === "object-store";
+  const replicationCapable = componentOwnsState(node.kind);
+  const consistencyCapable = componentUsesReadConsistency(node.kind);
+  const replicaLagCapable = storageCapable;
   const messagingCapable = node.kind === "queue" || node.kind === "stream";
-  const currentHealthScore = healthScore(metrics ?? undefined);
-  const healthTone = signalTone(1 - currentHealthScore / 100);
+  const currentHealthScore = metrics ? healthScore(metrics) : null;
+  const healthTone =
+    currentHealthScore === null
+      ? null
+      : signalTone(1 - currentHealthScore / 100);
   const impactedNodes = allNodes
     .filter((candidate) => candidate.id !== node.id)
     .map((candidate) => ({
@@ -383,8 +502,20 @@ export function InspectorPanel({
           <small>{node.kind.replaceAll("-", " ")}</small>
           <strong>{node.name}</strong>
         </div>
-        <span className={`state-token state-token--${state}`}>
-          <StateIcon size={15} weight="fill" aria-hidden="true" /> {state}
+        <span
+          className={`state-token state-token--${state}`}
+          style={
+            metrics
+              ? undefined
+              : { borderColor: "var(--muted)", color: "var(--muted)" }
+          }
+        >
+          <StateIcon
+            size={15}
+            weight={metrics ? "fill" : "regular"}
+            aria-hidden="true"
+          />{" "}
+          {metrics ? state : "not run"}
         </span>
       </header>
       <nav aria-label="Inspector sections">
@@ -393,9 +524,10 @@ export function InspectorPanel({
             className={tab === item ? "active" : ""}
             type="button"
             key={item}
+            aria-pressed={tab === item}
             onClick={() => setTab(item)}
           >
-            {item === "why" ? "Why?" : item}
+            {item === "why" ? "Events" : item}
           </button>
         ))}
       </nav>
@@ -403,46 +535,94 @@ export function InspectorPanel({
       {tab === "overview" ? (
         <div className="inspector__body">
           <section
-            className={`inspector-health inspector-health--${healthTone}`}
-            aria-label={`Derived health score ${currentHealthScore} out of 100`}
+            className={`inspector-health${healthTone ? ` inspector-health--${healthTone}` : ""}`}
+            aria-label={
+              currentHealthScore === null
+                ? "Modeled health score unavailable; run not started"
+                : `Modeled health score ${currentHealthScore} out of 100`
+            }
+            style={
+              currentHealthScore === null
+                ? { borderLeftColor: "var(--muted)" }
+                : undefined
+            }
           >
             <header>
               <div>
-                <span>Derived health score</span>
-                <small>Current resource envelope</small>
+                <span>Modeled health score</span>
+                <small>
+                  {currentHealthScore === null
+                    ? "Run required"
+                    : "Current modeled resource envelope"}
+                </small>
               </div>
-              <strong>
-                {currentHealthScore}
-                <small>/100</small>
+              <strong
+                style={
+                  currentHealthScore === null
+                    ? { color: "var(--muted)" }
+                    : undefined
+                }
+              >
+                {currentHealthScore ?? "—"}
+                {currentHealthScore === null ? null : <small>/100</small>}
               </strong>
             </header>
             <InspectorSparkline
-              values={metricHistory
-                .slice(-72)
-                .map((sample) => healthScore(sample) / 100)}
-              tone={healthTone}
-              label="Derived health score"
+              values={
+                metrics
+                  ? metricHistory
+                      .slice(-72)
+                      .map((sample) => healthScore(sample) / 100)
+                  : []
+              }
+              tone={healthTone ?? "healthy"}
+              label={
+                currentHealthScore === null
+                  ? "No modeled health history"
+                  : "Modeled health score"
+              }
             />
           </section>
-          <section className="inspector-kpis" aria-label="Live diagnostics">
+          <section className="inspector-kpis" aria-label="Modeled diagnostics">
             {overviewSignals.map(({ key, label }) => {
-              const value = metrics?.[key] ?? 0;
-              const tone = signalTone(value);
+              const value = metrics?.[key];
+              const tone = value === undefined ? null : signalTone(value);
               return (
                 <article
-                  className={`inspector-kpi inspector-kpi--${tone}`}
+                  className={`inspector-kpi${tone ? ` inspector-kpi--${tone}` : ""}`}
                   key={key}
+                  style={
+                    value === undefined
+                      ? { borderLeft: "2px solid var(--dim)" }
+                      : undefined
+                  }
                 >
                   <header>
                     <span>{label}</span>
-                    <strong>{Math.round(value * 100)}%</strong>
+                    <strong
+                      style={
+                        value === undefined
+                          ? { color: "var(--muted)" }
+                          : undefined
+                      }
+                    >
+                      {value === undefined
+                        ? "—"
+                        : `${Math.round(value * 100)}%`}
+                    </strong>
                   </header>
                   <InspectorSparkline
-                    values={metricHistory
-                      .slice(-72)
-                      .map((sample) => sample[key])}
-                    tone={tone}
-                    label={label}
+                    values={
+                      metrics
+                        ? metricHistory.slice(-72).map((sample) => sample[key])
+                        : []
+                    }
+                    tone={tone ?? "healthy"}
+                    label={
+                      value === undefined
+                        ? `${label}, no modeled history`
+                        : label
+                    }
                   />
                 </article>
               );
@@ -452,38 +632,45 @@ export function InspectorPanel({
             <div>
               <span>p95 latency</span>
               <strong>
-                {Math.round(metrics?.latencyMs ?? node.config.baseLatencyMs)} ms
+                {metrics ? `${Math.round(metrics.latencyMs)} ms` : "—"}
               </strong>
             </div>
             <div>
-              <span>p99 latency</span>
+              <span>System p99 latency</span>
               <strong>
-                {Math.round(
-                  globalFrame?.p99LatencyMs ?? metrics?.latencyMs ?? 0,
-                )}{" "}
-                ms
+                {globalFrame
+                  ? `${Math.round(globalFrame.p99LatencyMs)} ms`
+                  : "—"}
               </strong>
             </div>
             <div>
               <span>Error</span>
-              <strong>{(metrics?.errorRate ?? 0).toFixed(2)}%</strong>
+              <strong>
+                {metrics ? `${metrics.errorRate.toFixed(2)}%` : "—"}
+              </strong>
             </div>
             <div>
               <span>Disk / work queue</span>
               <strong>
-                {Math.round(metrics?.queueDepth ?? 0).toLocaleString()}
+                {metrics
+                  ? Math.round(metrics.queueDepth).toLocaleString()
+                  : "—"}
               </strong>
             </div>
-            <div>
-              <span>Replica lag</span>
-              <strong>{Math.round(metrics?.replicaLagMs ?? 0)} ms</strong>
-            </div>
+            {replicaLagCapable ? (
+              <div>
+                <span>Replica lag</span>
+                <strong>
+                  {metrics ? `${Math.round(metrics.replicaLagMs)} ms` : "—"}
+                </strong>
+              </div>
+            ) : null}
           </section>
           {impactedNodes.length ? (
             <section className="impact-list" aria-label="Top impacted services">
               <header>
                 <span>Top impacted services</span>
-                <small>Current cursor</small>
+                <small>Modeled cursor</small>
               </header>
               {impactedNodes.map(({ component, metrics: itemMetrics }) => (
                 <div key={component.id}>
@@ -502,37 +689,163 @@ export function InspectorPanel({
       {tab === "metrics" ? (
         <div className="inspector__body diagnostic-stack">
           <header>
-            <span>Resource banks</span>
-            <small>Current timeline cursor</small>
+            <span>Modeled resource banks</span>
+            <small>
+              {metrics ? "Current timeline cursor" : "Run required"}
+            </small>
           </header>
-          {diagnostics.map(({ key, label, icon: Icon }) => {
-            const value = metrics?.[key] ?? 0;
-            return (
-              <div className="diagnostic-row" key={key}>
-                <span>
-                  <Icon size={14} /> {label}
-                </span>
-                <strong>{Math.round(value * 100)}%</strong>
-                <span className="diagnostic-track" aria-hidden="true">
-                  <span
-                    className={
-                      value >= 1
-                        ? "critical"
-                        : value >= 0.72
-                          ? "warning"
-                          : "healthy"
-                    }
-                    style={{ width: `${Math.min(100, value * 100)}%` }}
-                  />
-                </span>
-              </div>
-            );
-          })}
+          {metrics ? (
+            diagnostics.map(({ key, label, icon: Icon }) => {
+              const value = metrics[key];
+              return (
+                <div className="diagnostic-row" key={key}>
+                  <span>
+                    <Icon size={14} /> {label}
+                  </span>
+                  <strong>{Math.round(value * 100)}%</strong>
+                  <span className="diagnostic-track" aria-hidden="true">
+                    <span
+                      className={
+                        value >= 1
+                          ? "critical"
+                          : value >= 0.72
+                            ? "warning"
+                            : "healthy"
+                      }
+                      style={{ width: `${Math.min(100, value * 100)}%` }}
+                    />
+                  </span>
+                </div>
+              );
+            })
+          ) : (
+            <div className="why-empty">
+              <Pulse size={25} />
+              <strong>No modeled resource utilization</strong>
+              <p>
+                Run a simulation to populate utilization and pressure at the
+                timeline cursor.
+              </p>
+            </div>
+          )}
         </div>
       ) : null}
 
       {tab === "config" ? (
         <div className="inspector__body inspector__fields">
+          <section
+            className="edge-telemetry behavioral-profile-control"
+            aria-label="Behavioral profile"
+          >
+            <header>
+              <span>Behavioral profile</span>
+              <small>versioned primitive defaults</small>
+            </header>
+            <label>
+              Compatible profile
+              <select
+                aria-label="Compatible behavioral profile"
+                value={
+                  resolvedProfile
+                    ? resolvedProfile.id
+                    : profileReference
+                      ? "__unresolved__"
+                      : ""
+                }
+                onChange={(event_) => {
+                  if (!event_.target.value) {
+                    const nextNode = structuredClone(node);
+                    delete nextNode.config.behavioralProfile;
+                    onUpdateNode(nextNode);
+                    return;
+                  }
+                  if (event_.target.value === "__unresolved__") return;
+                  const selected = getBehavioralProfile(event_.target.value);
+                  if (!selected) return;
+                  onUpdateNode(
+                    applyBehavioralProfile(node, selected.id, selected.version),
+                  );
+                }}
+              >
+                <option value="">Custom / unprofiled</option>
+                {profileReference && !resolvedProfile ? (
+                  <option value="__unresolved__" disabled>
+                    Unresolved {profileReference.id}@{profileReference.version}
+                  </option>
+                ) : null}
+                {compatibleProfiles.map((profile) => (
+                  <option value={profile.id} key={profile.id}>
+                    {profile.label} · v{profile.version}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {resolvedProfile && profileEvidence?.status === "resolved" ? (
+              <>
+                <dl>
+                  <div>
+                    <dt>Family</dt>
+                    <dd>{resolvedProfile.family}</dd>
+                  </div>
+                  <div>
+                    <dt>Provider</dt>
+                    <dd>{resolvedProfile.provider}</dd>
+                  </div>
+                  <div>
+                    <dt>Variant</dt>
+                    <dd>{resolvedProfile.variant}</dd>
+                  </div>
+                  <div>
+                    <dt>Local overrides</dt>
+                    <dd>
+                      {profileEvidence.localOverrides
+                        ? `${profileEvidence.overriddenFields.length} controlled field${profileEvidence.overriddenFields.length === 1 ? "" : "s"}`
+                        : "None"}
+                    </dd>
+                  </div>
+                </dl>
+                <p>{resolvedProfile.summary}</p>
+                <details>
+                  <summary>Assumptions and provenance</summary>
+                  <ul>
+                    {resolvedProfile.assumptions.map((assumption) => (
+                      <li key={assumption}>{assumption}</li>
+                    ))}
+                  </ul>
+                  {profileEvidence.localOverrides ? (
+                    <p>
+                      Overridden profile fields:{" "}
+                      {profileEvidence.overriddenFields
+                        .map((field) => field.replace(/^config\./, ""))
+                        .join(", ")}
+                    </p>
+                  ) : null}
+                  <ul>
+                    {resolvedProfile.provenance.map((entry) => (
+                      <li key={entry.url}>
+                        <a href={entry.url} target="_blank" rel="noreferrer">
+                          {entry.publisher} · {entry.title}
+                        </a>{" "}
+                        (retrieved {entry.retrievedOn})
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </>
+            ) : profileReference ? (
+              <p role="alert">
+                This profile reference is unknown, incompatible, or uses an
+                unsupported version. Simulation will reject it until a
+                compatible registry entry is applied.
+              </p>
+            ) : (
+              <p>
+                Profiles write validated compute, storage, cache, messaging,
+                resilience, and operations primitives. They are modeling
+                assumptions, not benchmarks or provider guarantees.
+              </p>
+            )}
+          </section>
           <header>
             <span>Capacity envelope</span>
             <small>Changes invalidate the current run</small>
@@ -587,18 +900,20 @@ export function InspectorPanel({
                 }
               />
             </label>
-            <label>
-              Replicas
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={node.config.replicas}
-                onChange={(event_) =>
-                  updateNumber("replicas", Number(event_.target.value))
-                }
-              />
-            </label>
+            {replicationCapable ? (
+              <label>
+                Replicas
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={node.config.replicas}
+                  onChange={(event_) =>
+                    updateReplicas(Number(event_.target.value))
+                  }
+                />
+              </label>
+            ) : null}
             <label>
               Monthly cost / instance
               <input
@@ -638,20 +953,22 @@ export function InspectorPanel({
                 />
               </label>
             ) : null}
-            <label>
-              Consistency
-              <select
-                value={node.config.consistency}
-                onChange={(event_) =>
-                  updateConfig({
-                    consistency: event_.target.value as "strong" | "eventual",
-                  })
-                }
-              >
-                <option value="strong">Strong</option>
-                <option value="eventual">Eventual</option>
-              </select>
-            </label>
+            {consistencyCapable ? (
+              <label>
+                Consistency
+                <select
+                  value={node.config.consistency}
+                  onChange={(event_) =>
+                    updateConfig({
+                      consistency: event_.target.value as "strong" | "eventual",
+                    })
+                  }
+                >
+                  <option value="strong">Strong</option>
+                  <option value="eventual">Eventual</option>
+                </select>
+              </label>
+            ) : null}
             <label className="toggle-field">
               <input
                 type="checkbox"
@@ -1055,12 +1372,12 @@ export function InspectorPanel({
                 <label>
                   Replication
                   <select
-                    value={behavior?.storage?.replicationMode ?? "none"}
+                    value={resolvedReplicationMode}
                     onChange={(event_) =>
-                      updateBehavior("storage", {
-                        replicationMode: event_.target.value as
+                      updateReplicationMode(
+                        event_.target.value as
                           "none" | "async" | "sync" | "quorum",
-                      })
+                      )
                     }
                   >
                     <option value="none">None</option>
@@ -1074,7 +1391,14 @@ export function InspectorPanel({
                   <input
                     type="number"
                     min="0"
-                    value={behavior?.storage?.replicationLagMs ?? 0}
+                    value={
+                      behavior?.storage?.replicationLagMs ??
+                      (resolvedReplicationMode === "none"
+                        ? 0
+                        : resolvedReplicationMode === "async"
+                          ? 90
+                          : 8)
+                    }
                     onChange={(event_) =>
                       updateBehavior("storage", {
                         replicationLagMs: Number(event_.target.value),
@@ -1083,14 +1407,63 @@ export function InspectorPanel({
                   />
                 </label>
                 <label>
-                  Failover (seconds)
+                  Failover override (seconds)
                   <input
                     type="number"
                     min="0"
-                    value={behavior?.storage?.failoverSeconds ?? 0}
+                    placeholder="Model default"
+                    value={behavior?.storage?.failoverSeconds ?? ""}
                     onChange={(event_) =>
                       updateBehavior("storage", {
-                        failoverSeconds: Number(event_.target.value),
+                        failoverSeconds:
+                          event_.target.value === ""
+                            ? undefined
+                            : Number(event_.target.value),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </section>
+          ) : null}
+
+          {replicationCapable && !storageCapable ? (
+            <section className="behavior-bank">
+              <header>
+                <span>State replication</span>
+                <small>Failure tolerance and modeled recovery</small>
+              </header>
+              <div className="field-grid">
+                <label>
+                  Replication
+                  <select
+                    value={resolvedReplicationMode}
+                    onChange={(event_) =>
+                      updateReplicationMode(
+                        event_.target.value as
+                          "none" | "async" | "sync" | "quorum",
+                      )
+                    }
+                  >
+                    <option value="none">None</option>
+                    <option value="async">Asynchronous</option>
+                    <option value="sync">Synchronous</option>
+                    <option value="quorum">Quorum</option>
+                  </select>
+                </label>
+                <label>
+                  Failover override (seconds)
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Model default"
+                    value={behavior?.storage?.failoverSeconds ?? ""}
+                    onChange={(event_) =>
+                      updateBehavior("storage", {
+                        failoverSeconds:
+                          event_.target.value === ""
+                            ? undefined
+                            : Number(event_.target.value),
                       })
                     }
                   />
@@ -1172,6 +1545,50 @@ export function InspectorPanel({
                     onChange={(event_) =>
                       updateBehavior("messaging", {
                         batchSize: Number(event_.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Log read IOPS
+                  <input
+                    type="number"
+                    min="1"
+                    value={
+                      behavior?.storage?.readIops ?? node.config.capacityRps
+                    }
+                    onChange={(event_) =>
+                      updateBehavior("storage", {
+                        readIops: Number(event_.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Log write IOPS
+                  <input
+                    type="number"
+                    min="1"
+                    value={
+                      behavior?.storage?.writeIops ??
+                      node.config.capacityRps * 0.6
+                    }
+                    onChange={(event_) =>
+                      updateBehavior("storage", {
+                        writeIops: Number(event_.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Log disk Mbps
+                  <input
+                    type="number"
+                    min="1"
+                    value={behavior?.storage?.diskThroughputMbps ?? 1000}
+                    onChange={(event_) =>
+                      updateBehavior("storage", {
+                        diskThroughputMbps: Number(event_.target.value),
                       })
                     }
                   />
@@ -1282,12 +1699,12 @@ export function InspectorPanel({
                   <input
                     type="number"
                     min="1"
-                    max={node.config.maxInstances}
+                    max={node.config.instances}
                     value={behavior?.scaling?.minInstances ?? 1}
                     onChange={(event_) =>
                       updateBehavior("scaling", {
                         minInstances: Math.min(
-                          node.config.maxInstances,
+                          node.config.instances,
                           Number(event_.target.value),
                         ),
                       })
@@ -1432,16 +1849,16 @@ export function InspectorPanel({
               <strong>{event.title}</strong>
               <p>{event.detail}</p>
               <section>
-                <span>Direct causes</span>
+                <span>Linked parent events</span>
                 <p>
                   {event.parentIds.length
                     ? event.parentIds.join(" → ")
-                    : "Root scenario event"}
+                    : "No parent event (scheduled root)"}
                 </p>
               </section>
               {event.effects?.length ? (
                 <section>
-                  <span>Measured effects</span>
+                  <span>Modeled effects</span>
                   {event.effects.map((effect) => (
                     <div
                       className="effect-row"
@@ -1467,10 +1884,10 @@ export function InspectorPanel({
           ) : (
             <div className="why-empty">
               <Gear size={25} />
-              <strong>Select an event to reconstruct its cause.</strong>
+              <strong>No linked event selected.</strong>
               <p>
-                The timeline will connect the initiating event, pressure shift
-                and downstream failure.
+                Run a simulation, then select an emitted event to inspect its
+                modeled parent links and effects.
               </p>
             </div>
           )}

@@ -348,7 +348,6 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
           },
           storage: {
             replicationMode: "async",
-            replicationLagMs: 24,
             failoverSeconds: 8,
           },
           topology: {
@@ -427,7 +426,6 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
           network: { bandwidthMbps: 30_000, rttMs: 2, jitterMs: 0.7 },
           storage: {
             replicationMode: "quorum",
-            replicationLagMs: 35,
             failoverSeconds: 12,
           },
           messaging: {

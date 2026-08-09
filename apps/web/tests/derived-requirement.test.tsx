@@ -28,12 +28,12 @@ const requirement: Requirement = {
 
 describe("candidate-derived requirements", () => {
   it("captures the candidate's actual constraint instead of a fixed placeholder", () => {
-    const onChange = vi.fn();
+    const onSave = vi.fn();
     const onRemove = vi.fn();
     render(
       <DerivedRequirementEditor
         requirement={requirement}
-        onChange={onChange}
+        onSave={onSave}
         onRemove={onRemove}
       />,
     );
@@ -51,25 +51,17 @@ describe("candidate-derived requirements", () => {
       target: { value: "0" },
     });
 
-    expect(onChange).toHaveBeenNthCalledWith(
-      1,
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
         label: "Acknowledged writes must survive failover",
+        metric: "dataLoss",
+        operator: "eq",
+        target: 0,
         owner: "candidate",
         visibility: "derived",
       }),
-    );
-    expect(onChange).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ metric: "dataLoss" }),
-    );
-    expect(onChange).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ operator: "eq" }),
-    );
-    expect(onChange).toHaveBeenNthCalledWith(
-      4,
-      expect.objectContaining({ target: 0 }),
     );
 
     fireEvent.click(

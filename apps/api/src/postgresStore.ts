@@ -7,9 +7,12 @@ import type {
 } from "@systemforge/contracts";
 import { Pool, type PoolClient } from "pg";
 import {
+  AiUsageBudgetExceededError,
   QueueCapacityError,
   SharedScenarioCapacityError,
   type ControlStore,
+  type AiUsageBudgetState,
+  type AiUsageReservation,
   type InterviewCollaborationPatch,
   type RunRecord,
   type SharedScenarioRecord,
@@ -75,7 +78,7 @@ export class PostgresControlStore implements ControlStore {
         `SELECT
            EXISTS (
              SELECT 1 FROM schema_migrations
-           WHERE version = '006_interview_collaboration'
+             WHERE version = '008_bound_ai_usage_budget'
            )
            AND EXISTS (
              SELECT 1 FROM worker_heartbeats
@@ -85,6 +88,78 @@ export class PostgresControlStore implements ControlStore {
       return result.rows[0]?.ready ?? false;
     } catch {
       return false;
+    }
+  }
+
+  async reserveAiUsage(
+    reservation: AiUsageReservation,
+  ): Promise<AiUsageBudgetState> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(74192014)");
+      await client.query(
+        "DELETE FROM ai_usage_reservations WHERE created_at < now() - interval '400 days'",
+      );
+      const usage = await client.query<{
+        daily_requests: string;
+        monthly_reserved_cost_cents: string;
+      }>(
+        `SELECT
+           count(*) FILTER (
+             WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+           )::text AS daily_requests,
+           COALESCE(sum(reserved_cost_cents) FILTER (
+             WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+           ), 0)::text AS monthly_reserved_cost_cents
+         FROM ai_usage_reservations`,
+      );
+      const dailyRequests = Number(usage.rows[0]?.daily_requests ?? 0);
+      const monthlyReservedCostCents = Number(
+        usage.rows[0]?.monthly_reserved_cost_cents ?? 0,
+      );
+      if (
+        dailyRequests >= reservation.maximumDailyRequests ||
+        monthlyReservedCostCents + reservation.reservedCostCents >
+          reservation.maximumMonthlyCostCents
+      ) {
+        const retry = await client.query<{ retry_after_seconds: string }>(
+          `SELECT CEIL(EXTRACT(EPOCH FROM (
+             CASE
+               WHEN $1::boolean THEN
+                 (date_trunc('day', now() AT TIME ZONE 'UTC') + interval '1 day') AT TIME ZONE 'UTC'
+               ELSE
+                 (date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month') AT TIME ZONE 'UTC'
+             END - now()
+           )))::text AS retry_after_seconds`,
+          [dailyRequests >= reservation.maximumDailyRequests],
+        );
+        throw new AiUsageBudgetExceededError(
+          Math.max(1, Number(retry.rows[0]?.retry_after_seconds ?? 1)),
+        );
+      }
+      await client.query(
+        `INSERT INTO ai_usage_reservations
+           (id, provider_id, model, reserved_cost_cents)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          randomUUID(),
+          reservation.providerId,
+          reservation.model,
+          reservation.reservedCostCents,
+        ],
+      );
+      await client.query("COMMIT");
+      return {
+        dailyRequests: dailyRequests + 1,
+        monthlyReservedCostCents:
+          monthlyReservedCostCents + reservation.reservedCostCents,
+      };
+    } catch (error) {
+      await this.#rollback(client);
+      throw error;
+    } finally {
+      client.release();
     }
   }
 
@@ -149,6 +224,14 @@ export class PostgresControlStore implements ControlStore {
     return result.rows[0] ? mapRun(result.rows[0]) : null;
   }
 
+  async getRunSubmission(id: string): Promise<RunSubmission | null> {
+    const result = await this.#pool.query<{ submission: RunSubmission }>(
+      "SELECT submission FROM simulation_runs WHERE id = $1",
+      [id],
+    );
+    return result.rows[0]?.submission ?? null;
+  }
+
   async shareScenario(
     scenario: Scenario,
     architecture: Architecture,
@@ -160,6 +243,9 @@ export class PostgresControlStore implements ControlStore {
     try {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(74192013)");
+      await client.query(
+        "DELETE FROM shared_scenarios WHERE expires_at <= now()",
+      );
       const count = await client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM shared_scenarios WHERE expires_at > now()",
       );

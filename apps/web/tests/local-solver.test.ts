@@ -53,7 +53,7 @@ describe("browser-local architecture solver", () => {
     );
 
     expect(result).toMatchObject({
-      engineVersion: "0.3.0",
+      engineVersion: "0.7.0",
       solverVersion: "0.1.0",
       exploredCandidates: 4,
     });

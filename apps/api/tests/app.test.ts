@@ -27,6 +27,8 @@ const config: ApiConfig = {
   maxSolverResultBytes: 4_000_000,
   rateLimitMax: 100,
   rateLimitWindow: "1 minute",
+  scenarioRateLimitMax: 10,
+  scenarioRateLimitWindow: "1 day",
 };
 
 const submission = {
@@ -69,7 +71,8 @@ describe("control-plane API", () => {
   });
 
   it("accepts bounded canonical jobs and rejects overflow without breaking local mode", async () => {
-    app = await buildApp(config, new MemoryControlStore());
+    const store = new MemoryControlStore();
+    app = await buildApp(config, store);
     const accepted = await app.inject({
       method: "POST",
       url: "/api/runs",
@@ -208,6 +211,40 @@ describe("control-plane API", () => {
     });
   });
 
+  it("applies a strict per-client creation budget to the shared-scenario pool", async () => {
+    app = await buildApp(
+      {
+        ...config,
+        scenarioRateLimitMax: 2,
+        scenarioRateLimitWindow: "1 minute",
+      },
+      new MemoryControlStore(),
+    );
+    const payload = {
+      scenario: DEFAULT_SCENARIO,
+      architecture: DEFAULT_ARCHITECTURE,
+    };
+
+    expect(
+      (await app.inject({ method: "POST", url: "/api/scenarios", payload }))
+        .statusCode,
+    ).toBe(201);
+    expect(
+      (await app.inject({ method: "POST", url: "/api/scenarios", payload }))
+        .statusCode,
+    ).toBe(201);
+    const limited = await app.inject({
+      method: "POST",
+      url: "/api/scenarios",
+      payload,
+    });
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({
+      error: { code: "rate_limited", localModeAvailable: true },
+    });
+  });
+
   it("never discloses hidden interviewer requirements through the candidate endpoint", async () => {
     const interviewScenario = {
       ...structuredClone(DEFAULT_SCENARIO),
@@ -269,7 +306,7 @@ describe("control-plane API", () => {
     const interviewer = await app.inject({
       method: "GET",
       url: `/api/scenarios/${shared.json().id}`,
-      headers: { "x-systemforge-host-token": hostToken },
+      headers: { authorization: `Bearer ${hostToken}` },
     });
     expect(interviewer.json().role).toBe("interviewer");
     expect(interviewer.json().scenario.interview.interviewerBrief).toBe(
@@ -277,7 +314,7 @@ describe("control-plane API", () => {
     );
   });
 
-  it("reveals hidden criteria only after the first run when the interview policy allows it", async () => {
+  it("reveals hidden criteria only after a matching server run completes", async () => {
     const interviewScenario = {
       ...structuredClone(DEFAULT_SCENARIO),
       mode: "interview" as const,
@@ -297,7 +334,8 @@ describe("control-plane API", () => {
         },
       ],
     };
-    app = await buildApp(config, new MemoryControlStore());
+    const store = new MemoryControlStore();
+    app = await buildApp(config, store);
     const shared = await app.inject({
       method: "POST",
       url: "/api/scenarios",
@@ -315,9 +353,35 @@ describe("control-plane API", () => {
     expect(before.json().revealState).toBe("hidden");
     expect(before.json().scenario.requirements).toHaveLength(0);
 
+    const queued = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        scenario: {
+          ...before.json().scenario,
+          requirements: [
+            {
+              ...structuredClone(DEFAULT_SCENARIO.requirements[0]!),
+              id: "candidate-latency-inference",
+              visibility: "derived",
+              owner: "candidate",
+            },
+          ],
+        },
+        architecture: DEFAULT_ARCHITECTURE,
+        clientEngineVersion: ENGINE_VERSION,
+        sharedScenarioId: id,
+      },
+    });
+    const runId = queued.json().id as string;
+    store.runs.get(runId)!.status = "completed";
+    store.scenarioState.get(id)!.interviewerNotes =
+      "Private facilitator observation.";
+
     const milestone = await app.inject({
       method: "POST",
       url: `/api/scenarios/${id}/runs`,
+      payload: { runId },
     });
     expect(milestone.statusCode).toBe(200);
     expect(milestone.json().revealState).toBe("revealed");
@@ -326,6 +390,151 @@ describe("control-plane API", () => {
       visibility: "public",
     });
     expect(milestone.json().scenario.interview.interviewerBrief).toBe("");
+    expect(milestone.json().collaboration).not.toHaveProperty(
+      "interviewerNotes",
+    );
+
+    const twinShare = await app.inject({
+      method: "POST",
+      url: "/api/scenarios",
+      payload: {
+        scenario: interviewScenario,
+        architecture: DEFAULT_ARCHITECTURE,
+      },
+    });
+    const crossSessionReuse = await app.inject({
+      method: "POST",
+      url: `/api/scenarios/${twinShare.json().id}/runs`,
+      payload: { runId },
+    });
+    expect(crossSessionReuse.statusCode).toBe(409);
+    expect(crossSessionReuse.json().error.code).toBe("run_scenario_mismatch");
+  });
+
+  it("rejects client-declared, incomplete, missing, and unrelated interview run milestones", async () => {
+    const interviewScenario = {
+      ...structuredClone(DEFAULT_SCENARIO),
+      id: "private-interview",
+      mode: "interview" as const,
+      interview: {
+        candidateBrief: "Design the service.",
+        interviewerBrief: "Private rubric.",
+        timeboxMinutes: 45,
+        allowCandidateRequirements: true,
+        revealPolicy: "after-run" as const,
+      },
+      requirements: [],
+    };
+    const store = new MemoryControlStore();
+    app = await buildApp(config, store);
+    const shared = await app.inject({
+      method: "POST",
+      url: "/api/scenarios",
+      payload: {
+        scenario: interviewScenario,
+        architecture: DEFAULT_ARCHITECTURE,
+      },
+    });
+    const scenarioId = shared.json().id as string;
+
+    const declared = await app.inject({
+      method: "POST",
+      url: `/api/scenarios/${scenarioId}/runs`,
+      payload: {},
+    });
+    expect(declared.statusCode).toBe(400);
+
+    const queued = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: submission,
+    });
+    const unrelatedRunId = queued.json().id as string;
+    const incomplete = await app.inject({
+      method: "POST",
+      url: `/api/scenarios/${scenarioId}/runs`,
+      payload: { runId: unrelatedRunId },
+    });
+    expect(incomplete.statusCode).toBe(409);
+    expect(incomplete.json().error.code).toBe("run_not_completed");
+
+    store.runs.get(unrelatedRunId)!.status = "completed";
+    const unrelated = await app.inject({
+      method: "POST",
+      url: `/api/scenarios/${scenarioId}/runs`,
+      payload: { runId: unrelatedRunId },
+    });
+    expect(unrelated.statusCode).toBe(409);
+    expect(unrelated.json().error.code).toBe("run_scenario_mismatch");
+
+    const missing = await app.inject({
+      method: "POST",
+      url: `/api/scenarios/${scenarioId}/runs`,
+      payload: { runId: crypto.randomUUID() },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().error.code).toBe("run_not_found");
+  });
+
+  it("enforces the shared interview policy for candidate-derived requirements", async () => {
+    const interviewScenario = {
+      ...structuredClone(DEFAULT_SCENARIO),
+      id: "no-candidate-requirements",
+      mode: "interview" as const,
+      interview: {
+        candidateBrief: "Design the service.",
+        interviewerBrief: "Private rubric.",
+        timeboxMinutes: 45,
+        allowCandidateRequirements: false,
+        revealPolicy: "after-run" as const,
+      },
+      requirements: [],
+    };
+    const store = new MemoryControlStore();
+    app = await buildApp(config, store);
+    const shared = await app.inject({
+      method: "POST",
+      url: "/api/scenarios",
+      payload: {
+        scenario: interviewScenario,
+        architecture: DEFAULT_ARCHITECTURE,
+      },
+    });
+    const scenarioId = shared.json().id as string;
+    const candidate = await app.inject({
+      method: "GET",
+      url: `/api/scenarios/${scenarioId}`,
+    });
+    const queued = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        scenario: {
+          ...candidate.json().scenario,
+          requirements: [
+            {
+              ...structuredClone(DEFAULT_SCENARIO.requirements[0]!),
+              id: "disallowed-candidate-requirement",
+              visibility: "derived",
+              owner: "candidate",
+            },
+          ],
+        },
+        architecture: DEFAULT_ARCHITECTURE,
+        clientEngineVersion: ENGINE_VERSION,
+        sharedScenarioId: scenarioId,
+      },
+    });
+    const runId = queued.json().id as string;
+    store.runs.get(runId)!.status = "completed";
+
+    const milestone = await app.inject({
+      method: "POST",
+      url: `/api/scenarios/${scenarioId}/runs`,
+      payload: { runId },
+    });
+    expect(milestone.statusCode).toBe(409);
+    expect(milestone.json().error.code).toBe("run_scenario_mismatch");
   });
 
   it("requires the interviewer bearer credential for controlled reveals", async () => {
@@ -345,7 +554,8 @@ describe("control-plane API", () => {
         owner: "interviewer" as const,
       })),
     };
-    app = await buildApp(config, new MemoryControlStore());
+    const store = new MemoryControlStore();
+    app = await buildApp(config, store);
     const shared = await app.inject({
       method: "POST",
       url: "/api/scenarios",
@@ -362,15 +572,31 @@ describe("control-plane API", () => {
     const denied = await app.inject({
       method: "PATCH",
       url: `/api/scenarios/${id}/reveal`,
-      headers: { "x-systemforge-host-token": crypto.randomUUID() },
+      headers: { authorization: `Bearer ${crypto.randomUUID()}` },
       payload: { revealed: true },
     });
     expect(denied.statusCode).toBe(404);
 
-    const revealed = await app.inject({
+    const deniedMalformedBearer = await app.inject({
+      method: "PATCH",
+      url: `/api/scenarios/${id}/reveal`,
+      headers: { authorization: "Bearer not-a-uuid" },
+      payload: { revealed: true },
+    });
+    expect(deniedMalformedBearer.statusCode).toBe(404);
+
+    const deniedLegacyHeader = await app.inject({
       method: "PATCH",
       url: `/api/scenarios/${id}/reveal`,
       headers: { "x-systemforge-host-token": hostToken },
+      payload: { revealed: true },
+    });
+    expect(deniedLegacyHeader.statusCode).toBe(404);
+
+    const revealed = await app.inject({
+      method: "PATCH",
+      url: `/api/scenarios/${id}/reveal`,
+      headers: { authorization: `Bearer ${hostToken}` },
       payload: { revealed: true },
     });
     expect(revealed.statusCode).toBe(200);
@@ -439,7 +665,7 @@ describe("control-plane API", () => {
     const hostUpdate = await app.inject({
       method: "PATCH",
       url: `/api/scenarios/${id}/collaboration`,
-      headers: { "x-systemforge-host-token": hostToken },
+      headers: { authorization: `Bearer ${hostToken}` },
       payload: {
         interviewerNotes: "Candidate found durability before scaling.",
         clockAction: "start",
@@ -485,7 +711,8 @@ describe("control-plane API", () => {
         owner: "interviewer" as const,
       })),
     };
-    app = await buildApp(config, new MemoryControlStore());
+    const store = new MemoryControlStore();
+    app = await buildApp(config, store);
     const shared = await app.inject({
       method: "POST",
       url: "/api/scenarios",
@@ -494,9 +721,26 @@ describe("control-plane API", () => {
         architecture: DEFAULT_ARCHITECTURE,
       },
     });
+    const candidate = await app.inject({
+      method: "GET",
+      url: `/api/scenarios/${shared.json().id}`,
+    });
+    const queued = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        scenario: candidate.json().scenario,
+        architecture: DEFAULT_ARCHITECTURE,
+        clientEngineVersion: ENGINE_VERSION,
+        sharedScenarioId: shared.json().id,
+      },
+    });
+    const runId = queued.json().id as string;
+    store.runs.get(runId)!.status = "completed";
     const milestone = await app.inject({
       method: "POST",
       url: `/api/scenarios/${shared.json().id}/runs`,
+      payload: { runId },
     });
 
     expect(milestone.json().revealState).toBe("hidden");

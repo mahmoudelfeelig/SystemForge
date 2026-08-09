@@ -1,8 +1,15 @@
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import {
+  analyzeTopologyExecutionBounds,
   architectureSchema,
   candidateScenario,
+  estimateSimulationExecutionWorkUnits,
+  estimateSimulationOutputMetricCells,
+  estimateSimulationResultBytes,
+  MAX_TOPOLOGY_FANOUT_AMPLIFICATION,
+  MAX_SIMULATION_OUTPUT_METRIC_CELLS,
+  MAX_SIMULATION_ESTIMATED_RESULT_BYTES,
   runSubmissionSchema,
   scenarioSchema,
   type ApiErrorBody,
@@ -14,15 +21,34 @@ import {
   SOLVER_STRATEGIES,
   type SolveArchitectureOptions,
 } from "@systemforge/sim-core";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import { z, ZodError } from "zod";
+import { compileAiRequirements, compileAiScenario } from "./aiCompilation";
+import {
+  AiRequestError,
+  conductAiInterviewTurn,
+  debriefCanonicalRun,
+} from "./aiDebrief";
+import {
+  AiProviderError,
+  CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
+  MAX_AI_DAILY_REQUESTS,
+  MAX_AI_MONTHLY_RESERVED_COST_CENTS,
+  type AiProvider,
+} from "./aiProvider";
 import type { ApiConfig } from "./config";
 import { runSolverInThread, type SolverRunner } from "./runSolverInThread";
 import {
+  AiUsageBudgetExceededError,
   QueueCapacityError,
   SharedScenarioCapacityError,
   type ControlStore,
 } from "./store";
+import { runMatchesSharedScenario } from "./sharedScenarioBinding";
 
 export type { SolverRunner } from "./runSolverInThread";
 
@@ -62,6 +88,8 @@ const solveRequestSchema = z.object({
   options: solverOptionsSchema.optional().default({}),
 });
 
+const scenarioRunMilestoneSchema = z.object({ runId: z.uuid() }).strict();
+
 const sharedScenarioResponse = (
   record: NonNullable<Awaited<ReturnType<ControlStore["getScenario"]>>>,
 ) => ({
@@ -93,6 +121,18 @@ const hostCollaborationSchema = z
   .strict()
   .refine((patch) => Object.keys(patch).length > 0);
 
+const hostTokenSchema = z.string().uuid();
+
+const interviewerBearerToken = (
+  authorization: string | undefined,
+): string | undefined => {
+  if (!authorization) return undefined;
+  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+  if (!match) return undefined;
+  const parsed = hostTokenSchema.safeParse(match[1]);
+  return parsed.success ? parsed.data : undefined;
+};
+
 const errorBody = (
   code: string,
   message: string,
@@ -108,10 +148,42 @@ const errorBody = (
   },
 });
 
+interface AiDisconnectRequest {
+  raw: {
+    aborted: boolean;
+    once(event: "aborted", listener: () => void): unknown;
+    off(event: "aborted", listener: () => void): unknown;
+  };
+  socket: { destroyed: boolean };
+}
+
+interface AiDisconnectReply {
+  raw: {
+    once(event: "close", listener: () => void): unknown;
+    off(event: "close", listener: () => void): unknown;
+  };
+}
+
+export const bindAiDisconnectAbort = (
+  request: AiDisconnectRequest,
+  reply: AiDisconnectReply,
+  controller: AbortController,
+): (() => void) => {
+  const abort = () => controller.abort();
+  request.raw.once("aborted", abort);
+  reply.raw.once("close", abort);
+  if (request.raw.aborted || request.socket.destroyed) abort();
+  return () => {
+    request.raw.off("aborted", abort);
+    reply.raw.off("close", abort);
+  };
+};
+
 export async function buildApp(
   config: ApiConfig,
   store: ControlStore,
   solve: SolverRunner = runSolverInThread,
+  aiProvider: AiProvider | null = null,
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
@@ -144,6 +216,7 @@ export async function buildApp(
 
   let concurrentRequests = 0;
   let concurrentSolves = 0;
+  let concurrentAiRequests = 0;
   const admittedRequests = new WeakSet<object>();
   app.addHook("onRequest", async (request, reply) => {
     if (request.url.startsWith("/api/health/")) return;
@@ -225,6 +298,138 @@ export async function buildApp(
     },
   );
 
+  app.get("/api/ai/capabilities", { config: { rateLimit: false } }, () => ({
+    contractVersion: 1 as const,
+    enabled: aiProvider !== null,
+    tasks: [
+      "compile-requirements",
+      "author-scenario",
+      "debrief-run",
+      "conduct-interview",
+    ] as const,
+    provider: aiProvider ? { id: aiProvider.evidence.id } : null,
+    boundaries: [
+      "AI output is advisory and schema-validated before it reaches the interface.",
+      "Drafts require explicit review and apply actions.",
+      "Debriefs cite deterministic modeled evidence and are not production telemetry.",
+      "Candidate interview prompts exclude private rubric fields.",
+      "AI cannot execute, score, or replace deterministic simulation physics.",
+    ],
+  }));
+
+  const executeAiRequest = async <T>(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    operation: (provider: AiProvider, signal: AbortSignal) => Promise<T>,
+  ): Promise<T | FastifyReply> => {
+    if (!aiProvider)
+      return reply
+        .code(503)
+        .send(
+          errorBody(
+            "ai_unavailable",
+            "Optional AI assistance is not configured. Manual authoring and deterministic local simulation remain available.",
+            request.id,
+          ),
+        );
+    if (concurrentAiRequests >= 1) {
+      reply.header("retry-after", "2");
+      return reply
+        .code(503)
+        .send(
+          errorBody(
+            "ai_capacity_exceeded",
+            "The bounded AI assistance slot is busy. Continue manually or retry in a moment.",
+            request.id,
+            2,
+          ),
+        );
+    }
+    concurrentAiRequests += 1;
+    const controller = new AbortController();
+    const releaseDisconnectAbort = bindAiDisconnectAbort(
+      request,
+      reply,
+      controller,
+    );
+    const budgetedProvider: AiProvider = {
+      evidence: aiProvider.evidence,
+      reservedCostCents: aiProvider.reservedCostCents,
+      async generateStructured(providerRequest, signal) {
+        await store.reserveAiUsage({
+          providerId: aiProvider.evidence.id,
+          model: aiProvider.evidence.model,
+          reservedCostCents:
+            aiProvider.reservedCostCents ??
+            CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
+          maximumDailyRequests: MAX_AI_DAILY_REQUESTS,
+          maximumMonthlyCostCents: MAX_AI_MONTHLY_RESERVED_COST_CENTS,
+        });
+        return aiProvider.generateStructured(providerRequest, signal);
+      },
+    };
+    try {
+      try {
+        if (request.raw.aborted || request.socket.destroyed) controller.abort();
+        return await operation(budgetedProvider, controller.signal);
+      } catch (error) {
+        if (!(error instanceof AiUsageBudgetExceededError)) throw error;
+        reply.header("retry-after", String(error.retryAfterSeconds));
+        return reply
+          .code(429)
+          .send(
+            errorBody(
+              "ai_budget_exhausted",
+              "The bounded AI request or spending budget is exhausted. Manual authoring and deterministic local simulation remain available.",
+              request.id,
+              error.retryAfterSeconds,
+            ),
+          );
+      }
+    } finally {
+      concurrentAiRequests = Math.max(0, concurrentAiRequests - 1);
+      releaseDisconnectAbort();
+    }
+  };
+
+  app.post(
+    "/api/ai/compile/requirements",
+    { config: { rateLimit: { max: 6, timeWindow: "10 minutes" } } },
+    (request, reply) =>
+      executeAiRequest(request, reply, (provider, signal) =>
+        compileAiRequirements(provider, request.body, signal),
+      ),
+  );
+
+  app.post(
+    "/api/ai/compile/scenario",
+    { config: { rateLimit: { max: 4, timeWindow: "10 minutes" } } },
+    (request, reply) =>
+      executeAiRequest(request, reply, (provider, signal) =>
+        compileAiScenario(provider, request.body, signal),
+      ),
+  );
+
+  app.post(
+    "/api/ai/debrief",
+    { config: { rateLimit: { max: 3, timeWindow: "10 minutes" } } },
+    (request, reply) => {
+      const hostToken = interviewerBearerToken(request.headers.authorization);
+      return executeAiRequest(request, reply, (provider, signal) =>
+        debriefCanonicalRun(provider, store, request.body, hostToken, signal),
+      );
+    },
+  );
+
+  app.post(
+    "/api/ai/interview",
+    { config: { rateLimit: { max: 6, timeWindow: "10 minutes" } } },
+    (request, reply) =>
+      executeAiRequest(request, reply, (provider, signal) =>
+        conductAiInterviewTurn(provider, request.body, signal),
+      ),
+  );
+
   app.post(
     "/api/runs",
     { config: { rateLimit: { max: 12, timeWindow: "1 minute" } } },
@@ -240,10 +445,36 @@ export async function buildApp(
               request.id,
             ),
           );
-      const canonicalWorkUnits =
-        (submission.scenario.workload.durationSeconds + 1) *
-        (submission.architecture.nodes.length +
-          submission.architecture.edges.length * 0.25);
+      const topologyBounds = analyzeTopologyExecutionBounds(
+        submission.architecture,
+      );
+      if (topologyBounds.reachableCycleNodeIds.length > 0)
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "canonical_topology_cycle",
+              `Canonical runs reject reachable feedback cycles. Remove the cycle through ${topologyBounds.reachableCycleNodeIds.join(", ")} and retry.`,
+              request.id,
+            ),
+          );
+      if (
+        !Number.isFinite(topologyBounds.fanoutAmplification) ||
+        topologyBounds.fanoutAmplification > MAX_TOPOLOGY_FANOUT_AMPLIFICATION
+      )
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "canonical_topology_amplification",
+              `Canonical runs reject synchronous fan-out above ${MAX_TOPOLOGY_FANOUT_AMPLIFICATION.toLocaleString("en-US")}. Partition the route or set complete traffic shares and retry.`,
+              request.id,
+            ),
+          );
+      const canonicalWorkUnits = estimateSimulationExecutionWorkUnits(
+        submission.scenario,
+        submission.architecture,
+      );
       if (canonicalWorkUnits > config.maxCanonicalWorkUnits)
         return reply
           .code(422)
@@ -251,6 +482,34 @@ export async function buildApp(
             errorBody(
               "canonical_workload_too_large",
               `This model exceeds the canonical ${config.maxCanonicalWorkUnits.toLocaleString("en-US")} work-unit budget. Run it locally or reduce duration and topology size.`,
+              request.id,
+            ),
+          );
+      const canonicalOutputMetricCells = estimateSimulationOutputMetricCells(
+        submission.scenario,
+        submission.architecture,
+      );
+      if (canonicalOutputMetricCells > MAX_SIMULATION_OUTPUT_METRIC_CELLS)
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "canonical_result_too_large",
+              `This model would emit ${canonicalOutputMetricCells.toLocaleString("en-US")} frame-metric cells, above the canonical ${MAX_SIMULATION_OUTPUT_METRIC_CELLS.toLocaleString("en-US")} result-size limit. Reduce duration or topology size.`,
+              request.id,
+            ),
+          );
+      const canonicalEstimatedResultBytes = estimateSimulationResultBytes(
+        submission.scenario,
+        submission.architecture,
+      );
+      if (canonicalEstimatedResultBytes > MAX_SIMULATION_ESTIMATED_RESULT_BYTES)
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "canonical_result_bytes_too_large",
+              `This model's estimated ${canonicalEstimatedResultBytes.toLocaleString("en-US")}-byte result exceeds the canonical ${MAX_SIMULATION_ESTIMATED_RESULT_BYTES.toLocaleString("en-US")}-byte retention limit. Reduce duration or topology size.`,
               request.id,
             ),
           );
@@ -282,6 +541,24 @@ export async function buildApp(
               request.id,
             ),
           );
+      const solveTopologyBounds = analyzeTopologyExecutionBounds(
+        body.architecture,
+      );
+      if (
+        solveTopologyBounds.reachableCycleNodeIds.length > 0 ||
+        !Number.isFinite(solveTopologyBounds.fanoutAmplification) ||
+        solveTopologyBounds.fanoutAmplification >
+          MAX_TOPOLOGY_FANOUT_AMPLIFICATION
+      )
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "solver_invalid_topology",
+              "Canonical solving requires an acyclic topology within the synchronous fan-out safety limit.",
+              request.id,
+            ),
+          );
       const maxCandidates =
         body.options.maxCandidates ?? config.maxSolverCandidates;
       if (maxCandidates > config.maxSolverCandidates)
@@ -294,18 +571,46 @@ export async function buildApp(
               request.id,
             ),
           );
-      const workUnits = estimateSolverWorkUnits(
+      const baselineWorkUnits = estimateSolverWorkUnits(
         body.scenario,
         body.architecture,
-        maxCandidates,
+        0,
       );
-      if (workUnits > config.maxSolverWorkUnits)
+      if (baselineWorkUnits > config.maxSolverWorkUnits)
         return reply
           .code(422)
           .send(
             errorBody(
               "solver_workload_too_large",
-              `This solve requires ${Math.ceil(workUnits).toLocaleString("en-US")} estimated work units, above the canonical ${config.maxSolverWorkUnits.toLocaleString("en-US")} limit. Reduce duration, topology size, or candidate count, or solve locally.`,
+              `The baseline requires ${Math.ceil(baselineWorkUnits).toLocaleString("en-US")} estimated work units, above the canonical ${config.maxSolverWorkUnits.toLocaleString("en-US")} limit. Reduce duration or topology size, or solve locally.`,
+              request.id,
+            ),
+          );
+      const solverOutputMetricCells = estimateSimulationOutputMetricCells(
+        body.scenario,
+        body.architecture,
+      );
+      if (solverOutputMetricCells > MAX_SIMULATION_OUTPUT_METRIC_CELLS)
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "solver_result_shape_too_large",
+              `Each candidate would emit ${solverOutputMetricCells.toLocaleString("en-US")} frame-metric cells, above the canonical ${MAX_SIMULATION_OUTPUT_METRIC_CELLS.toLocaleString("en-US")} result-size limit. Reduce duration or topology size.`,
+              request.id,
+            ),
+          );
+      const solverEstimatedResultBytes = estimateSimulationResultBytes(
+        body.scenario,
+        body.architecture,
+      );
+      if (solverEstimatedResultBytes > MAX_SIMULATION_ESTIMATED_RESULT_BYTES)
+        return reply
+          .code(422)
+          .send(
+            errorBody(
+              "solver_result_bytes_too_large",
+              `Each candidate's estimated ${solverEstimatedResultBytes.toLocaleString("en-US")}-byte result exceeds the canonical ${MAX_SIMULATION_ESTIMATED_RESULT_BYTES.toLocaleString("en-US")}-byte retention limit. Reduce duration or topology size.`,
               request.id,
             ),
           );
@@ -385,12 +690,29 @@ export async function buildApp(
             request.id,
           ),
         );
-    return run;
+    return {
+      ...run,
+      ...(run.result
+        ? {
+            result: {
+              engineVersion: run.result.engineVersion,
+              ...(run.digest ? { digest: run.digest } : {}),
+            },
+          }
+        : {}),
+    };
   });
 
   app.post(
     "/api/scenarios",
-    { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    {
+      config: {
+        rateLimit: {
+          max: config.scenarioRateLimitMax,
+          timeWindow: config.scenarioRateLimitWindow,
+        },
+      },
+    },
     async (request, reply) => {
       const body = z
         .object({ scenario: scenarioSchema, architecture: architectureSchema })
@@ -416,11 +738,7 @@ export async function buildApp(
 
   app.get("/api/scenarios/:id", async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
-    const hostToken = z
-      .string()
-      .uuid()
-      .optional()
-      .parse(request.headers["x-systemforge-host-token"]);
+    const hostToken = interviewerBearerToken(request.headers.authorization);
     const record = await store.getScenario(id, hostToken);
     if (!record)
       return reply
@@ -440,6 +758,7 @@ export async function buildApp(
     { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      const { runId } = scenarioRunMilestoneSchema.parse(request.body);
       const current = await store.getScenario(id);
       if (!current)
         return reply
@@ -458,6 +777,42 @@ export async function buildApp(
             errorBody(
               "not_an_interview",
               "Run milestones only apply to interview sessions.",
+              request.id,
+            ),
+          );
+      const run = await store.getRun(runId);
+      if (!run)
+        return reply
+          .code(404)
+          .send(
+            errorBody(
+              "run_not_found",
+              "This canonical run does not exist or has expired.",
+              request.id,
+            ),
+          );
+      if (run.status !== "completed")
+        return reply
+          .code(409)
+          .send(
+            errorBody(
+              "run_not_completed",
+              "The interview milestone requires a completed server run.",
+              request.id,
+            ),
+          );
+      const runSubmission = await store.getRunSubmission(runId);
+      if (
+        !runSubmission ||
+        runSubmission.sharedScenarioId !== id ||
+        !runMatchesSharedScenario(runSubmission.scenario, current.scenario)
+      )
+        return reply
+          .code(409)
+          .send(
+            errorBody(
+              "run_scenario_mismatch",
+              "The completed server run was not submitted for this shared interview scenario.",
               request.id,
             ),
           );
@@ -481,11 +836,7 @@ export async function buildApp(
     { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const { id } = z.object({ id: z.uuid() }).parse(request.params);
-      const hostToken = z
-        .string()
-        .uuid()
-        .optional()
-        .parse(request.headers["x-systemforge-host-token"]);
+      const hostToken = interviewerBearerToken(request.headers.authorization);
       const current = await store.getScenario(id, hostToken);
       if (!current)
         return reply
@@ -537,10 +888,17 @@ export async function buildApp(
       const { revealed } = z
         .object({ revealed: z.boolean() })
         .parse(request.body);
-      const hostToken = z
-        .string()
-        .uuid()
-        .parse(request.headers["x-systemforge-host-token"]);
+      const hostToken = interviewerBearerToken(request.headers.authorization);
+      if (!hostToken)
+        return reply
+          .code(404)
+          .send(
+            errorBody(
+              "scenario_not_found",
+              "This shared scenario does not exist or has expired.",
+              request.id,
+            ),
+          );
       const current = await store.getScenario(id, hostToken);
       if (!current || !current.isHost)
         return reply
@@ -620,6 +978,29 @@ export async function buildApp(
             request.id,
           ),
         );
+    if (error instanceof AiRequestError)
+      return reply
+        .code(error.statusCode)
+        .send(errorBody(error.code, error.message, request.id));
+    if (error instanceof AiProviderError) {
+      const status =
+        error.code === "ai_output_rejected"
+          ? 502
+          : error.code === "ai_request_cancelled"
+            ? 499
+            : 503;
+      if (status === 503) reply.header("retry-after", "15");
+      return reply
+        .code(status)
+        .send(
+          errorBody(
+            error.code,
+            error.message,
+            request.id,
+            status === 503 ? 15 : undefined,
+          ),
+        );
+    }
     if (error instanceof QueueCapacityError) {
       reply.header("retry-after", String(error.retryAfterSeconds));
       return reply

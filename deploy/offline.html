@@ -4,57 +4,256 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#071015" />
-    <title>SystemForge local mode</title>
+    <title>SystemForge online service unavailable</title>
     <style>
+      :root {
+        color-scheme: dark;
+        --void: #02070b;
+        --surface: #050d13;
+        --line: #183543;
+        --line-bright: #285468;
+        --text: #edf7fa;
+        --muted: #8aa1ab;
+        --cyan: #20c7ff;
+        --lime: #4ee06f;
+        --red: #ff4d3d;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: #071015;
-        color: #d8e1e3;
-        font-family: system-ui, sans-serif;
+        min-width: 320px;
+        min-height: 100svh;
+        background: var(--void);
+        color: var(--text);
+        font-family: Arial, sans-serif;
+      }
+      header {
+        height: 58px;
+        border-bottom: 1px solid var(--line-bright);
+        background: #030a0f;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+      }
+      header strong,
+      header span,
+      .label,
+      dt,
+      dd,
+      li,
+      a {
+        font-family: Consolas, monospace;
+      }
+      header strong {
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      header span {
+        color: var(--red);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
       main {
-        max-width: 560px;
-        padding: 34px;
-        border: 1px solid #31464f;
-        background: #0a151a;
+        width: min(1480px, 100%);
+        min-height: calc(100svh - 58px);
+        margin: 0 auto;
+        border-inline: 1px solid var(--line-bright);
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr) 290px;
       }
-      span {
-        color: #72d4cb;
-        font: 700 11px monospace;
-        text-transform: uppercase;
+      aside {
+        background: var(--surface);
+        padding: 24px 18px;
+      }
+      aside:first-child {
+        border-right: 1px solid var(--line-bright);
+      }
+      aside:last-child {
+        border-left: 1px solid var(--line-bright);
+      }
+      .label {
+        color: var(--cyan);
+        font-size: 10px;
         letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      ol {
+        margin: 28px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      li {
+        min-height: 44px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      li:last-child {
+        border-bottom: 1px solid var(--line);
+      }
+      li.ready {
+        color: var(--lime);
+      }
+      li.failed {
+        color: var(--red);
+      }
+      .outage {
+        display: grid;
+        align-content: center;
+        justify-items: start;
+        padding: clamp(36px, 8vw, 112px);
+        background-color: #030a0f;
+        background-image: url("/assets/blueprint-grid.webp");
+        background-size: 720px 720px;
       }
       h1 {
-        font-size: 34px;
-        line-height: 1.1;
+        max-width: 720px;
+        margin: 18px 0 0;
+        font-size: clamp(42px, 5vw, 70px);
+        line-height: 0.98;
+        text-transform: uppercase;
       }
       p {
-        color: #91a3a9;
-        line-height: 1.6;
+        max-width: 650px;
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
       }
       a {
-        display: inline-block;
-        margin-top: 12px;
-        padding: 10px 14px;
-        border: 1px solid #4b706f;
-        color: #9be7df;
+        min-height: 40px;
+        border: 1px solid var(--cyan);
+        background: var(--cyan);
+        color: var(--void);
+        display: inline-flex;
+        align-items: center;
+        padding: 0 16px;
+        font-size: 12px;
+        font-weight: 700;
         text-decoration: none;
+      }
+      .actions {
+        margin-top: 24px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .actions a + a {
+        background: transparent;
+        color: var(--cyan);
+      }
+      dl {
+        margin: 22px 0 0;
+      }
+      dl div {
+        min-height: 44px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      dl div:last-child {
+        border-bottom: 1px solid var(--line);
+      }
+      dt,
+      dd {
+        margin: 0;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      dt {
+        color: var(--muted);
+      }
+      dd {
+        color: var(--lime);
+        text-align: right;
+      }
+      dd.offline {
+        color: var(--red);
+      }
+      @media (max-width: 840px) {
+        main {
+          display: block;
+          border: 0;
+        }
+        aside {
+          border: 0 !important;
+          border-bottom: 1px solid var(--line-bright) !important;
+        }
+        aside:first-child ol {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+        }
+        aside:first-child li {
+          padding: 8px;
+          text-align: center;
+        }
+        .outage {
+          min-height: 500px;
+          padding: 42px 22px;
+        }
       }
     </style>
   </head>
   <body>
+    <header>
+      <strong>SystemForge Lab</strong>
+      <span>Network unavailable</span>
+    </header>
     <main>
-      <span>Graceful degradation</span>
-      <h1>The server is recovering.</h1>
-      <p>
-        If you have opened SystemForge before, return to the installed or cached
-        lab to keep building and running simulations locally. Canonical
-        submissions will resume when capacity is available.
-      </p>
-      <a href="/lab">Try the local lab</a>
+      <aside>
+        <span class="label">Connection status</span>
+        <ol>
+          <li class="ready">Application shell ready</li>
+          <li class="failed">Online service offline</li>
+          <li>Local Lab available if cached</li>
+        </ol>
+      </aside>
+      <section class="outage">
+        <span class="label">Network unavailable</span>
+        <h1>The online service is offline</h1>
+        <p>
+          Server runs, short links, and shared interviews are unavailable. If
+          the Lab is cached, local runs still work.
+        </p>
+        <div class="actions">
+          <a href="/lab">Open cached Lab</a>
+          <a href="/replay">Open Replay console</a>
+        </div>
+      </section>
+      <aside>
+        <span class="label">Available locally</span>
+        <dl>
+          <div>
+            <dt>Saved draft</dt>
+            <dd>Browser</dd>
+          </div>
+          <div>
+            <dt>Local runs</dt>
+            <dd>Available</dd>
+          </div>
+          <div>
+            <dt>Replay files</dt>
+            <dd>Available</dd>
+          </div>
+          <div>
+            <dt>Short links</dt>
+            <dd class="offline">Offline</dd>
+          </div>
+          <div>
+            <dt>Server runs</dt>
+            <dd class="offline">Offline</dd>
+          </div>
+        </dl>
+      </aside>
     </main>
   </body>
 </html>

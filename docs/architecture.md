@@ -10,6 +10,7 @@ flowchart LR
     Caddy --> Web[Static web container]
     Caddy --> API[Fastify API]
     API --> DB[(Private PostgreSQL)]
+    API -. optional structured proposal .-> AI[Configured AI provider]
     Worker[Bounded worker pool] --> DB
     Worker -->|isolated worker thread| Canonical[Shared deterministic simulation core]
 ```
@@ -49,16 +50,81 @@ rechecks liveness, readiness, and the local-capable shell after the burst.
 
 ## Product contracts
 
-Guided, custom, and interview scenarios use the same versioned Zod contract. Requirements carry a metric, operator, target, visibility, and owner. Candidates can add, edit, and remove their inferred requirements before testing the architecture; edits invalidate stale local results. Interviewer links carry a high-entropy token in the URL fragment so it is not sent in HTTP request targets or proxy logs. The browser forwards it in a dedicated request header, PostgreSQL stores only its SHA-256 digest, and candidate responses are filtered server-side and browser-side to remove hidden requirements and interviewer notes.
+Guided, custom, and interview scenarios use the same versioned Zod contract. Requirements carry a metric, operator, target, visibility, and owner. Candidates can add, edit, and remove their inferred requirements before testing the architecture; edits invalidate stale local results. Interviewer links carry a high-entropy token in the URL fragment so it is not sent in HTTP request targets. Browser startup removes sensitive share and host parameters from the visible URL before React mounts and retains them only in memory long enough for the owning route to consume them. The browser forwards a server-backed interviewer token as an `Authorization: Bearer` credential, PostgreSQL stores only its SHA-256 digest, and candidate responses are filtered server-side and browser-side to remove hidden requirements and interviewer notes. A host token is retained for refresh only after the API confirms the interviewer role.
 
 Canonical interview sessions persist a reveal state without persisting the raw
 interviewer credential. `never` remains private, `after-run` reveals criteria
-only after the candidate records a completed local run, and
+only after the API verifies a completed canonical run whose public scenario
+matches the shared interview, and
 `interviewer-controlled` changes only through a host-token-authorized route.
-Revealing criteria never reveals the interviewer brief. Browser-local links are
-static and always omit the private rubric from candidate payloads.
+Local run completion cannot unlock server-held criteria. Revealing criteria
+never reveals the interviewer brief. Browser-local links are static and always
+omit the private rubric from candidate payloads.
 
-Local share links are Base64URL payloads and require no service. Canonical links are stored for 90 days. Completed canonical runs are retained for the configured retention period, which defaults to 30 days.
+Local share links use a compact, versioned, integrity-checked payload and require
+no service; legacy uncompressed Base64URL links remain readable. Encoded input,
+decompressed output, and worker time are bounded. Decoding and schema validation
+run in a disposable worker, and invalid, empty, stale, or oversized payloads fail
+closed without restoring a prior private workspace. The persistent local draft is
+always the candidate-safe projection. A full interviewer draft may be retained in
+tab-scoped `sessionStorage`, never `localStorage`. Architectures that exceed the
+safe browser-URL budget are not emitted as broken links and must use an explicit
+server-backed sharing path. Canonical links are stored for 30 days. Completed
+canonical runs are retained for the configured retention period, which defaults
+to 30 days.
+
+Completed browser-local runs can enter the local Run library. Its IndexedDB
+contract retains at most 24 candidate-safe records and 20 MB, expires unstarred
+records after 30 days, and allows at most six starred references. A record
+contains compact candidate-visible metrics and, when eligible, the existing
+two-megabyte integrity-checked replay bundle. Private interview runs are not
+persisted. Hidden criteria, interviewer material, credentials, collaboration,
+full frames, events, traces, reports, and AI output never enter the library.
+Exact reruns deduplicate by engine plus replay input and action digests; a
+matching result increments its occurrence count, while a different result
+digest remains separate and raises a determinism warning. Replay and per-run
+export always revalidate the stored bundle before use. Labels, notes, and tags
+remain local annotations and are removed from candidate-safe exports.
+
+## Optional AI assistance boundary
+
+AI assistance is an optional canonical-control-plane feature and is disabled by
+default. The browser-local editor, deterministic simulator, solver, session
+replay, and evidence exports remain complete when the feature or provider is
+offline. The API creates a provider only when `SYSTEMFORGE_AI_ENABLED=true`, an
+explicit model is configured, and an API-only credential is present. No provider
+key, model setting, or provider URL is accepted from the browser.
+
+The provider returns strict, versioned intent JSON rather than SystemForge
+results. Requirement metrics, comparators and numeric targets must each cite
+exact spans in the user's brief; deterministic server code checks semantic
+aliases, parses bounded grouped and scaled literals and compatible units,
+generates IDs, assigns visibility, retains unspecified authored entries,
+validates the complete scenario, and returns a before/after preview. Applying
+the preview remains an explicit browser action. The provider never calls the
+simulation core, never returns `SimulationResult`, and cannot write drafts,
+runs, collaboration records, or PostgreSQL.
+
+Run debriefs load a completed canonical run and its retained submission inside
+the API. The provider receives a bounded catalog of exact frame, objective,
+analysis, event-lineage and sampled-trace facts and may select only those
+evidence IDs; unknown IDs, uncited findings, and numeric AI prose fail the
+request. Candidate debrief and facilitation prompts use the candidate
+projection. A private rubric can enter an interviewer debrief only when the run
+is semantically bound to the same shared scenario and the Bearer host credential
+validates. Prompts and responses are not stored by SystemForge, but submitted
+content leaves SystemForge and provider retention depends on the configured
+account and data controls.
+
+The production adapter is pinned to Cloudflare Workers AI
+`@cf/openai/gpt-oss-20b` through the `systemforge-production` AI Gateway. The
+API admits one provider call at a time and reserves each admitted call in
+PostgreSQL before any network request. A global ten-request UTC daily ceiling
+and four-dollar UTC monthly reservation ceiling remain fixed in application
+code. Failed and cancelled calls retain their reservation. The Gateway must
+separately block at $4.50 per month, disable request/response logging and cache,
+and make no automatic retries. These independent controls preserve a buffer
+beneath the five-dollar maximum even if abusive clients rotate addresses.
 
 ## Availability boundary
 

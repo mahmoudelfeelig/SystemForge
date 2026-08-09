@@ -3,7 +3,7 @@ import { Pool } from "pg";
 
 const apiOrigin = process.env.SMOKE_API_ORIGIN ?? "http://127.0.0.1:8080";
 const webOrigin = process.env.SMOKE_WEB_ORIGIN ?? "http://systemforge-web:8080";
-const expectedEngineVersion = "0.3.0";
+const expectedEngineVersion = "0.7.0";
 const requestedLeaseRecoveryTimeout = Number.parseInt(
   process.env.SMOKE_LEASE_RECOVERY_TIMEOUT_MS ?? "75000",
   10,
@@ -99,7 +99,7 @@ if (typeof web.body !== "string" || !web.body.includes("SystemForge"))
   throw new Error("The production web shell did not contain the product name.");
 if (
   web.response.headers.get("cache-control") !==
-  "public, max-age=0, must-revalidate"
+  "public, max-age=0, must-revalidate, no-transform"
 )
   throw new Error("The browser shell cache policy was not fail-safe.");
 if (
@@ -133,7 +133,7 @@ const interviewerToken = new URL(shared.body.interviewerUrl).hash
   .replace(/^hostToken=/, "");
 const host = await request(`${apiOrigin}/api/scenarios/${shared.body.id}`, {
   headers: {
-    "x-systemforge-host-token": decodeURIComponent(interviewerToken),
+    authorization: `Bearer ${decodeURIComponent(interviewerToken)}`,
   },
 });
 if (host.body?.scenario?.requirements?.[0]?.id !== "hidden-latency")
@@ -145,7 +145,7 @@ const revealed = await request(
     method: "PATCH",
     headers: {
       "content-type": "application/json",
-      "x-systemforge-host-token": decodeURIComponent(interviewerToken),
+      authorization: `Bearer ${decodeURIComponent(interviewerToken)}`,
     },
     body: JSON.stringify({ revealed: true }),
   },
@@ -168,7 +168,7 @@ await request(`${apiOrigin}/api/scenarios/${shared.body.id}/reveal`, {
   method: "PATCH",
   headers: {
     "content-type": "application/json",
-    "x-systemforge-host-token": decodeURIComponent(interviewerToken),
+    authorization: `Bearer ${decodeURIComponent(interviewerToken)}`,
   },
   body: JSON.stringify({ revealed: false }),
 });

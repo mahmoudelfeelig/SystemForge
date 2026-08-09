@@ -1,9 +1,30 @@
 import type {
+  AiAssistantProviderEvidence,
   Architecture,
   RunSubmission,
   Scenario,
   SimulationResult,
 } from "@systemforge/contracts";
+
+export interface AiUsageReservation {
+  providerId: AiAssistantProviderEvidence["id"];
+  model: string;
+  reservedCostCents: number;
+  maximumDailyRequests: number;
+  maximumMonthlyCostCents: number;
+}
+
+export interface AiUsageBudgetState {
+  dailyRequests: number;
+  monthlyReservedCostCents: number;
+}
+
+export class AiUsageBudgetExceededError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("The bounded AI assistance budget is exhausted.");
+    this.name = "AiUsageBudgetExceededError";
+  }
+}
 
 export interface RunRecord {
   id: string;
@@ -62,12 +83,14 @@ export class SharedScenarioCapacityError extends Error {
 
 export interface ControlStore {
   ready(): Promise<boolean>;
+  reserveAiUsage(reservation: AiUsageReservation): Promise<AiUsageBudgetState>;
   queueRun(
     submission: RunSubmission,
     maximumQueued: number,
     maximumStored: number,
   ): Promise<RunRecord>;
   getRun(id: string): Promise<RunRecord | null>;
+  getRunSubmission(id: string): Promise<RunSubmission | null>;
   shareScenario(
     scenario: Scenario,
     architecture: Architecture,

@@ -15,6 +15,7 @@ trap cleanup EXIT HUP INT TERM
 
 grep -Fq 'MAX_STORED_RUNS: ${MAX_STORED_RUNS:-250}' deploy/docker-compose.prod.yml
 grep -Fq 'MAX_SHARED_SCENARIOS: ${MAX_SHARED_SCENARIOS:-2000}' deploy/docker-compose.prod.yml
+grep -Fq 'SCENARIO_RATE_LIMIT_MAX: ${SCENARIO_RATE_LIMIT_MAX:-10}' deploy/docker-compose.prod.yml
 grep -Fq 'MAX_CANONICAL_RESULT_BYTES: ${MAX_CANONICAL_RESULT_BYTES:-8500000}' deploy/docker-compose.prod.yml
 
 mkdir -p "$TEST_APP_DIR/deploy" "$TEST_APP_DIR/scripts" "$TEST_BIN_DIR"
@@ -139,6 +140,7 @@ test "$OFFSITE_FAILURE_STATUS" -ne 0
 test ! -f "$TEST_APP_DIR/.last-successful-sha"
 grep -q '^release backup$' "$TEST_LOG"
 grep -q '^release offsite restore$' "$TEST_LOG"
+grep -q '^caddy closed$' "$TEST_LOG"
 grep -q ' stop systemforge-web systemforge-api systemforge-worker' "$TEST_LOG"
 FAKE_OFFSITE_FAILURE=false
 export FAKE_OFFSITE_FAILURE
@@ -204,7 +206,7 @@ set -e
 test "$CADDY_FAILURE_STATUS" -ne 0
 test ! -f "$TEST_APP_DIR/.last-successful-sha"
 grep -q '^caddy open$' "$TEST_LOG"
-test "$(grep -c '^caddy closed$' "$TEST_LOG" || true)" -eq 0
+test "$(grep -c '^caddy closed$' "$TEST_LOG" || true)" -eq 1
 grep -q ' stop systemforge-web systemforge-api systemforge-worker' "$TEST_LOG"
 
 echo "Hetzner deployment rollback tests passed."

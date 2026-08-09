@@ -1,12 +1,100 @@
 # Release-readiness evidence
 
-The owner authorized SystemForge's public release on 2026-08-08. Authorization
-opens the release gate; it does not make an untested checkout deployable. The
-public promotion remains conditional on the exact committed SHA passing every
-CI, image, integration, backup, restore, in-network, and Cloudflare smoke gate
-described here.
+## Current status — 2026-08-09
 
-## Current checkout evidence
+The current uncommitted checkout is a locally verified candidate, not yet an
+immutable release candidate. It is not the build currently served at
+`systemforge.elfeel.me`, and no deployment, commit, push, or production
+mutation was performed during this pass.
+
+Current local evidence:
+
+- A fresh isolated `pnpm quality` gate passed formatting, ESLint,
+  TypeScript project references, 52 files and 412 functional tests, both
+  performance budgets, all workspace builds, and 7 Sites packaging tests on
+  the same final working tree. The web build transformed 4,886 modules and
+  prepared 25 offline assets.
+- A fresh `pnpm test:coverage` run passed all 412 tests and reported 92.72%
+  statements, 84.54% branches, 93.54% functions, and 93.73% lines across the
+  selected critical simulation, contract, API, worker, sharing, and solver
+  surfaces. The checked thresholds remain 92%, 84%, 93%, and 93% respectively.
+  These percentages describe the configured critical-file denominator, not
+  every source file in the product.
+- Targeted mutation testing killed all four critical-boundary mutants with
+  existing assertions. Fixed-seed stability passed the complete 52-file,
+  412-test non-performance suite once serially and once in parallel without
+  retry.
+- Microsoft Edge 151 passed 17 route audits at 1440 by 900 and 390 by 844,
+  including local authoring and sharing, run/pause/intervention/snapshot/fork,
+  completion, sampled-trace path playback, replay export/import/comparison,
+  automatic candidate-safe Run library persistence, interviewer-versus-candidate
+  privacy, mobile fit and touch targets, reduced motion, and four warmed offline
+  routes. Unexpected console errors, network errors, acceptance defects,
+  unnamed focusables, duplicate IDs, and document-level horizontal overflow
+  were zero.
+- `pnpm audit --prod --audit-level=high` reported no known production
+  dependency vulnerabilities. Shell, workflow, service-worker, overload,
+  edge, Cloudflare-range, backup, provisioning, and release-backup contracts
+  passed. Docker Compose, Caddy-container, PostgreSQL, image-scan, and full
+  container integration checks were not rerun because the local Docker daemon
+  was unavailable; protected CI must supply that evidence for the exact SHA.
+- Independent engine, privacy, async-state, static-delivery, AI-boundary,
+  workflow, and UI acceptance reviews found no surviving source-confirmed or
+  browser-confirmed P0, P1, or P2 issue in the current checkout.
+- The deterministic engine is version 0.7.0. Directed request classes execute
+  through topology edges; seeded incidents, state-capability rules, bounded
+  paused interventions, replay evidence, behavioral profiles, robustness, and
+  output/work admission are covered by the current regression suite.
+- Shared-scenario creation is limited to 10 requests per client IP per day by
+  default. New records expire after 30 days, and expired records are removed
+  inside the capacity-locked PostgreSQL transaction before active capacity is
+  counted.
+- Unknown routes, crawl files, manifest MIME, service-worker API bypass,
+  shared-link `X-Robots-Tag`, immutable-cache behavior, and the branded outage
+  fallback are covered by repository delivery contracts.
+
+The optional AI layer was verified with credential-free fake-provider tests
+and remains disabled by default. Its production profile pins Cloudflare
+Workers AI `@cf/openai/gpt-oss-20b`, allows at most 10 provider reservations per
+UTC day, reserves 5 cents per request, and fails closed at 400 reserved cents
+per UTC month. The documented Cloudflare AI Gateway must additionally have a
+blocking $4.50 monthly spend limit with no fallback provider. No real provider
+credential, billing path, Gateway spend limit, or provider-retention
+configuration was exercised. The browser pass also does not
+constitute a screen-reader certification, target-device Core Web Vitals run,
+or physical-device install test. The offline evidence used an already warmed
+service worker rather than a first-install cold PWA, and the manifest still
+lacks a safe-zone-tested maskable icon. These are recorded local limitations,
+not evidence that the stale hosted deployment is ready.
+
+The hosted production site is **NO-GO** until the current checkout is committed,
+tested as an immutable revision, explicitly authorized for deployment, and
+re-audited. The fresh 2026-08-09 live audit found an older engine 0.3.0 build,
+missing Replay routing, soft unknown-route behavior, SPA HTML at the robots,
+sitemap, asset-manifest, and asset-precache URLs, a stale web manifest with the
+wrong MIME type, an obsolete service worker, and the old 1.21 MB blueprint PNG.
+Cloudflare also injected an inline challenge-platform loader that the
+intentionally strict `script-src 'self'` policy blocked. The release candidate
+now emits `Cache-Control: no-transform` for HTML so Cloudflare does not alter
+the application document, while retaining the strict CSP. The live deployment
+must prove that the injected challenge and analytics scripts are absent.
+
+Promotion still requires the exact committed SHA to pass protected CI and image
+gates, an explicit owner deployment authorization, cache purge of the affected
+special URLs, public revision evidence, and a fresh live route, header, mobile,
+offline, and canonical-run audit. Local success does not satisfy those hosted
+gates.
+
+## Historical release authorization and rehearsals
+
+The owner authorized a SystemForge public release on 2026-08-08. That approval
+is historical evidence for the revision evaluated at the time; it is not a
+persistent authorization for this working tree or any later SHA. A future
+promotion requires a new manual, exact-revision dispatch after the committed SHA
+passes every CI, image, integration, backup, restore, in-network, and Cloudflare
+smoke gate described here.
+
+## Historical 2026-08-08 checkout evidence
 
 The 2026-08-08 checkout passed the following checks:
 
@@ -24,9 +112,9 @@ The 2026-08-08 checkout passed the following checks:
 - `sh scripts/deploy_hetzner.test.sh`: successful external shell/readiness
   acceptance, complete previous-image rollback, and first-deploy or incomplete
   rollback failure paths that leave only PostgreSQL running.
-- `sh scripts/stage_hetzner.test.sh`: exact-image admission, approval-aware
-  staging, and the closed-release path that reinstalls the hardened Caddy route
-  before stopping every application service.
+- `sh scripts/stage_hetzner.test.sh`: exact-image admission and a one-time
+  confirmation gate that exits before any host mutation when authorization is
+  absent.
 - `sh scripts/install_caddy_route.test.sh`: closed/open route selection,
   stdin-based validation and reload, unique backups, and a failed-reload
   rollback that restores and reloads the previous proxy configuration.
@@ -54,10 +142,12 @@ The 2026-08-08 checkout passed the following checks:
   exactly matches Cloudflare's current published IPv4 and IPv6 origin ranges.
 - Closed release-gate checks: both deployment and open-route installation exit
   78 without `I_AM_READY_FOR_PRODUCTION`.
-- Deployment workflow contract: only a successful same-repository `main` push
-  can deploy, first-bootstrap public smoke is opt-in, and Hetzner loads the
-  checksum-verified SHA-tagged images already scanned and exercised by CI
-  instead of rebuilding mutable tags.
+- Deployment workflow contract: `main` pushes cannot stage or deploy. A manual
+  dispatch must bind an exact current-main SHA to its successful
+  same-repository `SystemForge CI` run ID and exact typed confirmation before
+  protected-environment secrets or the checksum-verified image artifact become
+  available. Hetzner loads that tested artifact instead of rebuilding mutable
+  tags.
 - Actionlint 1.7.12, downloaded from its upstream release and verified against
   SHA-256
   `8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`,
@@ -174,13 +264,15 @@ checks. The production SHA and database-only service state remained unchanged.
   exact image SHA, public readiness response, and monitor run are the evidence
   of availability; owner approval alone is not.
 - Ordinary web builds compile canonical services off.
-- Every trusted green `main` CI run automatically stages its checksum-verified
-  images and exact source revision on Hetzner. With approval absent, staging
-  reinstalls the closed Caddy route and stops every application service.
-- The dependent public-deploy job requires both protected GitHub release
-  variables. The scheduled public monitor additionally requires the approved
-  external smoke URL, so a staged revision or first private bootstrap cannot
-  accidentally be treated as public.
+- Green `main` CI runs publish a checksum-verified image artifact but never
+  stage or deploy it automatically.
+- A manual deployment dispatch validates the exact successful CI run ID, exact
+  current-main SHA, same repository, workflow identity, and the typed
+  `AUTHORIZE_SYSTEMFORGE_PRODUCTION_RELEASE` confirmation before entering the
+  protected production environment. Unapproved staging exits without changing
+  Caddy or a running release.
+- The scheduled public monitor additionally requires the approved external
+  smoke URL, so a candidate artifact cannot accidentally be treated as public.
 
 A production release must use the exact committed SHA whose quality,
 repository, container-scan, and integration jobs succeed. Local checkout
@@ -199,7 +291,8 @@ Public release requires all of the following in order:
   policy for canonical data and initialize its credentials; the approved
   deployment itself now enforces the first real encrypted copy and independent
   restore drill before it can succeed;
-- enable the two production approval variables;
+- manually dispatch the exact SHA and successful CI run ID with the required
+  typed confirmation, then approve the protected production environment;
 - deploy the exact tested SHA and pass the in-network smoke while rollback is
   armed;
 - install the open Caddy route and pass the external readiness smoke through

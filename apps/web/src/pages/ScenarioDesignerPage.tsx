@@ -13,18 +13,28 @@ import {
 } from "@phosphor-icons/react";
 import {
   INCIDENT_KINDS,
+  incidentUsesMagnitude,
+  MAX_GENERATED_INCIDENTS,
+  MAX_STOCHASTIC_INCIDENT_RULES,
   METRIC_NAMES,
   scenarioSchema,
+  STOCHASTIC_INCIDENT_TRIGGER_METRICS,
   type Incident,
   type Requirement,
   type Scenario,
 } from "@systemforge/contracts";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DEFAULT_ARCHITECTURE, DEFAULT_SCENARIO } from "@systemforge/sim-core";
 import { BrandIcon } from "../components/BrandIcon";
+import { ScenarioAiAssistant } from "../components/AiAssistantPanels";
 import { shareScenario } from "../lib/api";
-import { encodeLocalShare, interviewShareLinks } from "../lib/share";
+import {
+  encodeLocalShare,
+  interviewShareLinks,
+  LocalShareTooLargeError,
+  scenarioForLocalShare,
+} from "../lib/share";
 import { useLabStore } from "../store/useLabStore";
 
 interface ScenarioDesignerPageProps {
@@ -33,6 +43,11 @@ interface ScenarioDesignerPageProps {
 
 type RequestProfile = NonNullable<Scenario["workload"]["requestMix"]>[number];
 type RegionProfile = Scenario["workload"]["regions"][number];
+type StochasticIncidentModel = NonNullable<Scenario["stochasticIncidents"]>;
+type StochasticIncidentRule = StochasticIncidentModel["rules"][number];
+type StochasticTriggerMetric = NonNullable<
+  StochasticIncidentRule["trigger"]
+>["metric"];
 type DesignerSectionId =
   | "brief"
   | "facilitation"
@@ -73,6 +88,20 @@ const incidentTemplate = (index: number): Incident => ({
   label: "Traffic pressure begins",
 });
 
+const stochasticIncidentRuleTemplate = (
+  index: number,
+): StochasticIncidentRule => ({
+  id: `seeded-rule-${Date.now()}-${index}`,
+  enabled: true,
+  kind: "node-failure",
+  label: "Seeded node failure",
+  hazardRatePerSecond: 0.01,
+  cooldownSeconds: 30,
+  maxOccurrences: 2,
+  magnitude: 1,
+  durationSeconds: 10,
+});
+
 const requestTemplate = (index: number): RequestProfile => ({
   name: `Request class ${index + 1}`,
   share: 0,
@@ -95,11 +124,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
     title:
       mode === "interview"
         ? "Global ordering system interview"
-        : "Untitled systems challenge",
+        : "Untitled system scenario",
     summary:
       mode === "interview"
-        ? "The candidate should discover durability, regional, consistency, and overload constraints before committing to an architecture."
-        : "Model a workload, define the invariants that matter, then schedule the failures the architecture must survive.",
+        ? "Assess how the candidate handles durability, consistency, regional data, recovery, and overload."
+        : "Describe the workload, failure schedule, and checks for this scenario.",
     mode,
     requirements:
       mode === "interview"
@@ -109,7 +138,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
       mode === "interview"
         ? {
             candidateBrief:
-              "Design the backend for a global ordering product. Ask questions before choosing an architecture.",
+              "Design the backend for a global ordering service. Ask clarifying questions before choosing an architecture.",
             interviewerBrief:
               "Evaluate whether the candidate discovers durability, consistency, regional data, recovery, and overload constraints.",
             timeboxMinutes: 45,
@@ -125,24 +154,60 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
     participant: string;
     interviewer?: string;
   } | null>(null);
+  const publishSequence = useRef(0);
   const [collapsedSections, setCollapsedSections] = useState<
     Set<DesignerSectionId>
-  >(new Set());
+  >(
+    new Set([
+      "facilitation",
+      "demand",
+      "requests",
+      "regions",
+      "invariants",
+      "failures",
+      "objectives",
+      "share",
+    ]),
+  );
+  useEffect(() => {
+    publishSequence.current += 1;
+    setCanonicalLinks(null);
+    setPublishing(false);
+  }, [scenario]);
   const validation = useMemo(
     () => scenarioSchema.safeParse(scenario),
     [scenario],
   );
   const validationMessage = validation.success
     ? null
-    : `${validation.error.issues[0]?.path.join(".") || "scenario"}: ${validation.error.issues[0]?.message ?? "The scenario contract is invalid."}`;
+    : `${validation.error.issues[0]?.path.join(".") || "scenario"}: ${validation.error.issues[0]?.message ?? "The scenario is invalid."}`;
 
-  const links = useMemo(
-    () =>
-      mode === "interview"
-        ? interviewShareLinks(scenario, DEFAULT_ARCHITECTURE)
-        : null,
-    [mode, scenario],
-  );
+  const localShare = useMemo(() => {
+    try {
+      return {
+        links:
+          mode === "interview"
+            ? interviewShareLinks(scenario, DEFAULT_ARCHITECTURE)
+            : null,
+        customLink:
+          mode === "custom"
+            ? `${window.location.origin}/lab#share=${encodeLocalShare({ scenario: scenarioForLocalShare(scenario, "participant"), architecture: DEFAULT_ARCHITECTURE, role: "participant" })}`
+            : null,
+        error: null,
+      };
+    } catch (error) {
+      return {
+        links: null,
+        customLink: null,
+        error:
+          error instanceof LocalShareTooLargeError
+            ? "This draft is too large for a safe browser-local URL. Create a server-backed short link instead."
+            : "SystemForge could not prepare the local share links.",
+      };
+    }
+  }, [mode, scenario]);
+  const localLinks = localShare.links;
+  const customLink = localShare.customLink;
   const regionalShare = scenario.workload.regions.reduce(
     (total, region) => total + region.trafficShare,
     0,
@@ -173,7 +238,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
         : []),
       {
         id: "demand" as const,
-        label: "Demand",
+        label: "Workload",
         complete:
           scenario.workload.baseRps > 0 &&
           scenario.workload.peakRps >= scenario.workload.baseRps &&
@@ -205,8 +270,13 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
       },
       {
         id: "failures" as const,
-        label: "Failures",
-        complete: scenario.incidents.length > 0,
+        label: "Incidents",
+        complete:
+          scenario.incidents.length > 0 ||
+          Boolean(
+            scenario.stochasticIncidents?.enabled &&
+            scenario.stochasticIncidents.rules.some((rule) => rule.enabled),
+          ),
       },
       {
         id: "objectives" as const,
@@ -215,7 +285,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
       },
       {
         id: "share" as const,
-        label: "Handoff",
+        label: "Share",
         complete: validation.success,
       },
     ],
@@ -227,10 +297,13 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
   const nextIncomplete = sectionStates.find((section) => !section.complete);
   const toggleSection = (id: DesignerSectionId) =>
     setCollapsedSections((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+      if (!current.has(id))
+        return new Set(sectionStates.map((section) => section.id));
+      return new Set(
+        sectionStates
+          .map((section) => section.id)
+          .filter((sectionId) => sectionId !== id),
+      );
     });
   const sectionCollapse = (id: DesignerSectionId) => (
     <button
@@ -263,6 +336,41 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
         incident.id === id ? { ...incident, ...patch } : incident,
       ),
     }));
+  const updateStochasticModel = (patch: Partial<StochasticIncidentModel>) =>
+    setDraft((current) => ({
+      ...current,
+      stochasticIncidents: {
+        enabled: current.stochasticIncidents?.enabled ?? false,
+        maxGeneratedIncidents:
+          current.stochasticIncidents?.maxGeneratedIncidents ?? 8,
+        rules: current.stochasticIncidents?.rules ?? [],
+        ...patch,
+      },
+    }));
+  const updateStochasticRule = (
+    id: string,
+    patch: Partial<StochasticIncidentRule>,
+  ) =>
+    updateStochasticModel({
+      rules: (scenario.stochasticIncidents?.rules ?? []).map((rule) =>
+        rule.id === id ? { ...rule, ...patch } : rule,
+      ),
+    });
+  const updateStochasticRuleScope = (
+    id: string,
+    patch: Partial<NonNullable<StochasticIncidentRule["scope"]>>,
+  ) => {
+    const currentRule = scenario.stochasticIncidents?.rules.find(
+      (rule) => rule.id === id,
+    );
+    updateStochasticRule(id, {
+      scope: {
+        correlated: currentRule?.scope?.correlated ?? false,
+        ...currentRule?.scope,
+        ...patch,
+      },
+    });
+  };
   const updateRegion = (index: number, patch: Partial<RegionProfile>) =>
     updateWorkload({
       regions: scenario.workload.regions.map((region, currentIndex) =>
@@ -296,12 +404,12 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
     );
     void navigate("/lab");
   };
-  const customLink = `${window.location.origin}/lab#share=${encodeLocalShare({ scenario, architecture: DEFAULT_ARCHITECTURE, role: "participant" })}`;
   const publish = async () => {
     if (!validation.success) {
       setPublishError(validationMessage);
       return;
     }
+    const requestSequence = ++publishSequence.current;
     setPublishing(true);
     setPublishError(null);
     try {
@@ -309,6 +417,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
         validation.data,
         DEFAULT_ARCHITECTURE,
       );
+      if (requestSequence !== publishSequence.current) return;
       setCanonicalLinks({
         participant: receipt.candidateUrl ?? receipt.url,
         ...(receipt.interviewerUrl
@@ -316,13 +425,14 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           : {}),
       });
     } catch (reason) {
+      if (requestSequence !== publishSequence.current) return;
       setPublishError(
         reason instanceof Error
           ? reason.message
-          : "Canonical sharing is unavailable.",
+          : "The online service could not create this short link.",
       );
     } finally {
-      setPublishing(false);
+      if (requestSequence === publishSequence.current) setPublishing(false);
     }
   };
 
@@ -335,14 +445,14 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
         </Link>
         <div className="designer-header__title">
           <span>
-            {mode === "interview" ? "Interview studio" : "Challenge studio"}
+            {mode === "interview" ? "Interview setup" : "Scenario editor"}
           </span>
           <strong>{scenario.title}</strong>
         </div>
         <div className="designer-header__actions">
           {validationMessage ? (
             <span className="designer-validation" role="status">
-              Contract blocked · {validationMessage}
+              Fix this field before opening the Lab: {validationMessage}
             </span>
           ) : null}
           <button
@@ -351,7 +461,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             onClick={openLab}
             disabled={!validation.success}
           >
-            <span className="designer-cta-full">Compile and open lab</span>
+            <span className="designer-cta-full">Open in Lab</span>
             <span className="designer-cta-compact">Open Lab</span>
             <ArrowRight size={16} />
           </button>
@@ -361,17 +471,18 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
       <main className="designer-workspace">
         <aside className="designer-rail">
           <Link to="/">
-            <ArrowLeft size={15} /> Exit studio
+            <ArrowLeft size={15} /> Exit editor
           </Link>
-          <span className="panel-index">MISSION CONTRACT</span>
+          <span className="panel-index">
+            {mode === "interview" ? "INTERVIEW" : "SCENARIO"}
+          </span>
           <h1>
-            {mode === "interview"
-              ? "Control what the candidate knows."
-              : "Author the problem, not the answer."}
+            {mode === "interview" ? "Prepare the interview" : "Define the test"}
           </h1>
           <p>
-            Every field changes the simulation contract. Nothing here selects a
-            predetermined winning architecture.
+            {mode === "interview"
+              ? "Write the candidate brief, private rubric, and reveal rules."
+              : "Set the workload, failure schedule, and pass criteria."}
           </p>
           <nav aria-label="Scenario contract sections">
             <a href="#brief">
@@ -383,7 +494,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               </a>
             ) : null}
             <a href="#demand">
-              <span>{mode === "interview" ? "03" : "02"}</span> Demand
+              <span>{mode === "interview" ? "03" : "02"}</span> Workload
             </a>
             <a href="#requests">
               <span>{mode === "interview" ? "04" : "03"}</span> Request mix
@@ -395,13 +506,13 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               <span>{mode === "interview" ? "06" : "05"}</span> Invariants
             </a>
             <a href="#failures">
-              <span>{mode === "interview" ? "07" : "06"}</span> Failures
+              <span>{mode === "interview" ? "07" : "06"}</span> Incidents
             </a>
             <a href="#objectives">
               <span>{mode === "interview" ? "08" : "07"}</span> Objectives
             </a>
             <a href="#share">
-              <span>{mode === "interview" ? "09" : "08"}</span> Handoff
+              <span>{mode === "interview" ? "09" : "08"}</span> Share
             </a>
           </nav>
           <div className="contract-status">
@@ -430,7 +541,8 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               Request mix {formatShare(requestShare)}
             </span>
             <span className="valid">
-              <Check size={14} /> {scenario.incidents.length} incidents armed
+              <Check size={14} /> {scenario.incidents.length} scheduled,{" "}
+              {scenario.stochasticIncidents?.rules.length ?? 0} seeded rules
             </span>
           </div>
         </aside>
@@ -439,6 +551,39 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           className="contract-editor"
           onSubmit={(event) => event.preventDefault()}
         >
+          <ScenarioAiAssistant
+            scenario={scenario}
+            architecture={DEFAULT_ARCHITECTURE}
+            mode={mode}
+            onApplyScenario={setDraft}
+            onApplyRequirements={(requirements) => {
+              const incomingById = new Map(
+                requirements.map((requirement) => [
+                  requirement.id,
+                  requirement,
+                ]),
+              );
+              const merged = scenario.requirements.map(
+                (requirement) =>
+                  incomingById.get(requirement.id) ?? requirement,
+              );
+              for (const requirement of requirements)
+                if (
+                  !scenario.requirements.some(({ id }) => id === requirement.id)
+                )
+                  merged.push(requirement);
+              if (merged.length > 40)
+                return "Applying this proposal would exceed the 40-objective scenario limit. Remove an objective or discard the proposal.";
+              const proposal = scenarioSchema.safeParse({
+                ...scenario,
+                requirements: merged,
+              });
+              if (!proposal.success)
+                return `The combined objective set is invalid: ${proposal.error.issues[0]?.message ?? "review the proposal"}.`;
+              setDraft(proposal.data);
+              return null;
+            }}
+          />
           <section
             className="contract-section contract-section--brief"
             id="brief"
@@ -447,15 +592,21 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             <header>
               <span className="section-number">01</span>
               <div>
-                <small>CONTEXT ENVELOPE</small>
-                <h2>Mission brief</h2>
+                <small>SCENARIO</small>
+                <h2>
+                  {mode === "interview" ? "Candidate brief" : "Scenario brief"}
+                </h2>
               </div>
-              <p>Visible framing shared with every participant.</p>
+              <p>
+                {mode === "interview"
+                  ? "Shared with every candidate link."
+                  : "Name the scenario and describe the system under test."}
+              </p>
               {sectionCollapse("brief")}
             </header>
             <div className="contract-fields contract-fields--brief">
               <label>
-                Mission title
+                Scenario title
                 <input
                   value={scenario.title}
                   maxLength={120}
@@ -476,7 +627,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 />
               </label>
               <label className="field-span">
-                Operational summary
+                Scenario summary
                 <textarea
                   value={scenario.summary}
                   maxLength={600}
@@ -516,14 +667,14 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               <header>
                 <span className="section-number">02</span>
                 <div>
-                  <small>PRIVATE CHANNEL</small>
-                  <h2>Facilitation controls</h2>
+                  <small>INTERVIEWER ONLY</small>
+                  <h2>Private rubric</h2>
                 </div>
-                <p>Never included in the candidate payload.</p>
+                <p>Only interviewer links can access this.</p>
                 {sectionCollapse("facilitation")}
               </header>
               <div className="private-notice">
-                <EyeSlash size={16} /> Interviewer-only contract
+                <EyeSlash size={16} /> Excluded from candidate links
               </div>
               <div className="contract-fields">
                 <label className="field-span">
@@ -579,13 +730,12 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     <option value="interviewer-controlled">
                       Interviewer controlled
                     </option>
-                    <option value="after-run">After first run</option>
+                    <option value="after-run">After first server run</option>
                     <option value="never">Never reveal</option>
                   </select>
                   <small>
-                    Reveal state is synchronized for canonical interview links.
-                    Browser-local links always keep the private rubric out of
-                    the candidate payload.
+                    Server-backed interview links synchronize reveal state.
+                    Local candidate links always exclude private criteria.
                   </small>
                 </label>
                 <label className="switch-field field-span">
@@ -603,10 +753,8 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     }
                   />
                   <span>
-                    <strong>Candidate-derived requirements</strong>
-                    <small>
-                      Allow the candidate to record constraints they discover.
-                    </small>
+                    <strong>Candidate can record requirements</strong>
+                    <small>Let candidates save constraints they uncover.</small>
                   </span>
                 </label>
               </div>
@@ -623,12 +771,10 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "03" : "02"}
               </span>
               <div>
-                <small>TRAFFIC GENERATOR</small>
-                <h2>Demand envelope</h2>
+                <small>WORKLOAD</small>
+                <h2>Traffic profile</h2>
               </div>
-              <p>
-                Arrival shape, concurrency, client patience, and retry pressure.
-              </p>
+              <p>Traffic, concurrency, timeouts, and retries.</p>
               {sectionCollapse("demand")}
             </header>
             <div className="metric-field-grid">
@@ -981,7 +1127,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "05" : "04"}
               </span>
               <div>
-                <small>GEOGRAPHIC PRESSURE</small>
+                <small>REGIONS</small>
                 <h2>Regions and latency</h2>
               </div>
               <button
@@ -1076,11 +1222,9 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               </span>
               <div>
                 <small>DOMAIN SEMANTICS</small>
-                <h2>Non-negotiable invariants</h2>
+                <h2>Correctness constraints</h2>
               </div>
-              <p>
-                Business meaning the architecture must preserve under failure.
-              </p>
+              <p>Rules that must hold during failure.</p>
               {sectionCollapse("invariants")}
             </header>
             <div className="invariant-grid">
@@ -1167,8 +1311,8 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "07" : "06"}
               </span>
               <div>
-                <small>INCIDENT SCHEDULE</small>
-                <h2>Failure injection</h2>
+                <small>INCIDENTS</small>
+                <h2>Incident schedule</h2>
               </div>
               <button
                 type="button"
@@ -1183,10 +1327,351 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   })
                 }
               >
-                <Plus size={14} /> Arm incident
+                <Plus size={14} /> Add incident
               </button>
               {sectionCollapse("failures")}
             </header>
+            <div className="seeded-incident-model">
+              <div className="seeded-incident-toolbar">
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    aria-label="Enable seeded incident model"
+                    checked={scenario.stochasticIncidents?.enabled ?? false}
+                    onChange={(event) =>
+                      updateStochasticModel({ enabled: event.target.checked })
+                    }
+                  />
+                  <span>
+                    <strong>Enable seeded incident model</strong>
+                    <small>Generate bounded incidents during a run.</small>
+                  </span>
+                </label>
+                <label>
+                  Maximum generated incidents
+                  <input
+                    type="number"
+                    min="1"
+                    max={MAX_GENERATED_INCIDENTS}
+                    value={
+                      scenario.stochasticIncidents?.maxGeneratedIncidents ?? 8
+                    }
+                    onChange={(event) =>
+                      updateStochasticModel({
+                        maxGeneratedIncidents: Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    (scenario.stochasticIncidents?.rules.length ?? 0) >=
+                    MAX_STOCHASTIC_INCIDENT_RULES
+                  }
+                  onClick={() =>
+                    updateStochasticModel({
+                      enabled: scenario.stochasticIncidents?.enabled ?? true,
+                      rules: [
+                        ...(scenario.stochasticIncidents?.rules ?? []),
+                        stochasticIncidentRuleTemplate(
+                          scenario.stochasticIncidents?.rules.length ?? 0,
+                        ),
+                      ],
+                    })
+                  }
+                >
+                  <Plus size={14} /> Add seeded rule
+                </button>
+              </div>
+              <p className="seeded-incident-copy">
+                Generated from the scenario seed. Identical inputs replay the
+                same incidents. These are test conditions, not measured failure
+                rates.
+              </p>
+              <div className="seeded-rule-stack">
+                {(scenario.stochasticIncidents?.rules ?? []).map(
+                  (rule, index) => (
+                    <fieldset className="seeded-rule" key={rule.id}>
+                      <legend>
+                        SEEDED RULE {String(index + 1).padStart(2, "0")}
+                      </legend>
+                      <label className="toggle-row seeded-rule__enabled">
+                        <input
+                          type="checkbox"
+                          aria-label="Rule enabled"
+                          checked={rule.enabled}
+                          onChange={(event) =>
+                            updateStochasticRule(rule.id, {
+                              enabled: event.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <strong>Rule enabled</strong>
+                          <small>
+                            Disabled rules consume no incident draws.
+                          </small>
+                        </span>
+                      </label>
+                      <label>
+                        Rule label
+                        <input
+                          value={rule.label}
+                          onChange={(event) =>
+                            updateStochasticRule(rule.id, {
+                              label: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Rule failure
+                        <select
+                          value={rule.kind}
+                          onChange={(event) => {
+                            const kind = event.target.value as Incident["kind"];
+                            updateStochasticRule(rule.id, {
+                              kind,
+                              ...(incidentUsesMagnitude(kind)
+                                ? {}
+                                : { magnitude: 1 }),
+                            });
+                          }}
+                        >
+                          {INCIDENT_KINDS.map((kind) => (
+                            <option value={kind} key={kind}>
+                              {titleCase(kind)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Hazard per eligible second
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.001"
+                          value={rule.hazardRatePerSecond}
+                          onChange={(event) =>
+                            updateStochasticRule(rule.id, {
+                              hazardRatePerSecond: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Cooldown seconds
+                        <input
+                          type="number"
+                          min="0"
+                          value={rule.cooldownSeconds}
+                          onChange={(event) =>
+                            updateStochasticRule(rule.id, {
+                              cooldownSeconds: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Maximum occurrences
+                        <input
+                          type="number"
+                          min="1"
+                          max="32"
+                          value={rule.maxOccurrences}
+                          onChange={(event) =>
+                            updateStochasticRule(rule.id, {
+                              maxOccurrences: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Rule magnitude
+                        <input
+                          type="number"
+                          min="0.01"
+                          max={incidentUsesMagnitude(rule.kind) ? 100 : 1}
+                          step="0.1"
+                          value={rule.magnitude}
+                          disabled={!incidentUsesMagnitude(rule.kind)}
+                          onChange={(event) =>
+                            updateStochasticRule(rule.id, {
+                              magnitude: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Rule duration seconds
+                        <input
+                          type="number"
+                          min="1"
+                          value={rule.durationSeconds}
+                          onChange={(event) =>
+                            updateStochasticRule(rule.id, {
+                              durationSeconds: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Scope target node ID
+                        <input
+                          value={rule.scope?.targetId ?? ""}
+                          placeholder="db"
+                          onChange={(event) =>
+                            updateStochasticRuleScope(rule.id, {
+                              targetId: event.target.value || undefined,
+                              ...(event.target.value
+                                ? { correlated: false }
+                                : {}),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Scope region
+                        <input
+                          value={rule.scope?.region ?? ""}
+                          placeholder="EU"
+                          onChange={(event) =>
+                            updateStochasticRuleScope(rule.id, {
+                              region: event.target.value || undefined,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Scope zone
+                        <input
+                          value={rule.scope?.zone ?? ""}
+                          placeholder="eu-1a"
+                          onChange={(event) =>
+                            updateStochasticRuleScope(rule.id, {
+                              zone: event.target.value || undefined,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Scope failure domain
+                        <input
+                          value={rule.scope?.failureDomain ?? ""}
+                          placeholder="cluster"
+                          onChange={(event) =>
+                            updateStochasticRuleScope(rule.id, {
+                              failureDomain: event.target.value || undefined,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="toggle-row seeded-rule__correlated">
+                        <input
+                          type="checkbox"
+                          aria-label="Correlate matching scope"
+                          checked={rule.scope?.correlated ?? false}
+                          disabled={Boolean(rule.scope?.targetId)}
+                          onChange={(event) =>
+                            updateStochasticRuleScope(rule.id, {
+                              correlated: event.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <strong>Correlate matching scope</strong>
+                          <small>
+                            Affect every eligible node in the region or failure
+                            domain.
+                          </small>
+                        </span>
+                      </label>
+                      <label>
+                        State trigger metric
+                        <select
+                          value={rule.trigger?.metric ?? ""}
+                          onChange={(event) => {
+                            const metric = event.target.value;
+                            updateStochasticRule(rule.id, {
+                              trigger: metric
+                                ? {
+                                    metric: metric as StochasticTriggerMetric,
+                                    operator: "gte",
+                                    threshold: 0,
+                                  }
+                                : undefined,
+                            });
+                          }}
+                        >
+                          <option value="">No state trigger</option>
+                          {STOCHASTIC_INCIDENT_TRIGGER_METRICS.map((metric) => (
+                            <option value={metric} key={metric}>
+                              {titleCase(metric)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Trigger operator
+                        <select
+                          disabled={!rule.trigger}
+                          value={rule.trigger?.operator ?? "gte"}
+                          onChange={(event) =>
+                            rule.trigger
+                              ? updateStochasticRule(rule.id, {
+                                  trigger: {
+                                    ...rule.trigger,
+                                    operator: event.target.value as
+                                      "gte" | "lte",
+                                  },
+                                })
+                              : undefined
+                          }
+                        >
+                          <option value="gte">At or above</option>
+                          <option value="lte">At or below</option>
+                        </select>
+                      </label>
+                      <label>
+                        Trigger threshold
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={!rule.trigger}
+                          value={rule.trigger?.threshold ?? 0}
+                          onChange={(event) =>
+                            rule.trigger
+                              ? updateStochasticRule(rule.id, {
+                                  trigger: {
+                                    ...rule.trigger,
+                                    threshold: Number(event.target.value),
+                                  },
+                                })
+                              : undefined
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        aria-label={`Remove seeded rule ${rule.label}`}
+                        onClick={() =>
+                          updateStochasticModel({
+                            rules:
+                              scenario.stochasticIncidents?.rules.filter(
+                                (current) => current.id !== rule.id,
+                              ) ?? [],
+                          })
+                        }
+                      >
+                        <Trash size={14} /> Remove rule
+                      </button>
+                    </fieldset>
+                  ),
+                )}
+              </div>
+            </div>
             <div className="incident-stack">
               {scenario.incidents.map((incident, index) => (
                 <div className="incident-row" key={incident.id}>
@@ -1195,11 +1680,15 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     Failure
                     <select
                       value={incident.kind}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const kind = event.target.value as Incident["kind"];
                         updateIncident(incident.id, {
-                          kind: event.target.value as Incident["kind"],
-                        })
-                      }
+                          kind,
+                          ...(incidentUsesMagnitude(kind)
+                            ? {}
+                            : { magnitude: 1 }),
+                        });
+                      }}
                     >
                       {INCIDENT_KINDS.map((kind) => (
                         <option value={kind} key={kind}>
@@ -1226,9 +1715,11 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     Magnitude
                     <input
                       type="number"
-                      min="0.01"
+                      min={incidentUsesMagnitude(incident.kind) ? 0.01 : 1}
+                      max={incidentUsesMagnitude(incident.kind) ? 100 : 1}
                       step="0.1"
                       value={incident.magnitude}
+                      disabled={!incidentUsesMagnitude(incident.kind)}
                       onChange={(event) =>
                         updateIncident(incident.id, {
                           magnitude: Number(event.target.value),
@@ -1250,7 +1741,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     />
                   </label>
                   <label className="incident-label">
-                    Operational label
+                    Event label
                     <input
                       value={incident.label}
                       onChange={(event) =>
@@ -1337,13 +1828,17 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "08" : "07"}
               </span>
               <div>
-                <small>SUCCESS ENVELOPE</small>
-                <h2>Objectives and trade-offs</h2>
+                <small>EVALUATION</small>
+                <h2>
+                  {mode === "interview"
+                    ? "Evaluation criteria"
+                    : "Pass criteria"}
+                </h2>
               </div>
               <p>
                 {mode === "interview"
-                  ? "Author the visible brief and private rubric here. Candidates record derived constraints in the lab."
-                  : "Define the measurable outcomes used to evaluate each run."}
+                  ? "Choose what candidates can see and what stays in the private rubric."
+                  : "Set the thresholds each run must meet."}
               </p>
               <button
                 type="button"
@@ -1466,52 +1961,60 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "09" : "08"}
               </span>
               <div>
-                <small>MISSION HANDOFF</small>
-                <h2>Launch and share</h2>
+                <small>SHARE</small>
+                <h2>Open or share</h2>
               </div>
               <ShieldCheck size={22} />
               {sectionCollapse("share")}
             </header>
             <div className="handoff-grid">
               <div className="handoff-local">
-                <strong>Browser-local links</strong>
+                <strong>Local share links</strong>
                 <p>
-                  No backend or account required. Interviewer links contain the
-                  private rubric; candidate links contain only the safe
-                  challenge contract.
+                  {mode === "interview"
+                    ? "The scenario stays in the URL. Candidate links exclude the private rubric. Nothing is uploaded."
+                    : "This link stores the scenario in the URL. Nothing is uploaded."}
                 </p>
-                {links ? (
+                {localShare.error ? (
+                  <p className="form-error" role="status">
+                    {localShare.error}
+                  </p>
+                ) : localLinks ? (
                   <>
                     <CopyField
                       label="Interviewer link"
-                      value={links.interviewer}
+                      value={localLinks.interviewer}
                       copied={copied === "interviewer"}
-                      onCopy={() => void copy("interviewer", links.interviewer)}
+                      onCopy={() =>
+                        void copy("interviewer", localLinks.interviewer)
+                      }
                       disabled={!validation.success}
                     />
                     <CopyField
                       label="Candidate link"
-                      value={links.candidate}
+                      value={localLinks.candidate}
                       copied={copied === "candidate"}
-                      onCopy={() => void copy("candidate", links.candidate)}
+                      onCopy={() =>
+                        void copy("candidate", localLinks.candidate)
+                      }
                       disabled={!validation.success}
                     />
                   </>
-                ) : (
+                ) : customLink ? (
                   <CopyField
-                    label="Challenge link"
+                    label="Scenario link"
                     value={customLink}
                     copied={copied === "challenge"}
                     onCopy={() => void copy("challenge", customLink)}
                     disabled={!validation.success}
                   />
-                )}
+                ) : null}
               </div>
               <div className="handoff-canonical">
-                <strong>Canonical short link</strong>
+                <strong>Server-backed short link</strong>
                 <p>
-                  Requires the private service, which remains closed until
-                  production release is explicitly approved.
+                  Create a shorter link with the online service. Local links
+                  still work when it is unavailable.
                 </p>
                 <button
                   className="button button--secondary"
@@ -1520,7 +2023,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   onClick={() => void publish()}
                 >
                   <CloudArrowUp size={16} />
-                  {publishing ? "Publishing…" : "Request canonical link"}
+                  {publishing ? "Creating link…" : "Create short link"}
                 </button>
                 {publishError ? (
                   <p className="form-error">
@@ -1532,8 +2035,8 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     <CopyField
                       label={
                         mode === "interview"
-                          ? "Candidate canonical link"
-                          : "Canonical challenge link"
+                          ? "Candidate short link"
+                          : "Scenario short link"
                       }
                       value={canonicalLinks.participant}
                       copied={copied === "canonical-participant"}
@@ -1546,7 +2049,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                     />
                     {canonicalLinks.interviewer ? (
                       <CopyField
-                        label="Interviewer canonical link"
+                        label="Interviewer short link"
                         value={canonicalLinks.interviewer}
                         copied={copied === "canonical-interviewer"}
                         onCopy={() =>
@@ -1567,18 +2070,18 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               onClick={openLab}
               disabled={!validation.success}
             >
-              <span>Compile mission contract</span>
-              <strong>Open architecture workspace</strong>
+              <span>Open in Lab</span>
+              <strong>Load with the checkout architecture</strong>
               <ArrowRight size={20} />
             </button>
           </section>
         </form>
         <aside
           className="designer-summary"
-          aria-label="Live mission contract summary"
+          aria-label="Scenario completion summary"
         >
           <header>
-            <span className="panel-index">LIVE CONTRACT</span>
+            <span className="panel-index">SCENARIO SUMMARY</span>
             <strong>
               {completedSections}/{sectionStates.length} sections ready
             </strong>
@@ -1588,7 +2091,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               aria-valuemin={0}
               aria-valuemax={sectionStates.length}
               aria-valuenow={completedSections}
-              aria-label="Scenario contract completion"
+              aria-label="Scenario completion"
             >
               <i
                 style={{
@@ -1622,7 +2125,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             ))}
           </ol>
           <section className="designer-summary__metrics">
-            <span>Current envelope</span>
+            <span>Scenario at a glance</span>
             <dl>
               <div>
                 <dt>Peak</dt>
@@ -1661,7 +2164,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               disabled={!validation.success}
               onClick={openLab}
             >
-              Contract ready <strong>Open the Lab</strong>{" "}
+              Scenario ready <strong>Open the Lab</strong>{" "}
               <ArrowRight size={14} />
             </button>
           )}
@@ -1669,8 +2172,8 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             <ShieldCheck size={15} />
             <span>
               {mode === "interview"
-                ? "Private rubric remains outside candidate payloads."
-                : "Draft remains in this browser until you request a canonical link."}
+                ? "Candidate links exclude the interviewer brief and hidden criteria."
+                : "This draft is stored in your browser. Creating a short link sends the scenario to the online service."}
             </span>
           </footer>
         </aside>
@@ -1694,16 +2197,17 @@ function CopyField({
   onCopy,
   disabled = false,
 }: CopyFieldProps) {
+  const inputId = useId();
   return (
-    <label className="copy-field-label">
-      {label}
+    <div className="copy-field-label">
+      <label htmlFor={inputId}>{label}</label>
       <span className="copy-field">
-        <input readOnly value={value} disabled={disabled} />
+        <input id={inputId} readOnly value={value} disabled={disabled} />
         <button type="button" onClick={onCopy} disabled={disabled}>
           {copied ? <Check size={15} /> : <Copy size={15} />}
           {copied ? "Copied" : "Copy"}
         </button>
       </span>
-    </label>
+    </div>
   );
 }

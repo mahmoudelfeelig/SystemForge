@@ -104,7 +104,7 @@ export function proposeTopologyChanges(
       kind: "strengthen-replication",
       title: "Strengthen database replication",
       rationale:
-        "The mission includes durability or availability objectives while the storage tier has fewer than two replicas.",
+        "The scenario includes durability or availability objectives while the storage tier has fewer than two replicas.",
       tradeoff:
         "Improves failure tolerance, but raises modeled cost, write coordination and operational complexity.",
       affectedNodeIds: [database.id],

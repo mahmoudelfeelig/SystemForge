@@ -1,4 +1,13 @@
-import type { Architecture, Scenario } from "@systemforge/contracts";
+import {
+  estimateSimulationExecutionWorkUnits,
+  estimateSimulationOutputMetricCells,
+  estimateSimulationResultBytes,
+  MAX_SIMULATION_ESTIMATED_RESULT_BYTES,
+  MAX_SIMULATION_OUTPUT_METRIC_CELLS,
+  type Architecture,
+  type Scenario,
+  type SimulationResult,
+} from "@systemforge/contracts";
 import { simulate } from "./simulate";
 
 export const MAX_ROBUSTNESS_SEEDS = 64;
@@ -31,6 +40,17 @@ export interface RobustnessResult {
     recoveryTimeSeconds: RobustnessSummary;
   };
   workUnits: number;
+}
+
+export interface RobustnessSeedSample {
+  requirementsPassed: number;
+  requirementsTotal: number;
+  completeRunPassed: boolean;
+  p95LatencyMs: number;
+  availability: number;
+  errorRate: number;
+  monthlyCostEur: number;
+  recoveryTimeSeconds: number;
 }
 
 const quantile = (values: number[], ratio: number): number => {
@@ -71,9 +91,62 @@ export const estimateRobustnessWorkUnits = (
   architecture: Architecture,
   seedCount: number,
 ): number =>
-  (scenario.workload.durationSeconds + 1) *
-  (architecture.nodes.length + architecture.edges.length * 0.25) *
-  seedCount;
+  estimateSimulationExecutionWorkUnits(scenario, architecture) * seedCount;
+
+export const robustnessSeedSample = (
+  result: SimulationResult,
+): RobustnessSeedSample => ({
+  requirementsPassed: result.score.passed,
+  requirementsTotal: result.score.total,
+  completeRunPassed: result.score.passed === result.score.total,
+  p95LatencyMs: maximum(result.frames.map((frame) => frame.p95LatencyMs)),
+  availability: average(result.frames.map((frame) => frame.availability)),
+  errorRate: maximum(result.frames.map((frame) => frame.errorRate)),
+  monthlyCostEur: maximum(result.frames.map((frame) => frame.monthlyCostEur)),
+  recoveryTimeSeconds: maximum(
+    result.frames.map((frame) => frame.recoveryTimeSeconds),
+  ),
+});
+
+export const aggregateRobustnessSamples = (
+  seeds: number[],
+  samples: RobustnessSeedSample[],
+  workUnits: number,
+): RobustnessResult => {
+  const totalRequirements = samples.reduce(
+    (total, sample) => total + sample.requirementsTotal,
+    0,
+  );
+  const passedRequirements = samples.reduce(
+    (total, sample) => total + sample.requirementsPassed,
+    0,
+  );
+  return {
+    seeds,
+    requirementPassRate:
+      totalRequirements === 0
+        ? 1
+        : rounded(passedRequirements / totalRequirements, 6),
+    completeRunPassRate: rounded(
+      samples.filter((sample) => sample.completeRunPassed).length /
+        samples.length,
+      6,
+    ),
+    metrics: {
+      requirementsPassed: summarize(
+        samples.map((sample) => sample.requirementsPassed),
+      ),
+      p95LatencyMs: summarize(samples.map((sample) => sample.p95LatencyMs)),
+      availability: summarize(samples.map((sample) => sample.availability)),
+      errorRate: summarize(samples.map((sample) => sample.errorRate)),
+      monthlyCostEur: summarize(samples.map((sample) => sample.monthlyCostEur)),
+      recoveryTimeSeconds: summarize(
+        samples.map((sample) => sample.recoveryTimeSeconds),
+      ),
+    },
+    workUnits: rounded(workUnits, 2),
+  };
+};
 
 export function analyzeRobustness(
   inputScenario: Scenario,
@@ -101,63 +174,35 @@ export function analyzeRobustness(
     throw new Error(
       `Robustness analysis requires ${Math.round(workUnits).toLocaleString("en-US")} work units, above the ${Math.round(workUnitBudget).toLocaleString("en-US")} budget.`,
     );
+  const outputMetricCells = estimateSimulationOutputMetricCells(
+    inputScenario,
+    inputArchitecture,
+  );
+  if (outputMetricCells > MAX_SIMULATION_OUTPUT_METRIC_CELLS)
+    throw new Error(
+      `Each robustness seed would emit ${outputMetricCells.toLocaleString("en-US")} frame-metric cells, above the ${MAX_SIMULATION_OUTPUT_METRIC_CELLS.toLocaleString("en-US")} result-size limit.`,
+    );
+  const estimatedResultBytes = estimateSimulationResultBytes(
+    inputScenario,
+    inputArchitecture,
+  );
+  if (estimatedResultBytes > MAX_SIMULATION_ESTIMATED_RESULT_BYTES)
+    throw new Error(
+      `Each robustness seed's estimated ${estimatedResultBytes.toLocaleString("en-US")}-byte result exceeds the ${MAX_SIMULATION_ESTIMATED_RESULT_BYTES.toLocaleString("en-US")}-byte retention limit.`,
+    );
 
   const seeds = Array.from(
     { length: seedCount },
     (_, index) => (inputScenario.seed + index * seedStride) % 2_147_483_648,
   );
-  const results = seeds.map((seed) =>
-    simulate(
-      { ...structuredClone(inputScenario), seed },
-      structuredClone(inputArchitecture),
+  const samples = seeds.map((seed) =>
+    robustnessSeedSample(
+      simulate(
+        { ...structuredClone(inputScenario), seed },
+        structuredClone(inputArchitecture),
+        { includeTraces: false },
+      ),
     ),
   );
-  const totalRequirements = results.reduce(
-    (total, result) => total + result.score.total,
-    0,
-  );
-  const passedRequirements = results.reduce(
-    (total, result) => total + result.score.passed,
-    0,
-  );
-  const metricValues = {
-    requirementsPassed: results.map((result) => result.score.passed),
-    p95LatencyMs: results.map((result) =>
-      maximum(result.frames.map((frame) => frame.p95LatencyMs)),
-    ),
-    availability: results.map((result) =>
-      average(result.frames.map((frame) => frame.availability)),
-    ),
-    errorRate: results.map((result) =>
-      maximum(result.frames.map((frame) => frame.errorRate)),
-    ),
-    monthlyCostEur: results.map((result) =>
-      maximum(result.frames.map((frame) => frame.monthlyCostEur)),
-    ),
-    recoveryTimeSeconds: results.map((result) =>
-      maximum(result.frames.map((frame) => frame.recoveryTimeSeconds)),
-    ),
-  };
-
-  return {
-    seeds,
-    requirementPassRate:
-      totalRequirements === 0
-        ? 1
-        : rounded(passedRequirements / totalRequirements, 6),
-    completeRunPassRate: rounded(
-      results.filter((result) => result.score.passed === result.score.total)
-        .length / results.length,
-      6,
-    ),
-    metrics: {
-      requirementsPassed: summarize(metricValues.requirementsPassed),
-      p95LatencyMs: summarize(metricValues.p95LatencyMs),
-      availability: summarize(metricValues.availability),
-      errorRate: summarize(metricValues.errorRate),
-      monthlyCostEur: summarize(metricValues.monthlyCostEur),
-      recoveryTimeSeconds: summarize(metricValues.recoveryTimeSeconds),
-    },
-    workUnits: rounded(workUnits, 2),
-  };
+  return aggregateRobustnessSamples(seeds, samples, workUnits);
 }

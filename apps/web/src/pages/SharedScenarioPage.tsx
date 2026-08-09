@@ -1,31 +1,90 @@
-import { ArrowLeft, CloudSlash, SpinnerGap } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { fetchSharedScenario } from "../lib/api";
+import {
+  clearSensitiveHashParameter,
+  readSensitiveHashParameter,
+} from "../lib/sensitiveHash";
 import { useLabStore } from "../store/useLabStore";
-import { BrandIcon } from "../components/BrandIcon";
+import { RouteStatePage } from "../components/RouteStatePage";
+
+interface SharedRouteError {
+  title: string;
+  reason: string;
+  retryable: boolean;
+}
+
+const sharedRouteError = (reason: unknown): SharedRouteError => {
+  const status =
+    reason && typeof reason === "object" && "status" in reason
+      ? Number(reason.status)
+      : null;
+  if (status === 401 || status === 403)
+    return {
+      title: "This interviewer link is not valid",
+      reason: "Open the candidate link or ask the interviewer for a new link.",
+      retryable: false,
+    };
+  if (status === 404)
+    return {
+      title: "This scenario link is unavailable",
+      reason: "The link may have expired or been removed.",
+      retryable: false,
+    };
+  if (status === 429)
+    return {
+      title: "The online service is busy",
+      reason:
+        "Too many link requests are in progress. Wait a moment and retry.",
+      retryable: true,
+    };
+  if (status !== null && status >= 500)
+    return {
+      title: "The online service is unavailable",
+      reason:
+        "SystemForge could not load the link. Your local Lab still works.",
+      retryable: true,
+    };
+  if (typeof navigator !== "undefined" && !navigator.onLine)
+    return {
+      title: "You’re offline",
+      reason: "Reconnect to open a server-backed scenario link.",
+      retryable: true,
+    };
+  return {
+    title: "This scenario link is unavailable",
+    reason: "SystemForge could not verify this link.",
+    retryable: true,
+  };
+};
 
 export function SharedScenarioPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const loadSharedScenario = useLabStore((state) => state.loadSharedScenario);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SharedRouteError | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
+    setError(null);
     if (!id) {
-      setError("This scenario link is missing its identifier.");
+      setError({
+        title: "This scenario link is unavailable",
+        reason: "The link is missing its scenario ID.",
+        retryable: false,
+      });
       return;
     }
     const controller = new AbortController();
-    const hostToken = new URLSearchParams(window.location.hash.slice(1)).get(
-      "hostToken",
-    );
-    void fetchSharedScenario(id, hostToken ?? undefined)
+    clearSensitiveHashParameter("share");
+    const hostToken = readSensitiveHashParameter("hostToken");
+    queueMicrotask(() => clearSensitiveHashParameter("hostToken", hostToken));
+    void fetchSharedScenario(id, hostToken ?? undefined, controller.signal)
       .then((shared) => {
         if (controller.signal.aborted) return;
         loadSharedScenario(shared.scenario, shared.architecture, shared.role, {
           id: shared.id,
-          ...(hostToken ? { hostToken } : {}),
+          ...(shared.role === "interviewer" && hostToken ? { hostToken } : {}),
           revealState: shared.revealState,
           collaboration: shared.collaboration,
         });
@@ -33,42 +92,34 @@ export function SharedScenarioPage() {
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
-        setError(
-          reason instanceof Error
-            ? reason.message
-            : "This shared scenario could not be loaded.",
-        );
+        setError(sharedRouteError(reason));
       });
     return () => controller.abort();
-  }, [id, loadSharedScenario, navigate]);
+  }, [id, loadSharedScenario, navigate, retryKey]);
 
-  return (
-    <main className="share-loader">
-      <Link to="/">
-        <ArrowLeft size={17} /> <BrandIcon /> SystemForge
-      </Link>
-      {error ? (
-        <section>
-          <CloudSlash size={34} />
-          <h1>Canonical sharing is unavailable.</h1>
-          <p>
-            {error} You can still open SystemForge and use browser-local
-            challenges and simulations.
-          </p>
-          <Link className="button button--primary" to="/lab">
-            Continue locally
-          </Link>
-        </section>
-      ) : (
-        <section>
-          <SpinnerGap className="spin" size={34} />
-          <h1>Loading the shared challenge</h1>
-          <p>
-            Private interviewer criteria are only requested when the link
-            includes its host credential.
-          </p>
-        </section>
-      )}
-    </main>
+  return error ? (
+    <RouteStatePage
+      state="error"
+      variant="shared"
+      label="SHARED SCENARIO"
+      title={error.title}
+      body={`Your local Lab is still available. Reason: ${error.reason}`}
+      retry={
+        error.retryable
+          ? { label: "Retry", onClick: () => setRetryKey((key) => key + 1) }
+          : undefined
+      }
+      primary={{ label: "Open local Lab", to: "/lab" }}
+      secondary={{ label: "Home", to: "/" }}
+    />
+  ) : (
+    <RouteStatePage
+      state="loading"
+      variant="shared"
+      label="SHARED SCENARIO"
+      title="Opening shared scenario"
+      body="Verifying the link and loading the scenario."
+      context="Private interview criteria load only from an authenticated interviewer link."
+    />
   );
 }

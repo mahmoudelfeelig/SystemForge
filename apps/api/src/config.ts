@@ -16,6 +16,8 @@ export interface ApiConfig {
   maxSolverResultBytes: number;
   rateLimitMax: number;
   rateLimitWindow: string;
+  scenarioRateLimitMax: number;
+  scenarioRateLimitWindow: string;
 }
 
 const integer = (
@@ -88,5 +90,12 @@ export function loadConfig(
     ),
     rateLimitMax: integer(environment.RATE_LIMIT_MAX, 120, 10, 100_000),
     rateLimitWindow: environment.RATE_LIMIT_WINDOW ?? "1 minute",
+    scenarioRateLimitMax: integer(
+      environment.SCENARIO_RATE_LIMIT_MAX,
+      10,
+      1,
+      1_000,
+    ),
+    scenarioRateLimitWindow: environment.SCENARIO_RATE_LIMIT_WINDOW ?? "1 day",
   };
 }

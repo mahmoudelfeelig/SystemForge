@@ -3,7 +3,9 @@ import {
   ArrowSquareOut,
   CheckCircle,
   CloudArrowUp,
+  CircleNotch,
   Copy,
+  CopySimple,
   Crosshair,
   MagnifyingGlass,
   Pause,
@@ -12,7 +14,10 @@ import {
   Pulse,
   Scales,
   SlidersHorizontal,
+  SkipForward,
+  Stop,
   Trash,
+  TreeStructure,
   Warning,
   WarningOctagon,
 } from "@phosphor-icons/react";
@@ -25,16 +30,17 @@ import {
   type Requirement,
 } from "@systemforge/contracts";
 import {
-  addEdge,
   Controls,
   MarkerType,
   ReactFlow,
+  ViewportPortal,
   type Connection,
   type Edge,
+  type EdgeChange,
   type NodeChange,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   ComponentNode,
   type SystemFlowNode,
@@ -42,32 +48,47 @@ import {
 import { BrandIcon } from "../components/BrandIcon";
 import { COMPONENT_ICONS } from "../components/componentIcons";
 import { CommandPalette } from "../components/CommandPalette";
-import { DecisionWorkbench } from "../components/DecisionWorkbench";
+import { DecisionWorkbenchBoundary } from "../components/DecisionWorkbenchBoundary";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ServiceBanner } from "../components/ServiceBanner";
-import { TelemetryPanel } from "../components/TelemetryPanel";
-import { encodeLocalShare, scenarioForLocalShare } from "../lib/share";
+import {
+  TelemetryPanel,
+  type TracePlaybackSelection,
+} from "../components/TelemetryPanel";
+import { candidateLocalShareLink, LocalShareTooLargeError } from "../lib/share";
+import {
+  autoLayoutArchitecture,
+  blankArchitecture,
+  connectArchitecture,
+  duplicateArchitectureSelection,
+  removeArchitectureElements,
+} from "../lib/architectureEditing";
+import { lintArchitecture } from "../lib/architectureLint";
+import {
+  activeArchitecturePlacementGroupIds,
+  architectureNodeDimensions,
+  deriveArchitecturePlacementGroups,
+} from "../lib/architecturePlacement";
 import { useLabStore, type WorkspaceMode } from "../store/useLabStore";
 
 const nodeTypes = { system: ComponentNode };
-
-const nodeDimensions = (
-  kind: ArchitectureNode["kind"],
-): { width: number; height: number } => {
-  if (kind === "users") return { width: 142, height: 112 };
-  if (kind === "database") return { width: 220, height: 118 };
-  if (kind === "cache") return { width: 190, height: 116 };
-  if (kind === "load-balancer") return { width: 176, height: 112 };
-  if (kind === "api") return { width: 176, height: 112 };
-  if (kind === "queue") return { width: 180, height: 112 };
-  if (kind === "worker") return { width: 170, height: 112 };
-  return { width: 158, height: 112 };
-};
 
 const metricLabel = (metric: Requirement["metric"]) =>
   metric
     .replaceAll(/([A-Z])/g, " $1")
     .replace(/^./, (character) => character.toUpperCase());
+
+export const applySelectionChanges = (
+  currentIds: readonly string[],
+  changes: readonly { id: string; selected: boolean }[],
+): string[] => {
+  const nextIds = new Set(currentIds);
+  for (const change of changes) {
+    if (change.selected) nextIds.add(change.id);
+    else nextIds.delete(change.id);
+  }
+  return [...nextIds];
+};
 
 export const candidateRequirementsEnabled = (
   scenario: {
@@ -82,26 +103,38 @@ export const candidateRequirementsEnabled = (
 
 interface DerivedRequirementEditorProps {
   requirement: Requirement;
-  onChange: (requirement: Requirement) => void;
+  onSave: (requirement: Requirement) => void;
+  onCancel?: () => void;
   onRemove: (id: string) => void;
+  isNew?: boolean;
 }
 
 export function DerivedRequirementEditor({
   requirement,
-  onChange,
+  onSave,
+  onCancel,
   onRemove,
+  isNew = false,
 }: DerivedRequirementEditorProps) {
+  const [draft, setDraft] = useState(requirement);
+  useEffect(() => setDraft(requirement), [requirement]);
   const patch = (change: Partial<Requirement>) =>
-    onChange({ ...requirement, ...change });
+    setDraft((current) => ({ ...current, ...change }));
+  const reset = () => {
+    setDraft(requirement);
+    onCancel?.();
+  };
 
   return (
     <fieldset className="derived-requirement">
-      <legend>Candidate constraint</legend>
+      <legend>
+        {isNew ? "New candidate constraint" : "Candidate constraint"}
+      </legend>
       <label className="derived-requirement__label">
         Requirement
         <input
           aria-label="Derived requirement"
-          value={requirement.label}
+          value={draft.label}
           maxLength={160}
           onChange={(event) => patch({ label: event.target.value })}
         />
@@ -110,7 +143,7 @@ export function DerivedRequirementEditor({
         Signal
         <select
           aria-label="Derived requirement metric"
-          value={requirement.metric}
+          value={draft.metric}
           onChange={(event) =>
             patch({ metric: event.target.value as Requirement["metric"] })
           }
@@ -126,7 +159,7 @@ export function DerivedRequirementEditor({
         Rule
         <select
           aria-label="Derived requirement operator"
-          value={requirement.operator}
+          value={draft.operator}
           onChange={(event) =>
             patch({ operator: event.target.value as Requirement["operator"] })
           }
@@ -142,7 +175,7 @@ export function DerivedRequirementEditor({
           aria-label="Derived requirement target"
           type="number"
           step="any"
-          value={requirement.target}
+          value={draft.target}
           onChange={(event) => patch({ target: Number(event.target.value) })}
         />
       </label>
@@ -150,18 +183,38 @@ export function DerivedRequirementEditor({
         Unit
         <input
           aria-label="Derived requirement unit"
-          value={requirement.unit}
+          value={draft.unit}
           maxLength={24}
           onChange={(event) => patch({ unit: event.target.value })}
         />
       </label>
-      <button
-        type="button"
-        aria-label={`Remove ${requirement.label}`}
-        onClick={() => onRemove(requirement.id)}
-      >
-        <Trash size={13} /> Remove
-      </button>
+      <div className="derived-requirement__actions">
+        <button
+          type="button"
+          disabled={!draft.label.trim() || !draft.unit.trim()}
+          onClick={() =>
+            onSave({
+              ...draft,
+              label: draft.label.trim(),
+              unit: draft.unit.trim(),
+            })
+          }
+        >
+          Save
+        </button>
+        <button type="button" onClick={reset}>
+          Cancel
+        </button>
+        {!isNew ? (
+          <button
+            type="button"
+            aria-label={`Remove ${requirement.label}`}
+            onClick={() => onRemove(requirement.id)}
+          >
+            <Trash size={13} /> Remove
+          </button>
+        ) : null}
+      </div>
     </fieldset>
   );
 }
@@ -213,9 +266,10 @@ const paletteMetric = (
 ): string => {
   if (!component) return "not placed";
   if (component.kind === "users")
-    return `${Math.round(throughputRps).toLocaleString()} RPS`;
+    return `${Math.round(throughputRps).toLocaleString()} configured RPS`;
   if (component.kind === "cache" || component.kind === "cdn")
-    return `${Math.round(component.config.cacheHitRate * 100)}% hit`;
+    return `${Math.round(component.config.cacheHitRate * 100)}% configured hit`;
+  if (!metrics) return "not run yet";
   if (component.kind === "queue" || component.kind === "stream")
     return `${Math.round(metrics?.queueDepth ?? 0).toLocaleString()} queued`;
   if (component.kind === "database")
@@ -285,7 +339,9 @@ const newNode = (
               writeIops: 30_000,
               partitions: 8,
               replicationMode: "async",
-              replicationLagMs: 80,
+              ...(kind === "database" || kind === "object-store"
+                ? { replicationLagMs: 80 }
+                : {}),
               failoverSeconds: 20,
             }
           : undefined,
@@ -339,11 +395,136 @@ const causalEntityIds = (
   return ids;
 };
 
+export type PathPlaybackNodeRole = "node" | "source" | "target";
+
+export interface TracePlaybackTopologyFocus {
+  edgeId: string | null;
+  inspectorNodeId: string | null;
+  nodeRoles: Map<string, PathPlaybackNodeRole>;
+  unresolvedEntityIds: string[];
+}
+
+const pathRoleRank: Record<PathPlaybackNodeRole, number> = {
+  source: 1,
+  target: 2,
+  node: 3,
+};
+
+export const resolveTracePlaybackTopologyFocus = (
+  nodes: readonly Pick<ArchitectureNode, "id">[],
+  edges: readonly Pick<ArchitectureEdge, "id" | "source" | "target">[],
+  selection: TracePlaybackSelection | null,
+): TracePlaybackTopologyFocus => {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const nodeRoles = new Map<string, PathPlaybackNodeRole>();
+  const unresolved = new Set<string>();
+  const setNodeRole = (
+    nodeId: string | undefined,
+    role: PathPlaybackNodeRole,
+  ) => {
+    if (!nodeId) return;
+    if (!nodeIds.has(nodeId)) {
+      unresolved.add(nodeId);
+      return;
+    }
+    const current = nodeRoles.get(nodeId);
+    if (!current || pathRoleRank[role] > pathRoleRank[current])
+      nodeRoles.set(nodeId, role);
+  };
+
+  if (!selection)
+    return {
+      edgeId: null,
+      inspectorNodeId: null,
+      nodeRoles,
+      unresolvedEntityIds: [],
+    };
+
+  const { span } = selection;
+  setNodeRole(span.nodeId, "node");
+  setNodeRole(span.sourceNodeId, "source");
+  setNodeRole(span.targetNodeId, "target");
+
+  const focusEdge =
+    Boolean(span.sourceNodeId || span.targetNodeId) ||
+    Boolean(span.edgeId && !span.nodeId);
+  let edge =
+    focusEdge && span.edgeId
+      ? edges.find((candidate) => candidate.id === span.edgeId)
+      : undefined;
+  if (
+    focusEdge &&
+    !edge &&
+    !span.edgeId &&
+    span.sourceNodeId &&
+    span.targetNodeId
+  ) {
+    const tupleMatches = edges.filter(
+      (candidate) =>
+        candidate.source === span.sourceNodeId &&
+        candidate.target === span.targetNodeId,
+    );
+    if (tupleMatches.length === 1) edge = tupleMatches[0];
+    else unresolved.add(`${span.sourceNodeId} → ${span.targetNodeId}`);
+  }
+  if (focusEdge && span.edgeId && !edge) unresolved.add(span.edgeId);
+  if (
+    edge &&
+    ((span.sourceNodeId && edge.source !== span.sourceNodeId) ||
+      (span.targetNodeId && edge.target !== span.targetNodeId))
+  ) {
+    unresolved.add(span.edgeId ?? `${edge.source} → ${edge.target}`);
+    edge = undefined;
+  }
+  if (edge) {
+    setNodeRole(edge.source, "source");
+    setNodeRole(edge.target, "target");
+  }
+
+  const inspectorNodeId =
+    (span.nodeId && nodeIds.has(span.nodeId) ? span.nodeId : null) ??
+    (span.targetNodeId && nodeIds.has(span.targetNodeId)
+      ? span.targetNodeId
+      : null) ??
+    (span.sourceNodeId && nodeIds.has(span.sourceNodeId)
+      ? span.sourceNodeId
+      : null);
+
+  return {
+    edgeId: edge?.id ?? null,
+    inspectorNodeId,
+    nodeRoles,
+    unresolvedEntityIds: [...unresolved],
+  };
+};
+
+export const topologyEdgeShouldAnimate = (
+  hasFrames: boolean,
+  workspaceMode: WorkspaceMode,
+  tracePlaybackActive: boolean,
+): boolean => hasFrames && workspaceMode !== "build" && !tracePlaybackActive;
+
+const importedReplayIntentFromLocationState = (
+  state: unknown,
+): string | null => {
+  if (typeof state !== "object" || state === null) return null;
+  const intent = (state as Record<string, unknown>)["importedReplayIntent"];
+  return typeof intent === "string" ? intent : null;
+};
+
 export function LabPage() {
+  const location = useLocation();
   const scenario = useLabStore((state) => state.scenario);
   const architecture = useLabStore((state) => state.architecture);
   const result = useLabStore((state) => state.result);
   const runState = useLabStore((state) => state.runState);
+  const localRunSession = useLabStore((state) => state.localRunSession);
+  const localRunFrames = useLabStore((state) => state.localRunFrames);
+  const localRunEvents = useLabStore((state) => state.localRunEvents);
+  const localRunActions = useLabStore((state) => state.localRunActions);
+  const localRunForkSnapshot = useLabStore(
+    (state) => state.localRunForkSnapshot,
+  );
   const selectedNodeId = useLabStore((state) => state.selectedNodeId);
   const selectedEventId = useLabStore((state) => state.selectedEventId);
   const workspaceMode = useLabStore((state) => state.workspaceMode);
@@ -355,11 +536,32 @@ export function LabPage() {
   const revealState = useLabStore((state) => state.revealState);
   const hydrate = useLabStore((state) => state.hydrate);
   const setArchitecture = useLabStore((state) => state.setArchitecture);
+  const setArchitectureTransient = useLabStore(
+    (state) => state.setArchitectureTransient,
+  );
+  const commitArchitectureTransient = useLabStore(
+    (state) => state.commitArchitectureTransient,
+  );
   const selectNode = useLabStore((state) => state.setSelectedNodeId);
   const selectEvent = useLabStore((state) => state.setSelectedEventId);
   const setWorkspaceMode = useLabStore((state) => state.setWorkspaceMode);
   const checkService = useLabStore((state) => state.checkService);
   const runLocal = useLabStore((state) => state.runLocal);
+  const cancelLocalRun = useLabStore((state) => state.cancelLocalRun);
+  const pauseLocalRun = useLabStore((state) => state.pauseLocalRun);
+  const resumeLocalRun = useLabStore((state) => state.resumeLocalRun);
+  const stepLocalRun = useLabStore((state) => state.stepLocalRun);
+  const applyLocalIntervention = useLabStore(
+    (state) => state.applyLocalIntervention,
+  );
+  const injectLocalNodeOutage = useLabStore(
+    (state) => state.injectLocalNodeOutage,
+  );
+  const snapshotLocalRun = useLabStore((state) => state.snapshotLocalRun);
+  const forkLocalRunSession = useLabStore((state) => state.forkLocalRunSession);
+  const openLocalRunFork = useLabStore((state) => state.openLocalRunFork);
+  const finishLocalRun = useLabStore((state) => state.finishLocalRun);
+  const setLocalRunSpeed = useLabStore((state) => state.setLocalRunSpeed);
   const submitCanonical = useLabStore((state) => state.submitCanonical);
   const updateRequirement = useLabStore((state) => state.updateRequirement);
   const removeRequirement = useLabStore((state) => state.removeRequirement);
@@ -369,29 +571,125 @@ export function LabPage() {
   const setInterviewReveal = useLabStore((state) => state.setInterviewReveal);
   const dismissNotice = useLabStore((state) => state.dismissNotice);
   const [paletteFilter, setPaletteFilter] = useState("");
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [edgeSelection, setEdgeSelection] = useState<{
+    primaryId: string | null;
+    ids: string[];
+  }>({ primaryId: null, ids: [] });
+  const selectedEdgeId = edgeSelection.primaryId;
+  const selectedEdgeIds = edgeSelection.ids;
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [architectureNameDraft, setArchitectureNameDraft] = useState(
+    architecture.name,
+  );
+  const [shareStatus, setShareStatus] = useState<
+    "idle" | "copied" | "too-large" | "unavailable"
+  >("idle");
   const [cursorSecond, setCursorSecond] = useState(0);
+  const [tracePlaybackSelection, setTracePlaybackSelection] =
+    useState<TracePlaybackSelection | null>(null);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [compactViewport, setCompactViewport] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 820px)").matches,
+  );
+  const [draftRequirement, setDraftRequirement] = useState<Requirement | null>(
+    null,
+  );
+  const consumeQueuedImportedReplay = useLabStore(
+    (state) => state.consumeQueuedImportedReplay,
+  );
+  const importedReplayIntent = importedReplayIntentFromLocationState(
+    location.state as unknown,
+  );
+  const openDecisionWorkbench = useCallback(() => {
+    setCommandOpen(false);
+    setDecisionOpen(true);
+  }, []);
+  const closeDecisionWorkbench = useCallback(() => setDecisionOpen(false), []);
+  const openCommandPalette = useCallback(() => {
+    setDecisionOpen(false);
+    setCommandOpen(true);
+  }, []);
+  const closeCommandPalette = useCallback(() => setCommandOpen(false), []);
+  const setSelectedEdgeId = useCallback((id: string | null) => {
+    setEdgeSelection({ primaryId: id, ids: id ? [id] : [] });
+  }, []);
+  const decisionShortcut =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad/.test(navigator.platform)
+      ? "⌘K"
+      : "Ctrl K";
 
   useEffect(() => {
-    hydrate();
+    let active = true;
+    const initialize = async () => {
+      await hydrate();
+      if (active && importedReplayIntent)
+        void consumeQueuedImportedReplay(importedReplayIntent);
+    };
+    void initialize();
     void checkService();
-  }, [checkService, hydrate]);
+    return () => {
+      active = false;
+    };
+  }, [
+    checkService,
+    consumeQueuedImportedReplay,
+    hydrate,
+    importedReplayIntent,
+  ]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 820px)");
+    const update = () => setCompactViewport(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     if (result) setCursorSecond(result.frames.length - 1);
+    setTracePlaybackSelection(null);
   }, [result]);
+
+  useEffect(() => {
+    if (runState === "running" && localRunFrames.length)
+      setCursorSecond(localRunFrames.length - 1);
+  }, [localRunFrames.length, runState]);
+
+  useEffect(() => {
+    setArchitectureNameDraft(architecture.name);
+    const knownNodeIds = new Set(architecture.nodes.map((node) => node.id));
+    setSelectedNodeIds((current) =>
+      current.filter((id) => knownNodeIds.has(id)),
+    );
+  }, [architecture.name, architecture.nodes]);
+
+  useEffect(() => {
+    const knownEdgeIds = new Set(architecture.edges.map((edge) => edge.id));
+    setEdgeSelection((current) => {
+      const ids = current.ids.filter((id) => knownEdgeIds.has(id));
+      const primaryId =
+        current.primaryId && knownEdgeIds.has(current.primaryId)
+          ? current.primaryId
+          : (ids.at(-1) ?? null);
+      return ids.length === current.ids.length &&
+        primaryId === current.primaryId
+        ? current
+        : { primaryId, ids };
+    });
+  }, [architecture.edges]);
 
   useEffect(() => {
     const density = localStorage.getItem("systemforge:density");
     document.documentElement.dataset.systemforgeDensity =
       density === "comfortable" ? "comfortable" : "compact";
-    const openDecisionWorkbench = (event: KeyboardEvent) => {
+    const handleGlobalShortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setDecisionOpen(true);
+        openDecisionWorkbench();
       }
       if (
         (event.ctrlKey || event.metaKey) &&
@@ -399,12 +697,12 @@ export function LabPage() {
         event.key.toLowerCase() === "p"
       ) {
         event.preventDefault();
-        setCommandOpen(true);
+        openCommandPalette();
       }
     };
-    window.addEventListener("keydown", openDecisionWorkbench);
-    return () => window.removeEventListener("keydown", openDecisionWorkbench);
-  }, []);
+    window.addEventListener("keydown", handleGlobalShortcut);
+    return () => window.removeEventListener("keydown", handleGlobalShortcut);
+  }, [openCommandPalette, openDecisionWorkbench]);
 
   useEffect(() => {
     if (
@@ -427,28 +725,113 @@ export function LabPage() {
     sharedScenarioId,
   ]);
 
-  const frame = result?.frames[cursorSecond] ?? result?.frames.at(-1) ?? null;
-  const causalIds = useMemo(
-    () => causalEntityIds(result?.events ?? [], selectedEventId),
-    [result, selectedEventId],
+  const displayFrames = result?.frames ?? localRunFrames;
+  const displayEvents = result?.events ?? localRunEvents;
+  const frame =
+    displayFrames[Math.min(cursorSecond, displayFrames.length - 1)] ??
+    displayFrames.at(-1) ??
+    null;
+  const placementGroups = useMemo(
+    () => [
+      ...deriveArchitecturePlacementGroups(architecture, "region"),
+      ...deriveArchitecturePlacementGroups(architecture, "failure-domain"),
+    ],
+    [architecture],
   );
+  const placementIncidents = useMemo(
+    () => [
+      ...scenario.incidents,
+      ...(result?.generatedIncidents.map(({ incident }) => incident) ?? []),
+    ],
+    [result?.generatedIncidents, scenario.incidents],
+  );
+  const activePlacementGroupIds = useMemo(
+    () =>
+      activeArchitecturePlacementGroupIds(
+        placementIncidents,
+        frame?.second ?? cursorSecond,
+        scenario.workload.durationSeconds,
+      ),
+    [
+      cursorSecond,
+      frame?.second,
+      placementIncidents,
+      scenario.workload.durationSeconds,
+    ],
+  );
+  const causalIds = useMemo(
+    () => causalEntityIds(displayEvents, selectedEventId),
+    [displayEvents, selectedEventId],
+  );
+  const tracePlaybackFocus = useMemo(
+    () =>
+      resolveTracePlaybackTopologyFocus(
+        architecture.nodes,
+        architecture.edges,
+        tracePlaybackSelection,
+      ),
+    [architecture.edges, architecture.nodes, tracePlaybackSelection],
+  );
+
+  useEffect(() => {
+    if (!tracePlaybackSelection) return;
+    selectEvent(null);
+    if (tracePlaybackFocus.edgeId) {
+      selectNode(null);
+      setSelectedNodeIds([]);
+      setSelectedEdgeId(tracePlaybackFocus.edgeId);
+      return;
+    }
+    if (tracePlaybackFocus.inspectorNodeId) {
+      setSelectedEdgeId(null);
+      selectNode(tracePlaybackFocus.inspectorNodeId);
+      setSelectedNodeIds([tracePlaybackFocus.inspectorNodeId]);
+      return;
+    }
+    setSelectedEdgeId(null);
+    selectNode(null);
+    setSelectedNodeIds([]);
+  }, [
+    selectEvent,
+    selectNode,
+    setSelectedEdgeId,
+    tracePlaybackFocus,
+    tracePlaybackSelection,
+  ]);
   const flowNodes = useMemo<SystemFlowNode[]>(
     () =>
       architecture.nodes.map((component) => {
-        const dimensions = nodeDimensions(component.kind);
+        const dimensions = architectureNodeDimensions(component.kind);
+        const pathRole = tracePlaybackFocus.nodeRoles.get(component.id);
         return {
           id: component.id,
           type: "system",
           position: component.position,
           initialWidth: dimensions.width,
           initialHeight: dimensions.height,
-          selected: component.id === selectedNodeId,
+          selected:
+            component.id === selectedNodeId ||
+            selectedNodeIds.includes(component.id),
           data: {
             component,
             metrics: frame?.nodeMetrics[component.id],
             causalFocus: causalIds.has(component.id),
+            pathPlayback:
+              pathRole && tracePlaybackSelection
+                ? {
+                    role: pathRole,
+                    kind: tracePlaybackSelection.span.kind,
+                    status: tracePlaybackSelection.span.status,
+                    ...(tracePlaybackSelection.span.failureCause
+                      ? {
+                          failureCause:
+                            tracePlaybackSelection.span.failureCause,
+                        }
+                      : {}),
+                  }
+                : undefined,
             throughputRps: frame?.rps,
-            history: (result?.frames ?? [])
+            history: displayFrames
               .slice(-72)
               .map(
                 (historyFrame) =>
@@ -461,52 +844,82 @@ export function LabPage() {
           },
         };
       }),
-    [architecture.nodes, causalIds, frame, result, selectedNodeId],
+    [
+      architecture.nodes,
+      causalIds,
+      frame,
+      displayFrames,
+      selectedNodeId,
+      selectedNodeIds,
+      tracePlaybackFocus.nodeRoles,
+      tracePlaybackSelection,
+    ],
   );
   const flowEdges = useMemo<Edge[]>(
     () =>
       architecture.edges.map((edge) => {
         const isCausal =
           causalIds.has(edge.source) || causalIds.has(edge.target);
+        const isTracePath = tracePlaybackFocus.edgeId === edge.id;
         const states = [
           frame?.nodeMetrics[edge.source]?.state,
           frame?.nodeMetrics[edge.target]?.state,
         ];
-        const healthState = !result
-          ? "neutral"
-          : states.some((state) => state === "critical" || state === "offline")
-            ? "critical"
-            : states.some((state) => state === "warning")
-              ? "warning"
-              : "healthy";
-        const edgeColor = isCausal
-          ? "#f19745"
-          : healthState === "critical"
+        const healthState =
+          displayFrames.length === 0
+            ? "neutral"
+            : states.some(
+                  (state) => state === "critical" || state === "offline",
+                )
+              ? "critical"
+              : states.some((state) => state === "warning")
+                ? "warning"
+                : "healthy";
+        const edgeColor = isTracePath
+          ? tracePlaybackSelection?.span.status === "dropped" ||
+            tracePlaybackSelection?.span.failureCause
             ? "#ff604f"
-            : healthState === "warning"
+            : tracePlaybackSelection?.span.status === "degraded"
               ? "#f2bf4b"
-              : healthState === "healthy"
-                ? "#75d48a"
-                : "#71838d";
+              : "#58bfff"
+          : isCausal
+            ? "#f19745"
+            : healthState === "critical"
+              ? "#ff604f"
+              : healthState === "warning"
+                ? "#f2bf4b"
+                : healthState === "healthy"
+                  ? "#75d48a"
+                  : "#71838d";
         return {
           ...edge,
-          selected: edge.id === selectedEdgeId,
-          animated: Boolean(result) && workspaceMode !== "build",
+          selected: selectedEdgeIds.includes(edge.id),
+          animated: topologyEdgeShouldAnimate(
+            displayFrames.length > 0,
+            workspaceMode,
+            tracePlaybackSelection !== null,
+          ),
           markerEnd: {
             type: MarkerType.ArrowClosed,
             width: 12,
             height: 12,
             color: edgeColor,
           },
-          className: `system-edge system-edge--state-${healthState} ${isCausal ? "system-edge--causal" : ""}`,
+          className: `system-edge system-edge--state-${healthState} ${isCausal ? "system-edge--causal" : ""} ${isTracePath && tracePlaybackSelection ? `system-edge--path system-edge--path-${tracePlaybackSelection.span.kind} system-edge--path-${tracePlaybackSelection.span.status}` : ""}`,
+          ariaLabel:
+            isTracePath && tracePlaybackSelection
+              ? `Path playback ${tracePlaybackSelection.span.kind.replaceAll("-", " ")} from ${edge.source} to ${edge.target}, ${tracePlaybackSelection.span.status}`
+              : undefined,
         };
       }),
     [
       architecture.edges,
       causalIds,
       frame,
-      result,
-      selectedEdgeId,
+      displayFrames.length,
+      selectedEdgeIds,
+      tracePlaybackFocus.edgeId,
+      tracePlaybackSelection,
       workspaceMode,
     ],
   );
@@ -515,19 +928,20 @@ export function LabPage() {
   const selectedEdge =
     architecture.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
   const selectedEvent =
-    result?.events.find((event) => event.id === selectedEventId) ?? null;
-  const globalHealthState = !result
-    ? "armed"
-    : Object.values(frame?.nodeMetrics ?? {}).some(
-          (metrics) =>
-            metrics.state === "critical" || metrics.state === "offline",
-        )
-      ? "critical"
+    displayEvents.find((event) => event.id === selectedEventId) ?? null;
+  const globalHealthState =
+    displayFrames.length === 0
+      ? "not-run"
       : Object.values(frame?.nodeMetrics ?? {}).some(
-            (metrics) => metrics.state === "warning",
+            (metrics) =>
+              metrics.state === "critical" || metrics.state === "offline",
           )
-        ? "warning"
-        : "healthy";
+        ? "critical"
+        : Object.values(frame?.nodeMetrics ?? {}).some(
+              (metrics) => metrics.state === "warning",
+            )
+          ? "warning"
+          : "healthy";
   const visibleGroups = paletteGroups
     .map((group) => ({
       ...group,
@@ -536,9 +950,87 @@ export function LabPage() {
       ),
     }))
     .filter((group) => group.items.length > 0);
+  const visibleRequirements = scenario.requirements.filter(
+    (requirement) =>
+      role === "interviewer" || requirement.visibility !== "hidden",
+  );
+  const graphIssues = useMemo(
+    () => lintArchitecture(scenario, architecture),
+    [architecture, scenario],
+  );
+  const graphErrorCount = graphIssues.filter(
+    (issue) => issue.severity === "error",
+  ).length;
+  const localSessionActive =
+    runState === "running" &&
+    localRunSession !== null &&
+    !["cancelled", "complete", "error"].includes(localRunSession.state);
+  const localSessionPaused = localRunSession?.state === "paused";
+  const nextActionSecond = (localRunFrames.at(-1)?.second ?? 0) + 1;
+  let selectedNodeInstances = selectedNode
+    ? (frame?.nodeMetrics[selectedNode.id]?.activeInstances ??
+      selectedNode.config.instances)
+    : 1;
+  let selectedCircuitBreakerEnabled =
+    selectedNode?.config.behavior?.resilience?.circuitBreaker ?? false;
+  for (const action of localRunActions) {
+    if (action.type !== "apply-intervention") continue;
+    if (action.nodeId !== selectedNode?.id) continue;
+    if (action.intervention.kind === "scale")
+      selectedNodeInstances = action.intervention.instances;
+    if (action.intervention.kind === "circuit-breaker")
+      selectedCircuitBreakerEnabled = action.intervention.enabled;
+  }
+  const scaleTarget = Math.min(
+    selectedNode?.config.maxInstances ?? 10_000,
+    Math.max(selectedNodeInstances + 1, selectedNodeInstances * 2),
+  );
+  const futureActionAvailable =
+    localSessionPaused &&
+    selectedNode !== null &&
+    nextActionSecond <= scenario.workload.durationSeconds;
+  const scaleActionAvailable =
+    futureActionAvailable && scaleTarget > selectedNodeInstances;
+  const breakerActionAvailable =
+    futureActionAvailable &&
+    selectedNode !== null &&
+    ["api", "load-balancer", "third-party"].includes(selectedNode.kind);
+  const loadSheddingActionAvailable =
+    futureActionAvailable &&
+    selectedNode !== null &&
+    ["api", "load-balancer"].includes(selectedNode.kind);
+  const localRunLabel = localSessionPaused
+    ? "paused"
+    : localRunSession?.state === "starting"
+      ? "starting"
+      : runState === "complete"
+        ? "results ready"
+        : runState === "idle"
+          ? "not run"
+          : runState;
 
   const onNodesChange = useCallback(
     (changes: NodeChange<SystemFlowNode>[]) => {
+      const selectionChanges = changes.flatMap((change) =>
+        change.type === "select"
+          ? [{ id: change.id, selected: change.selected }]
+          : [],
+      );
+      if (selectionChanges.length) {
+        const nextSelection = new Set(selectedNodeIds);
+        for (const change of selectionChanges) {
+          if (change.selected) nextSelection.add(change.id);
+          else nextSelection.delete(change.id);
+        }
+        const nextIds = [...nextSelection];
+        setSelectedNodeIds(nextIds);
+        const newlySelected = selectionChanges
+          .filter((change) => change.selected)
+          .at(-1);
+        if (newlySelected) selectNode(newlySelected.id);
+        else if (!selectedNodeId || !nextSelection.has(selectedNodeId))
+          selectNode(nextIds.at(-1) ?? null);
+      }
       const positions = new Map(
         changes.flatMap((change) =>
           change.type === "position" && change.position
@@ -547,7 +1039,7 @@ export function LabPage() {
         ),
       );
       if (positions.size === 0) return;
-      setArchitecture({
+      setArchitectureTransient({
         ...architecture,
         nodes: architecture.nodes.map((node) => ({
           ...node,
@@ -555,17 +1047,38 @@ export function LabPage() {
         })),
       });
     },
-    [architecture, setArchitecture],
+    [
+      architecture,
+      selectNode,
+      selectedNodeId,
+      selectedNodeIds,
+      setArchitectureTransient,
+    ],
   );
+  const onEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
+    const selectionChanges = changes.flatMap((change) =>
+      change.type === "select"
+        ? [{ id: change.id, selected: change.selected }]
+        : [],
+    );
+    if (selectionChanges.length === 0) return;
+    setEdgeSelection((current) => {
+      const ids = applySelectionChanges(current.ids, selectionChanges);
+      const newlySelected = selectionChanges
+        .filter((change) => change.selected)
+        .at(-1);
+      const primaryId = newlySelected
+        ? newlySelected.id
+        : current.primaryId && ids.includes(current.primaryId)
+          ? current.primaryId
+          : (ids.at(-1) ?? null);
+      return { primaryId, ids };
+    });
+  }, []);
   const onConnect = useCallback(
     (connection: Connection) => {
       if (workspaceMode !== "build" || flowEdges.length >= 2_000) return;
-      const edges = addEdge(connection, flowEdges).map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-      }));
-      setArchitecture({ ...architecture, edges });
+      setArchitecture(connectArchitecture(architecture, connection));
     },
     [architecture, flowEdges, setArchitecture, workspaceMode],
   );
@@ -592,11 +1105,51 @@ export function LabPage() {
     });
     setSelectedEdgeId(null);
     selectNode(component.id);
+    setSelectedNodeIds([component.id]);
+  };
+  const removeElements = (nodeIds: string[], edgeIds: string[]) => {
+    if (
+      workspaceMode !== "build" ||
+      (nodeIds.length === 0 && edgeIds.length === 0)
+    )
+      return;
+    setArchitecture(removeArchitectureElements(architecture, nodeIds, edgeIds));
+    setSelectedNodeIds([]);
+    selectNode(null);
+    setSelectedEdgeId(null);
+  };
+  const duplicateSelection = () => {
+    if (workspaceMode !== "build") return;
+    const sourceIds = selectedNodeIds.length
+      ? selectedNodeIds
+      : selectedNodeId
+        ? [selectedNodeId]
+        : [];
+    if (
+      sourceIds.length === 0 ||
+      architecture.nodes.length + sourceIds.length > 500
+    )
+      return;
+    const duplicated = duplicateArchitectureSelection(architecture, sourceIds);
+    setArchitecture(duplicated.architecture);
+    setSelectedNodeIds(duplicated.selectedNodeIds);
+    selectNode(duplicated.selectedNodeIds[0] ?? null);
+  };
+  const autoLayout = () => {
+    if (workspaceMode !== "build" || architecture.nodes.length === 0) return;
+    setArchitecture(autoLayoutArchitecture(architecture));
+  };
+  const clearArchitecture = () => {
+    if (workspaceMode !== "build") return;
+    setArchitecture(blankArchitecture(architecture));
+    setSelectedNodeIds([]);
+    selectNode(null);
+    setSelectedEdgeId(null);
   };
   const addDerivedRequirement = () => {
     const requirement: Requirement = {
       id: `derived-${crypto.randomUUID()}`,
-      label: "State the requirement you inferred",
+      label: "",
       metric: "p95LatencyMs",
       operator: "lte",
       target: 400,
@@ -604,17 +1157,22 @@ export function LabPage() {
       visibility: "derived",
       owner: "candidate",
     };
-    updateRequirement(requirement);
+    setDraftRequirement(requirement);
   };
   const copyLocalShare = async () => {
-    const sharedScenario = scenarioForLocalShare(scenario, role);
-    const url = `${window.location.origin}/lab#share=${encodeLocalShare({ scenario: sharedScenario, architecture, role })}`;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+    try {
+      const url = candidateLocalShareLink(scenario, architecture);
+      await navigator.clipboard.writeText(url);
+      setShareStatus("copied");
+    } catch (error) {
+      setShareStatus(
+        error instanceof LocalShareTooLargeError ? "too-large" : "unavailable",
+      );
+    }
+    window.setTimeout(() => setShareStatus("idle"), 4_000);
   };
   const handleSelectEvent = (id: string) => {
-    const event = result?.events.find((candidate) => candidate.id === id);
+    const event = displayEvents.find((candidate) => candidate.id === id);
     selectEvent(id);
     setWorkspaceMode("investigate");
     setSelectedEdgeId(null);
@@ -670,18 +1228,22 @@ export function LabPage() {
           <span
             className={`simulation-run-state simulation-run-state--${runState}`}
           >
-            {runState === "complete" ? "trace ready" : runState}
+            {localRunLabel}
           </span>
           <span className="simulation-clock">
             {String(Math.floor(cursorSecond / 60)).padStart(2, "0")}:
             {String(cursorSecond % 60).padStart(2, "0")}
           </span>
           <span className={`service-state service-state--${availability}`}>
-            {availability === "offline" ? "release locked" : availability}
+            {availability === "offline"
+              ? "server down"
+              : `server ${availability}`}
           </span>
           <span className={`global-health global-health--${globalHealthState}`}>
-            <small>Global</small>
-            <strong>{globalHealthState}</strong>
+            <small>Model state</small>
+            <strong>
+              {globalHealthState === "not-run" ? "not run" : globalHealthState}
+            </strong>
           </span>
           {scenario.mode === "interview" ? (
             <span className={`reveal-state reveal-state--${revealState}`}>
@@ -693,15 +1255,30 @@ export function LabPage() {
             className="icon-button"
             type="button"
             onClick={() => void copyLocalShare()}
-            aria-label="Copy local share link"
+            aria-label="Copy candidate-safe local share link"
+            title={
+              shareStatus === "too-large"
+                ? "This architecture is too large for a safe browser-local URL. Reduce it or use a server-backed short link."
+                : shareStatus === "unavailable"
+                  ? "The browser could not copy this local link."
+                  : "Copies a participant link without hidden interview criteria or interviewer notes."
+            }
           >
             <Copy size={16} />
-            {copied ? <span>Copied</span> : null}
+            <span aria-live="polite">
+              {shareStatus === "copied"
+                ? "Copied"
+                : shareStatus === "too-large"
+                  ? "Link too large"
+                  : shareStatus === "unavailable"
+                    ? "Copy unavailable"
+                    : ""}
+            </span>
           </button>
           <button
             className="icon-button command-trigger"
             type="button"
-            onClick={() => setCommandOpen(true)}
+            onClick={openCommandPalette}
             aria-label="Open command palette"
             aria-keyshortcuts="Control+Shift+P Meta+Shift+P"
           >
@@ -710,64 +1287,257 @@ export function LabPage() {
           <button
             className="decision-trigger"
             type="button"
-            onClick={() => setDecisionOpen(true)}
+            onClick={openDecisionWorkbench}
             aria-keyshortcuts="Control+K Meta+K"
           >
             <Scales size={15} /> Compare
-            <kbd>⌘K</kbd>
+            <kbd>{decisionShortcut}</kbd>
           </button>
-          <button
-            className="button button--run"
-            type="button"
-            disabled={runState === "running"}
-            onClick={() => void runLocal()}
-          >
-            {runState === "running" ? (
-              <Pause size={16} />
-            ) : (
-              <Play size={16} weight="fill" />
-            )}
-            {runState === "running" ? "Simulating" : "Run local"}
-          </button>
+          <div className="local-run-controls">
+            <button
+              className="button button--run"
+              type="button"
+              disabled={!localSessionActive && graphErrorCount > 0}
+              title={
+                !localSessionActive && graphErrorCount > 0
+                  ? "Resolve blocking graph-lint errors before running."
+                  : undefined
+              }
+              onClick={() => {
+                if (localSessionPaused) resumeLocalRun();
+                else if (localSessionActive) pauseLocalRun();
+                else void runLocal();
+              }}
+            >
+              {localRunSession?.state === "starting" ? (
+                <CircleNotch className="run-progress" size={16} />
+              ) : localSessionPaused ? (
+                <Play size={16} weight="fill" />
+              ) : localSessionActive ? (
+                <Pause size={16} weight="fill" />
+              ) : (
+                <Play size={16} weight="fill" />
+              )}
+              {localRunSession?.state === "starting"
+                ? "Starting…"
+                : localSessionPaused
+                  ? "Resume"
+                  : localSessionActive
+                    ? "Pause"
+                    : "Run locally"}
+            </button>
+            {localSessionActive ? (
+              <div className="local-run-controls__session">
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={!localSessionPaused}
+                  onClick={stepLocalRun}
+                  aria-label="Step one local-run batch"
+                  title="Step one batch while paused"
+                >
+                  <SkipForward size={14} weight="fill" />
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  onClick={cancelLocalRun}
+                  aria-label="Cancel local run"
+                  title="Cancel local run"
+                >
+                  <Stop size={14} weight="fill" />
+                </button>
+                <label className="local-run-speed">
+                  <span>Speed</span>
+                  <select
+                    aria-label="Local run playback speed"
+                    value={localRunSession?.speed ?? 1}
+                    onChange={(event) =>
+                      setLocalRunSpeed(Number(event.target.value))
+                    }
+                  >
+                    {[0.25, 0.5, 1, 2, 4, 8, 16].map((speed) => (
+                      <option value={speed} key={speed}>
+                        {speed}×
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="local-run-progress">
+                  <span>
+                    {Math.round((localRunSession?.progress ?? 0) * 100)}%
+                  </span>
+                  <progress
+                    aria-label="Local run progress"
+                    max="1"
+                    value={localRunSession?.progress ?? 0}
+                  />
+                </label>
+                {localSessionPaused ? (
+                  <section
+                    className="run-intervention-panel"
+                    aria-label="Paused run interventions"
+                  >
+                    <header>
+                      <span>Future-only actions</span>
+                      <strong>
+                        {selectedNode?.name ?? "Select a node"} · t+
+                        {nextActionSecond}s
+                      </strong>
+                    </header>
+                    <p>
+                      Recomputes deterministically from second 0. Delivered
+                      frames stay locked.
+                    </p>
+                    <div className="run-intervention-panel__actions">
+                      <button
+                        type="button"
+                        disabled={!scaleActionAvailable}
+                        onClick={() =>
+                          selectedNode &&
+                          applyLocalIntervention(selectedNode.id, {
+                            kind: "scale",
+                            instances: scaleTarget,
+                          })
+                        }
+                      >
+                        Scale to {scaleTarget}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!breakerActionAvailable}
+                        onClick={() =>
+                          selectedNode &&
+                          applyLocalIntervention(selectedNode.id, {
+                            kind: "circuit-breaker",
+                            enabled: !selectedCircuitBreakerEnabled,
+                          })
+                        }
+                      >
+                        {selectedCircuitBreakerEnabled ? "Disable" : "Enable"}{" "}
+                        breaker
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!loadSheddingActionAvailable}
+                        onClick={() =>
+                          selectedNode &&
+                          applyLocalIntervention(selectedNode.id, {
+                            kind: "load-shedding",
+                            threshold: 0.8,
+                          })
+                        }
+                      >
+                        Shed at 80%
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!futureActionAvailable}
+                        onClick={() =>
+                          selectedNode && injectLocalNodeOutage(selectedNode.id)
+                        }
+                      >
+                        Fail one instance
+                      </button>
+                    </div>
+                    <div className="run-intervention-panel__session-actions">
+                      <button type="button" onClick={snapshotLocalRun}>
+                        Snapshot replay
+                      </button>
+                      <button type="button" onClick={forkLocalRunSession}>
+                        Capture fork
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!localRunForkSnapshot}
+                        onClick={() => void openLocalRunFork()}
+                      >
+                        Open captured fork
+                      </button>
+                      <button type="button" onClick={finishLocalRun}>
+                        Finish playback
+                      </button>
+                    </div>
+                    {localRunActions.length > 0 ? (
+                      <ol className="run-intervention-panel__log">
+                        {localRunActions.slice(-3).map((action) => (
+                          <li key={action.id}>
+                            <time>t+{action.atSecond}s</time>
+                            <span>
+                              {action.type === "inject-incident"
+                                ? action.incident.label
+                                : `${action.nodeId}: ${action.intervention.kind}`}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                  </section>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <button
             className="button button--canonical"
             type="button"
             disabled={
               availability !== "online" ||
+              graphErrorCount > 0 ||
               canonicalRunStatus === "queued" ||
               canonicalRunStatus === "running"
             }
             onClick={() => void submitCanonical()}
           >
             <CloudArrowUp size={16} />
-            {canonicalRunStatus === "queued" || canonicalRunStatus === "running"
-              ? canonicalRunStatus
-              : canonicalRunStatus === "completed"
-                ? "Verified"
-                : "Canonical"}
+            <span className="canonical-run-label">
+              {canonicalRunStatus === "queued" ||
+              canonicalRunStatus === "running"
+                ? canonicalRunStatus
+                : canonicalRunStatus === "completed"
+                  ? "Server run complete"
+                  : "Run on server"}
+            </span>
           </button>
           <span className="requirements-score">
-            SCORE{" "}
+            OBJECTIVES{" "}
             <strong>
-              {result?.score.passed ?? 0}/
+              {result?.score.passed ?? "—"}/
               {result?.score.total ?? scenario.requirements.length}
             </strong>
           </span>
         </div>
       </header>
+      <div className="mobile-state-strip" aria-label="Current run state">
+        <span>{localRunLabel}</span>
+        <time>
+          {String(Math.floor(cursorSecond / 60)).padStart(2, "0")}:
+          {String(cursorSecond % 60).padStart(2, "0")}
+        </time>
+        <span>
+          {result
+            ? `${result.score.passed}/${result.score.total} objectives`
+            : "objectives —"}
+        </span>
+        <span>
+          {globalHealthState === "not-run"
+            ? "model not run"
+            : globalHealthState}
+        </span>
+        <span>seed {scenario.seed}</span>
+      </div>
       <ServiceBanner
         availability={availability}
         notice={notice}
         onDismiss={dismissNotice}
       />
-      <DecisionWorkbench
+      <DecisionWorkbenchBoundary
         open={decisionOpen}
-        onClose={() => setDecisionOpen(false)}
+        onClose={closeDecisionWorkbench}
       />
       <CommandPalette
         open={commandOpen}
-        onClose={() => setCommandOpen(false)}
-        onOpenDecisionWorkbench={() => setDecisionOpen(true)}
+        onClose={closeCommandPalette}
+        onOpenDecisionWorkbench={openDecisionWorkbench}
       />
       <main
         className="lab-grid"
@@ -777,17 +1547,17 @@ export function LabPage() {
           <header>
             <div>
               <span className="panel-index">01 / COMPONENTS</span>
-              <strong>System primitives</strong>
+              <strong>System components</strong>
             </div>
             <SlidersHorizontal size={15} />
           </header>
           <label className="palette-search">
             <MagnifyingGlass size={14} />
             <input
-              aria-label="Filter system primitives"
+              aria-label="Filter system components"
               value={paletteFilter}
               onChange={(event) => setPaletteFilter(event.target.value)}
-              placeholder="Filter primitives"
+              placeholder="Filter components"
             />
           </label>
           <div className="palette-list">
@@ -846,6 +1616,11 @@ export function LabPage() {
                 })}
               </section>
             ))}
+            {visibleGroups.length === 0 ? (
+              <p className="palette-empty">
+                No components match “{paletteFilter}”.
+              </p>
+            ) : null}
           </div>
           <section className="requirements-list">
             <header>
@@ -854,65 +1629,76 @@ export function LabPage() {
                 <strong>
                   {scenario.mode === "interview" && role !== "interviewer"
                     ? "Derived requirements"
-                    : "Mission objectives"}
+                    : "Objectives"}
                 </strong>
               </div>
               <span>{scenario.requirements.length}</span>
             </header>
-            {scenario.requirements
-              .filter(
-                (requirement) =>
-                  role === "interviewer" || requirement.visibility !== "hidden",
-              )
-              .map((requirement) => {
-                const outcome = result?.requirements.find(
-                  (candidate) => candidate.requirement.id === requirement.id,
-                );
-                const Icon = !outcome
-                  ? Warning
-                  : outcome.passed
-                    ? CheckCircle
-                    : WarningOctagon;
-                const candidateEditable =
-                  scenario.mode === "interview" &&
-                  role !== "interviewer" &&
-                  requirement.visibility === "derived" &&
-                  requirement.owner === "candidate";
-                return candidateEditable ? (
-                  <DerivedRequirementEditor
-                    key={requirement.id}
-                    requirement={requirement}
-                    onChange={updateRequirement}
-                    onRemove={removeRequirement}
-                  />
-                ) : (
-                  <div
-                    key={requirement.id}
-                    className={
-                      outcome?.passed
-                        ? "passed"
-                        : outcome
-                          ? "failed"
-                          : "pending"
-                    }
-                  >
-                    <Icon size={14} weight={outcome ? "fill" : "regular"} />
-                    <span>{requirement.label}</span>
-                    {outcome ? (
-                      <small>
-                        {Math.round(outcome.actual * 100) / 100}{" "}
-                        {requirement.unit}
-                      </small>
-                    ) : null}
-                  </div>
-                );
-              })}
+            {visibleRequirements.map((requirement) => {
+              const outcome = result?.requirements.find(
+                (candidate) => candidate.requirement.id === requirement.id,
+              );
+              const Icon = !outcome
+                ? Warning
+                : outcome.passed
+                  ? CheckCircle
+                  : WarningOctagon;
+              const candidateEditable =
+                scenario.mode === "interview" &&
+                role !== "interviewer" &&
+                requirement.visibility === "derived" &&
+                requirement.owner === "candidate";
+              return candidateEditable ? (
+                <DerivedRequirementEditor
+                  key={requirement.id}
+                  requirement={requirement}
+                  onSave={updateRequirement}
+                  onRemove={removeRequirement}
+                />
+              ) : (
+                <div
+                  key={requirement.id}
+                  className={
+                    outcome?.passed ? "passed" : outcome ? "failed" : "pending"
+                  }
+                >
+                  <Icon size={14} weight={outcome ? "fill" : "regular"} />
+                  <span>{requirement.label}</span>
+                  {outcome ? (
+                    <small>
+                      {Math.round(outcome.actual * 100) / 100}{" "}
+                      {requirement.unit}
+                    </small>
+                  ) : null}
+                </div>
+              );
+            })}
+            {visibleRequirements.length === 0 ? (
+              <p className="requirements-empty">
+                No objectives are visible in this view.
+              </p>
+            ) : null}
+            {draftRequirement ? (
+              <DerivedRequirementEditor
+                requirement={draftRequirement}
+                isNew
+                onSave={(requirement) => {
+                  updateRequirement(requirement);
+                  setDraftRequirement(null);
+                }}
+                onCancel={() => setDraftRequirement(null)}
+                onRemove={() => undefined}
+              />
+            ) : null}
             {candidateRequirementsEnabled(scenario, role) ? (
               <button
                 className="add-derived"
                 type="button"
                 onClick={addDerivedRequirement}
-                disabled={scenario.requirements.length >= 40}
+                disabled={
+                  scenario.requirements.length >= 40 ||
+                  Boolean(draftRequirement)
+                }
               >
                 <Plus size={14} /> Record inferred requirement
               </button>
@@ -941,7 +1727,8 @@ export function LabPage() {
                 )}
                 {!sharedScenarioId ? (
                   <small>
-                    Canonical session required for synchronized reveal.
+                    A server-backed interview link is required for synchronized
+                    reveal.
                   </small>
                 ) : null}
               </div>
@@ -949,12 +1736,12 @@ export function LabPage() {
           </section>
           <footer>
             {scenario.mode === "interview" && role !== "interviewer" ? (
-              <span>Candidate contract · authoring locked</span>
+              <span>Candidate view · scenario editing unavailable</span>
             ) : (
               <Link
                 to={scenario.mode === "interview" ? "/interview" : "/custom"}
               >
-                <ArrowSquareOut size={14} /> Edit scenario dossier
+                <ArrowSquareOut size={14} /> Edit scenario
               </Link>
             )}
           </footer>
@@ -966,29 +1753,81 @@ export function LabPage() {
         >
           <header className="canvas-command-strip">
             <div>
-              <span className="panel-index">02 / LIVE TOPOLOGY</span>
-              <strong>{architecture.name}</strong>
+              <span className="panel-index">02 / SYSTEM TOPOLOGY</span>
+              <input
+                className="canvas-name"
+                aria-label="Architecture name"
+                value={architectureNameDraft}
+                maxLength={120}
+                disabled={workspaceMode !== "build"}
+                onChange={(event) =>
+                  setArchitectureNameDraft(event.target.value)
+                }
+                onBlur={() => {
+                  const name = architectureNameDraft.trim();
+                  if (name && name !== architecture.name)
+                    setArchitecture({ ...architecture, name });
+                  else setArchitectureNameDraft(architecture.name);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    setArchitectureNameDraft(architecture.name);
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
             </div>
+            {workspaceMode === "build" ? (
+              <div className="canvas-tools" aria-label="Topology editing tools">
+                <button
+                  type="button"
+                  onClick={autoLayout}
+                  disabled={!architecture.nodes.length}
+                >
+                  <TreeStructure size={14} /> Layout
+                </button>
+                <button
+                  type="button"
+                  onClick={duplicateSelection}
+                  disabled={!selectedNodeId && selectedNodeIds.length === 0}
+                >
+                  <CopySimple size={14} /> Duplicate
+                </button>
+                <button
+                  type="button"
+                  onClick={clearArchitecture}
+                  disabled={!architecture.nodes.length}
+                  title="Start a blank architecture. Undo remains available in Compare."
+                >
+                  <Trash size={14} /> Blank
+                </button>
+              </div>
+            ) : null}
             <div className="canvas-signal">
               <Pulse size={15} weight="bold" />
               <span>
                 {workspaceMode === "build"
-                  ? "Topology editable"
-                  : "Signal path active"}
+                  ? "Editing topology"
+                  : frame
+                    ? "Viewing modeled results"
+                    : runState === "running"
+                      ? "Waiting for first modeled frame"
+                      : "No modeled result yet"}
               </span>
             </div>
             <dl>
               <div>
                 <dt>RPS</dt>
-                <dd>{Math.round(frame?.rps ?? 0).toLocaleString()}</dd>
+                <dd>{frame ? Math.round(frame.rps).toLocaleString() : "—"}</dd>
               </div>
               <div>
                 <dt>p95</dt>
-                <dd>{Math.round(frame?.p95LatencyMs ?? 0)} ms</dd>
+                <dd>{frame ? `${Math.round(frame.p95LatencyMs)} ms` : "—"}</dd>
               </div>
               <div>
                 <dt>Availability</dt>
-                <dd>{(frame?.availability ?? 100).toFixed(3)}%</dd>
+                <dd>{frame ? `${frame.availability.toFixed(3)}%` : "—"}</dd>
               </div>
             </dl>
           </header>
@@ -997,42 +1836,251 @@ export function LabPage() {
             edges={flowEdges}
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onNodeClick={(_, node) => {
-              setSelectedEdgeId(null);
-              selectNode(node.id);
+            onNodeDragStop={commitArchitectureTransient}
+            onSelectionDragStop={commitArchitectureTransient}
+            onNodeClick={(event) => {
+              if (tracePlaybackSelection) return;
+              if (!event.shiftKey) setSelectedEdgeId(null);
             }}
-            onEdgeClick={(_, edge) => {
+            onEdgeClick={(event, edge) => {
+              if (tracePlaybackSelection) return;
+              if (event.shiftKey) return;
               selectNode(null);
+              setSelectedNodeIds([]);
               setSelectedEdgeId(edge.id);
             }}
             onPaneClick={() => {
+              if (tracePlaybackSelection) return;
               selectNode(null);
+              setSelectedNodeIds([]);
               setSelectedEdgeId(null);
             }}
+            onDelete={({ nodes, edges }) =>
+              removeElements(
+                nodes.map((node) => node.id),
+                edges.map((edge) => edge.id),
+              )
+            }
             nodesDraggable={workspaceMode === "build"}
             nodesConnectable={workspaceMode === "build"}
+            elementsSelectable={!tracePlaybackSelection}
+            deleteKeyCode={
+              workspaceMode === "build" ? ["Backspace", "Delete"] : null
+            }
+            multiSelectionKeyCode="Shift"
             fitView
-            fitViewOptions={{ padding: 0.08, maxZoom: 1.15 }}
-            minZoom={0.55}
+            fitViewOptions={{
+              padding: compactViewport ? 0.04 : 0.08,
+              maxZoom: compactViewport ? 0.85 : 1.15,
+            }}
+            minZoom={compactViewport ? 0.25 : 0.55}
             maxZoom={1.8}
             snapToGrid
             snapGrid={[12, 12]}
             proOptions={{ hideAttribution: false }}
           >
+            <ViewportPortal>
+              {placementGroups.map((group) => (
+                <div
+                  aria-hidden="true"
+                  className={`placement-group placement-group--${group.scope} ${
+                    activePlacementGroupIds.has(group.id)
+                      ? "placement-group--active"
+                      : ""
+                  }`}
+                  key={group.id}
+                  style={{
+                    left: group.bounds.x,
+                    top: group.bounds.y,
+                    width: group.bounds.width,
+                    height: group.bounds.height,
+                  }}
+                >
+                  <span>
+                    {group.scope === "region" ? "Region" : "Failure domain"}
+                    {" · "}
+                    {group.label}
+                  </span>
+                </div>
+              ))}
+            </ViewportPortal>
             <Controls showInteractive={false} />
           </ReactFlow>
+          <details className="architecture-outline">
+            <summary>
+              Architecture outline ·{" "}
+              {graphIssues.length
+                ? `${graphErrorCount} errors, ${graphIssues.length - graphErrorCount} warnings`
+                : "graph ready"}
+            </summary>
+            <div>
+              <section className="architecture-lint" aria-label="Graph lint">
+                <header>
+                  <strong>Graph lint</strong>
+                  <span>
+                    {graphIssues.length
+                      ? `${graphIssues.length} issues`
+                      : "No issues"}
+                  </span>
+                </header>
+                {graphIssues.length ? (
+                  <ul>
+                    {graphIssues.slice(0, 8).map((issue) => {
+                      const nodeTarget = architecture.nodes.some(
+                        (node) => node.id === issue.entityId,
+                      );
+                      const edgeTarget = architecture.edges.some(
+                        (edge) => edge.id === issue.entityId,
+                      );
+                      const content = (
+                        <>
+                          <span>{issue.severity}</span>
+                          <strong>{issue.title}</strong>
+                          <small>{issue.detail}</small>
+                        </>
+                      );
+                      return (
+                        <li
+                          className={`architecture-lint__${issue.severity}`}
+                          key={issue.id}
+                        >
+                          {nodeTarget || edgeTarget ? (
+                            <button
+                              className="architecture-lint__item"
+                              type="button"
+                              onClick={() => {
+                                if (nodeTarget && issue.entityId) {
+                                  setSelectedEdgeId(null);
+                                  setSelectedNodeIds([issue.entityId]);
+                                  selectNode(issue.entityId);
+                                } else if (edgeTarget && issue.entityId) {
+                                  setSelectedNodeIds([]);
+                                  selectNode(null);
+                                  setSelectedEdgeId(issue.entityId);
+                                }
+                              }}
+                            >
+                              {content}
+                            </button>
+                          ) : (
+                            <div className="architecture-lint__item">
+                              {content}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p>
+                    Entry paths, link shares, and incident scopes are valid.
+                  </p>
+                )}
+              </section>
+              {placementGroups.length ? (
+                <section
+                  className="architecture-placement-outline"
+                  aria-label="Architecture placement groups"
+                >
+                  {(["region", "failure-domain"] as const).map((scope) => {
+                    const groups = placementGroups.filter(
+                      (group) => group.scope === scope,
+                    );
+                    if (!groups.length) return null;
+                    return (
+                      <div key={scope}>
+                        <strong>
+                          {scope === "region" ? "Regions" : "Failure domains"}
+                        </strong>
+                        {groups.map((group) => (
+                          <section
+                            className={
+                              activePlacementGroupIds.has(group.id)
+                                ? "architecture-placement-outline__active"
+                                : undefined
+                            }
+                            key={group.id}
+                          >
+                            <header>
+                              <span>{group.label}</span>
+                              <small>
+                                {group.nodeIds.length} component
+                                {group.nodeIds.length === 1 ? "" : "s"}
+                                {activePlacementGroupIds.has(group.id)
+                                  ? " · incident active"
+                                  : ""}
+                              </small>
+                            </header>
+                            <ul>
+                              {group.nodeIds.map((nodeId) => {
+                                const node = architecture.nodes.find(
+                                  (candidate) => candidate.id === nodeId,
+                                );
+                                if (!node) return null;
+                                return (
+                                  <li key={node.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedEdgeId(null);
+                                        setSelectedNodeIds([node.id]);
+                                        selectNode(node.id);
+                                      }}
+                                    >
+                                      <span>{node.kind}</span>
+                                      {node.name}
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </section>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </section>
+              ) : null}
+              <strong>All components · {architecture.nodes.length}</strong>
+              {architecture.nodes.length ? (
+                <ul>
+                  {architecture.nodes.map((node) => (
+                    <li key={node.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEdgeId(null);
+                          setSelectedNodeIds([node.id]);
+                          selectNode(node.id);
+                        }}
+                      >
+                        <span>{node.kind}</span>
+                        {node.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No components yet. Add one from the component rail.</p>
+              )}
+            </div>
+          </details>
         </section>
 
         <InspectorPanel
           node={selectedNode}
           edge={selectedEdge}
+          edgeMetrics={
+            selectedEdge ? (frame?.edgeMetrics[selectedEdge.id] ?? null) : null
+          }
           metrics={
             selectedNode ? (frame?.nodeMetrics[selectedNode.id] ?? null) : null
           }
           metricHistory={
             selectedNode
-              ? (result?.frames ?? [])
+              ? displayFrames
                   .map(
                     (historyFrame) => historyFrame.nodeMetrics[selectedNode.id],
                   )
@@ -1048,12 +2096,18 @@ export function LabPage() {
         />
         <TelemetryPanel
           result={result}
+          liveFrames={localRunFrames}
+          liveEvents={localRunEvents}
+          running={localSessionActive}
+          progress={localRunSession?.progress ?? 0}
           scenario={scenario}
           nodes={architecture.nodes}
+          edges={architecture.edges}
           selectedEventId={selectedEventId}
           currentSecond={cursorSecond}
           onSelectEvent={handleSelectEvent}
           onSeek={setCursorSecond}
+          onTracePlaybackChange={setTracePlaybackSelection}
         />
       </main>
     </div>

@@ -151,19 +151,28 @@ export function shareScenario(
 export function fetchSharedScenario(
   id: string,
   hostToken?: string,
+  signal?: AbortSignal,
 ): Promise<SharedScenario> {
   return request<SharedScenario>(
     `/api/scenarios/${encodeURIComponent(id)}`,
-    hostToken
-      ? { headers: { "x-systemforge-host-token": hostToken } }
+    hostToken || signal
+      ? {
+          ...(hostToken
+            ? { headers: { authorization: `Bearer ${hostToken}` } }
+            : {}),
+          ...(signal ? { signal } : {}),
+        }
       : undefined,
   );
 }
 
-export function recordSharedScenarioRun(id: string): Promise<SharedScenario> {
+export function recordSharedScenarioRun(
+  id: string,
+  runId: string,
+): Promise<SharedScenario> {
   return request<SharedScenario>(
     `/api/scenarios/${encodeURIComponent(id)}/runs`,
-    { method: "POST", body: "{}" },
+    { method: "POST", body: JSON.stringify({ runId }) },
   );
 }
 
@@ -171,13 +180,15 @@ export function setSharedScenarioReveal(
   id: string,
   hostToken: string,
   revealed: boolean,
+  signal?: AbortSignal,
 ): Promise<SharedScenario> {
   return request<SharedScenario>(
     `/api/scenarios/${encodeURIComponent(id)}/reveal`,
     {
       method: "PATCH",
-      headers: { "x-systemforge-host-token": hostToken },
+      headers: { authorization: `Bearer ${hostToken}` },
       body: JSON.stringify({ revealed }),
+      ...(signal ? { signal } : {}),
     },
   );
 }
@@ -186,15 +197,17 @@ export function updateInterviewCollaboration(
   id: string,
   patch: InterviewCollaborationPatch,
   hostToken?: string,
+  signal?: AbortSignal,
 ): Promise<SharedScenario> {
   return request<SharedScenario>(
     `/api/scenarios/${encodeURIComponent(id)}/collaboration`,
     {
       method: "PATCH",
       ...(hostToken
-        ? { headers: { "x-systemforge-host-token": hostToken } }
+        ? { headers: { authorization: `Bearer ${hostToken}` } }
         : {}),
       body: JSON.stringify(patch),
+      ...(signal ? { signal } : {}),
     },
   );
 }

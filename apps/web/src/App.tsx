@@ -1,6 +1,12 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
+import {
+  NotFoundPage,
+  RouteErrorBoundary,
+  RouteLoadingState,
+} from "./components/RouteStatePage";
 import { LandingPage } from "./pages/LandingPage";
+import { RouteMetadata } from "./components/RouteMetadata";
 
 const LabPage = lazy(() =>
   import("./pages/LabPage").then((module) => ({ default: module.LabPage })),
@@ -15,26 +21,33 @@ const SharedScenarioPage = lazy(() =>
     default: module.SharedScenarioPage,
   })),
 );
+const ReplayPage = lazy(() =>
+  import("./pages/ReplayPage").then((module) => ({
+    default: module.ReplayPage,
+  })),
+);
 
 export function App() {
   return (
-    <Suspense
-      fallback={<main className="route-loader">Preparing workspace…</main>}
-    >
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/lab" element={<LabPage />} />
-        <Route
-          path="/custom"
-          element={<ScenarioDesignerPage mode="custom" />}
-        />
-        <Route
-          path="/interview"
-          element={<ScenarioDesignerPage mode="interview" />}
-        />
-        <Route path="/scenario/:id" element={<SharedScenarioPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
+    <RouteErrorBoundary>
+      <Suspense fallback={<RouteLoadingState />}>
+        <RouteMetadata />
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/lab" element={<LabPage />} />
+          <Route
+            path="/custom"
+            element={<ScenarioDesignerPage key="custom" mode="custom" />}
+          />
+          <Route
+            path="/interview"
+            element={<ScenarioDesignerPage key="interview" mode="interview" />}
+          />
+          <Route path="/scenario/:id" element={<SharedScenarioPage />} />
+          <Route path="/replay" element={<ReplayPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }

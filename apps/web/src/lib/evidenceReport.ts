@@ -5,6 +5,7 @@ import {
   type SimulationResult,
 } from "@systemforge/contracts";
 import type { SolveArchitectureResult } from "@systemforge/sim-core";
+import type { CompletedRunArtifact } from "./completedRun";
 
 interface EvidenceReportInput {
   scenario: Scenario;
@@ -54,7 +55,7 @@ export function buildEvidenceReport(input: EvidenceReportInput): string {
     reportVersion: 1,
     generatedAt: new Date().toISOString(),
     privacyScope: input.role,
-    modeledEvidence: true,
+    modeledOutput: true,
     scenario,
     architecture: structuredClone(input.architecture),
     result,
@@ -84,11 +85,11 @@ export function buildEvidenceReport(input: EvidenceReportInput): string {
   if (input.format === "json") return JSON.stringify(report, null, 2);
 
   const lines = [
-    "# SystemForge evidence report",
+    "# SystemForge run report",
     "",
     `Generated: ${report.generatedAt}`,
     `Privacy scope: ${report.privacyScope}`,
-    "Evidence boundary: deterministic modeled evidence, not production telemetry.",
+    "Output boundary: deterministic model output, not production telemetry.",
     "",
     `## ${scenario.title}`,
     "",
@@ -144,7 +145,47 @@ export function downloadEvidenceReport(input: EvidenceReportInput): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `systemforge-${input.scenario.id}-evidence.${extension}`;
+  anchor.download = `systemforge-${input.scenario.id}-run-report.${extension}`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export interface CompletedRunManifestExport {
+  manifestExportVersion: 1;
+  privacyScope: "completed-run-manifest-only";
+  sourceRetention: "browser-session";
+  replayable: false;
+  replayBoundary: "evidence-only-no-deterministic-inputs";
+  manifest: CompletedRunArtifact["manifest"];
+}
+
+export function buildCompletedRunManifestExport(
+  artifact: CompletedRunArtifact,
+): string {
+  const exported: CompletedRunManifestExport = {
+    manifestExportVersion: 1,
+    privacyScope: "completed-run-manifest-only",
+    sourceRetention: "browser-session",
+    replayable: false,
+    replayBoundary: "evidence-only-no-deterministic-inputs",
+    manifest: structuredClone(artifact.manifest),
+  };
+  return JSON.stringify(exported, null, 2);
+}
+
+export function downloadCompletedRunManifest(
+  artifact: CompletedRunArtifact,
+): void {
+  const blob = new Blob([buildCompletedRunManifestExport(artifact)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeRunId =
+    artifact.manifest.runId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) ||
+    "completed-run";
+  anchor.href = url;
+  anchor.download = `systemforge-${safeRunId}-manifest.json`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

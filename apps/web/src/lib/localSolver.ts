@@ -1,4 +1,11 @@
-import type { Architecture, Scenario } from "@systemforge/contracts";
+import {
+  estimateSimulationOutputMetricCells,
+  estimateSimulationResultBytes,
+  MAX_SIMULATION_ESTIMATED_RESULT_BYTES,
+  MAX_SIMULATION_OUTPUT_METRIC_CELLS,
+  type Architecture,
+  type Scenario,
+} from "@systemforge/contracts";
 import {
   estimateSolverWorkUnits,
   type SolveArchitectureOptions,
@@ -17,15 +24,31 @@ export function runLocalArchitectureSolver(
 ): Promise<SolveArchitectureResult> {
   const requestedCandidates =
     options.maxCandidates ?? DEFAULT_LOCAL_SOLVER_CANDIDATES;
-  const workUnits = estimateSolverWorkUnits(
-    scenario,
-    architecture,
-    requestedCandidates,
-  );
-  if (workUnits > LOCAL_SOLVER_WORK_UNIT_LIMIT)
+  const baselineWorkUnits = estimateSolverWorkUnits(scenario, architecture, 0);
+  if (baselineWorkUnits > LOCAL_SOLVER_WORK_UNIT_LIMIT)
     return Promise.reject(
       new Error(
-        `This model exceeds the browser-local solver safety budget of ${LOCAL_SOLVER_WORK_UNIT_LIMIT.toLocaleString("en-US")} work units. Reduce the duration, topology size, or candidate count before solving it.`,
+        `The baseline alone exceeds the browser-local solver safety budget of ${LOCAL_SOLVER_WORK_UNIT_LIMIT.toLocaleString("en-US")} work units. Reduce the duration or topology size before solving it.`,
+      ),
+    );
+  const outputMetricCells = estimateSimulationOutputMetricCells(
+    scenario,
+    architecture,
+  );
+  if (outputMetricCells > MAX_SIMULATION_OUTPUT_METRIC_CELLS)
+    return Promise.reject(
+      new Error(
+        `Each candidate would emit ${outputMetricCells.toLocaleString("en-US")} frame-metric cells, above the ${MAX_SIMULATION_OUTPUT_METRIC_CELLS.toLocaleString("en-US")} solver result-size limit. Reduce the duration or topology size before solving it.`,
+      ),
+    );
+  const estimatedResultBytes = estimateSimulationResultBytes(
+    scenario,
+    architecture,
+  );
+  if (estimatedResultBytes > MAX_SIMULATION_ESTIMATED_RESULT_BYTES)
+    return Promise.reject(
+      new Error(
+        `Each candidate's estimated ${estimatedResultBytes.toLocaleString("en-US")}-byte result exceeds the ${MAX_SIMULATION_ESTIMATED_RESULT_BYTES.toLocaleString("en-US")}-byte solver retention limit. Reduce the duration or topology size before solving it.`,
       ),
     );
 

@@ -1,0 +1,962 @@
+{
+  "schemaVersion": 1,
+  "target": "production-ready",
+  "dispositionDefinitions": {
+    "implemented_pending_integrated_verification": "The scoped implementation and focused evidence exist in the working tree, but the final integrated gate is not recorded.",
+    "partial_pending_integrated_verification": "A bounded, truthfully labeled implementation exists, but part of the intended product capability or its required environment proof is still missing.",
+    "verified_local_worktree": "The remediation passed focused, integrated and applicable browser or contract verification in the current uncommitted working tree.",
+    "verified_local_pending_external_gate": "The repository remediation passed local verification, while a live provider, crawler, proxy, database, container or assistive-technology gate remains external to this checkout.",
+    "open": "No complete remediation is present in the current working tree.",
+    "external_configuration_blocker": "The remediation is outside this repository and requires a live external configuration change plus re-verification."
+  },
+  "currentSnapshot": {
+    "recordedAt": "2026-08-09",
+    "checkoutState": "uncommitted working tree",
+    "localCandidate": {
+      "status": "verified_pending_immutable_release_gates",
+      "engineVersion": "0.7.0",
+      "qualityGate": "a fresh complete isolated run passed after the bounded Cloudflare provider and edge-header changes",
+      "functionalTests": "52 files and 412 tests passed",
+      "coverage": "412 tests passed with 92.72% statements, 84.54% branches, 93.54% functions, and 93.73% lines across the configured critical-file denominator; thresholds remain 92%, 84%, 93%, and 93%",
+      "performanceTests": "2 passed; 250 representative simulations and five bounded solves remained within separate two-second measured budgets",
+      "build": "passed; 4,886 web modules transformed and 25 offline assets prepared",
+      "sitesDelivery": "7 tests passed",
+      "browserEvidence": "Edge 151 passed 17 desktop, mobile, completed and warmed-offline route audits at 1440x900 and 390x844; authoring, privacy, run controls, intervention, fork, completion, trace playback, candidate-safe Run library persistence and portable replay passed with zero unexpected console/network errors, acceptance defects or document overflow",
+      "hardeningEvidence": "All four targeted mutants were killed; serial and parallel fixed-seed 52-file, 412-test stability passes completed without retry",
+      "dependencyAudit": "pnpm production audit reported no known vulnerabilities",
+      "independentAcceptance": "no surviving source-confirmed or browser-confirmed P0-P2 finding"
+    },
+    "hostedProduction": {
+      "status": "no_go_stale_deployment",
+      "evidence": "The live hostname serves an older engine 0.3.0 build with stale routing, SPA HTML at crawl and asset-manifest URLs, a stale web manifest with the wrong MIME type, service-worker v3 and the old blueprint PNG; a Cloudflare challenge-platform loader conflicts with the strict application CSP.",
+      "requiredBeforeGo": [
+        "commit and run protected CI and immutable-image gates for the exact reviewed revision",
+        "obtain explicit owner authorization before deployment",
+        "disable or nonce-integrate Cloudflare script injection without weakening CSP",
+        "deploy the exact tested revision and purge affected special URL caches",
+        "publish revision evidence and repeat the live route, header, mobile, offline and canonical-run audit"
+      ]
+    },
+    "currentMitigations": [
+      "Shared-scenario creation defaults to 10 per IP per day, new records expire after 30 days, and expired rows are removed before capacity accounting.",
+      "Canonical polling is revision-bound and cannot attach an old run status or digest after scenario or architecture edits.",
+      "Replay hashes are described as internal consistency checks and not author authentication.",
+      "Known and unknown routes, shared-link noindex, crawl assets, manifest MIME, service-worker API bypass, and immutable 404 cache behavior have repository contracts.",
+      "The local UI covers every main route and has evidence-linked sampled-trace path playback tied to real modeled spans.",
+      "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI gpt-oss-20b behind 10 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit, but no real provider transaction or retention configuration was exercised.",
+      "HTML responses emit Cache-Control no-transform so Cloudflare cannot inject scripts into the strict self-only CSP document; the live hostname still requires verification after promotion."
+    ],
+    "knownLocalLimitations": [
+      "The manifest has no safe-zone-tested maskable application icon.",
+      "The Edge offline gate used a warmed service worker; a first-install cold PWA and every lazy worker on a physical device were not exercised.",
+      "No target-device Core Web Vitals profile or complete screen-reader certification was run.",
+      "Docker-backed Compose, Caddy-container, PostgreSQL, image-scan and full integration gates await protected CI because the local Docker daemon was unavailable.",
+      "The optional AI boundary was tested with fake providers only and no real provider retention or billing path was exercised."
+    ]
+  },
+  "baseline": {
+    "status": "historical",
+    "branch": "main",
+    "commit": "b180d19",
+    "recordedAt": "2026-08-09",
+    "command": "pnpm quality",
+    "environment": "Windows Node runtime invoked from WSL through cmd.exe",
+    "result": "passed",
+    "evidence": {
+      "format": "passed",
+      "lint": "passed",
+      "typecheck": "passed",
+      "tests": "105 main tests, 2 performance tests, and 4 Sites tests passed",
+      "build": "passed; Lab chunk 417.19 kB (118.12 kB gzip), CSS 127.50 kB"
+    },
+    "limitations": [
+      "This is the pre-change baseline, not an integrated release result.",
+      "Chrome Core Web Vitals tooling was not available for the baseline audit."
+    ]
+  },
+  "historicalFindings": [
+    {
+      "id": "SF-001",
+      "title": "Topology wiring did not materially execute request paths",
+      "severity": "critical",
+      "affectedUsersOrWorkflows": "Every architecture run, comparison, request-class route, cache path, and asynchronous dependency lane",
+      "evidence": [
+        "The gap audit produced byte-identical output after materially redirecting asynchronous traffic and swapping cache/database order.",
+        "The current worktree adds directed demand propagation and route validation in packages/sim-core/src/simulate.ts.",
+        "Focused regressions are defined in packages/sim-core/tests/topology-execution.test.ts and packages/sim-core/tests/request-class-execution.test.ts."
+      ],
+      "rootCause": "The previous engine allocated demand mainly by component kind and used edges as coarse reachability metadata instead of an executable source-to-target graph.",
+      "proposedChange": "Execute workload demand through directed edges with deterministic traffic shares, explicit request-class routes, synchronous and asynchronous boundaries, cache effects, retries, transport loss, latency, and route validation.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "redirecting an asynchronous source changes downstream demand",
+        "cache-before-database differs from database-before-cache",
+        "serial and parallel paths differ",
+        "disconnected components receive no executed demand",
+        "traffic shares change downstream demand",
+        "invalid request-class routes fail closed",
+        "retry work remains on the failed dependency path"
+      ],
+      "measurements": {
+        "before": "Materially different graphs produced byte-identical SimulationResult output.",
+        "after": "Engine 0.7.0 executes directed, class-aware topology demand and passed the adversarial topology matrix plus the integrated 398-test gate."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Independent engine review reran the adversarial route, fan-out, cache, regional, failure and durability cases; the focused and integrated gates passed."
+      },
+      "changeIdentifier": "uncommitted-working-tree:engine-0.7.0-topology-execution",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-002",
+      "title": "Obsolete local workers could publish stale telemetry",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Users who edit, reset, switch scenarios, or start another run while local simulation is active",
+      "evidence": [
+        "The previous local worker returned one unversioned terminal result that the store accepted unconditionally.",
+        "apps/web/src/lib/localSimulation.ts and apps/web/src/workers/simulation.worker.ts now attach run, scenario revision, architecture revision, and input IDs to every command and response.",
+        "apps/web/tests/local-simulation.test.ts and apps/web/tests/local-run-store.test.ts cover cancellation, supersession, stale response rejection, streaming equivalence, and reveal isolation."
+      ],
+      "rootCause": "The worker protocol had no run identity, revision guard, cancellation lifecycle, or identified streaming batches.",
+      "proposedChange": "Use revision-bound run identities on every message; terminate or ignore superseded runs; stream deterministic frame/event batches; and reveal interview criteria only for the still-current completed server run.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "stale result and batch rejection",
+        "explicit cancellation terminates the worker",
+        "a new run supersedes the old run",
+        "architecture and scenario edits invalidate an active run",
+        "streamed batches equal the final simulation result",
+        "interview reveal cannot follow an obsolete run"
+      ],
+      "measurements": {
+        "before": "No local run identity or revision guard existed and no frames were delivered before completion.",
+        "after": "The protocol exposes identified batches and session states with store-side current-run guards; stale, cancel, fork and replay paths passed the integrated gate and browser workflow."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Identity, cancellation, stale-result and replay lifecycle paths passed focused, integrated and browser verification."
+      },
+      "changeIdentifier": "uncommitted-working-tree:local-simulation-session-protocol",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-003",
+      "title": "Pre-run and absent evidence states were presented as healthy measurements",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "All users before their first run, after an edit, or when a result omits optional evidence",
+      "evidence": [
+        "Nodes without metrics previously defaulted to healthy, zero latency/RPS, and 100 percent availability.",
+        "apps/web/src/components/ComponentNode.tsx, InspectorPanel.tsx, TelemetryPanel.tsx, and apps/web/src/pages/LabPage.tsx now render explicit not-run, pending, unavailable, and empty states.",
+        "apps/web/tests/inspector.test.tsx and apps/web/tests/telemetry.test.tsx distinguish not-run, streaming, omitted traces, explicit empty traces, and zero-span samples."
+      ],
+      "rootCause": "Missing results and optional evidence were collapsed into numeric and health defaults.",
+      "proposedChange": "Represent not-run, loading, unsupported evidence, confirmed empty evidence, and completed results as distinct states; use em dashes instead of invented metrics.",
+      "regressionRisk": "low",
+      "requiredTests": [
+        "component and inspector not-run rendering",
+        "no pre-run health score or availability",
+        "streaming state does not imply final scoring",
+        "optional evidence omitted differs from an explicit empty collection"
+      ],
+      "measurements": {
+        "before": "Healthy, 100 percent, and zero-value outputs appeared without a run.",
+        "after": "The worktree uses not-run labels and em dashes, preserves omitted-versus-empty trace evidence, and passed route, component, Inspector and Telemetry acceptance."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "A trace-specific review corrected the omitted-versus-empty ambiguity; focused, integrated and real-browser evidence states passed."
+      },
+      "changeIdentifier": "uncommitted-working-tree:not-run-and-empty-evidence-states",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-004",
+      "title": "Operational evidence and controls were not reliably usable at supported viewports or by keyboard",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Laptop, mobile, keyboard-only, reduced-motion, and screen-reader Lab users",
+      "evidence": [
+        "The audit found hidden clock, seed, run state, global health, and linked-event evidence at desktop breakpoints, plus unreadably shrunken mobile topology text.",
+        "The worktree adds a persistent mobile state strip, compact topology viewport behavior, non-inert graph-lint rows, controlled multi-selection, command-palette keyboard behavior, trace roving selection, focus treatment, and reduced-motion rules.",
+        "Focused behavior tests exist in apps/web/tests/command-palette.test.tsx, lab-selection.test.ts, telemetry.test.tsx, and architecture-lint.test.ts."
+      ],
+      "rootCause": "Responsive rules removed essential state and scaled the desktop graph down; several custom controls lacked complete keyboard and semantic behavior.",
+      "proposedChange": "Keep critical state visible, use a readable typography floor and focused mobile viewport, preserve linked evidence, and provide complete keyboard, focus, live-region, and reduced-motion behavior.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "1440 by 900 operational-state and linked-event browser capture",
+        "390 by 844 readable topology and no document overflow",
+        "keyboard-only build, run, trace, lint, and palette workflows",
+        "screen-reader semantics and reduced-motion behavior"
+      ],
+      "measurements": {
+        "before": "Essential state was hidden at two desktop breakpoints and mobile fit reduced node text to only a few rendered pixels.",
+        "after": "Edge passed desktop and 390x844 layout, 12 px operational text, 40 px primary touch targets, keyboard, focus and reduced-motion checks; screen-reader certification remains unexecuted."
+      },
+      "independentReview": {
+        "status": "verified_local_pending_assistive_technology_gate",
+        "summary": "Focused accessibility regressions and the tracked Edge desktop/mobile gate passed; a complete screen-reader or physical-device certification is not claimed."
+      },
+      "changeIdentifier": "uncommitted-working-tree:responsive-accessibility-hardening",
+      "disposition": "verified_local_pending_external_gate"
+    },
+    {
+      "id": "SF-005",
+      "title": "User-facing copy overstated live, measured, verified, trace, and causal evidence",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "Visitors, candidates, interviewers, and anyone interpreting a local or server result",
+      "evidence": [
+        "The copy audit found live language for deterministic playback, verified language for server recomputation, trace language for aggregate histories, and causal language stronger than the event evidence.",
+        "Primary routes and workbench surfaces now use modeled run, sampled request trace, linked event, server run, server-backed session, and scheduled incident terminology.",
+        "apps/web/src/lib/evidenceReport.ts now marks unmet pre-run objectives as NOT RUN rather than failed evidence."
+      ],
+      "rootCause": "Mission-control wording drifted beyond the simulator's actual evidence and trust boundaries.",
+      "proposedChange": "Keep modeled versus observed, local versus server-backed, aggregate versus sampled, and linked versus proven-causal terminology consistent across routes, reports, loading, error, and offline states.",
+      "regressionRisk": "low",
+      "requiredTests": [
+        "route and overlay copy smoke",
+        "local versus server-backed terminology review",
+        "generated report wording review",
+        "loading, error, empty, offline, and replay-boundary copy review"
+      ],
+      "measurements": {
+        "before": "Overstated terms appeared across home, Lab, studios, overlays, reports, and offline states.",
+        "after": "Primary and generated copy uses explicit local, server-backed, sampled, modeled and internal-consistency boundaries; route and browser review passed."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "The route/copy matrix, trace truthfulness review, replay authenticity wording and final browser route audit passed."
+      },
+      "changeIdentifier": "uncommitted-working-tree:truthful-product-copy",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-006",
+      "title": "Search metadata, crawl surfaces, route status, and static delivery were incomplete",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "Search crawlers, shared-link recipients, installable-app users, and first-load visitors",
+      "evidence": [
+        "The baseline lacked robots.txt and sitemap.xml, used static page metadata, treated unknown Sites paths as successful app-shell responses, and shipped a 1.21 MB blueprint PNG.",
+        "The worktree adds apps/web/src/components/RouteMetadata.tsx, robots.txt, sitemap.xml, known-route versus real-404 handling in the Sites worker and nginx, explicit manifest and JSON MIME rules, and a 14,640-byte WebP blueprint.",
+        "Sites returns the branded application shell with HTTP 404 for unknown HTML routes; nginx returns a genuine generic 404 for unknown paths rather than a soft 404.",
+        "Focused coverage is defined in apps/web/tests/route-metadata.test.tsx and apps/web/tests/sites-worker.test.mjs."
+      ],
+      "rootCause": "The SPA shell had no route-aware metadata or crawl assets and its fallback rules did not distinguish real client routes from unknown paths.",
+      "proposedChange": "Publish crawl files, set route-aware metadata and noindex rules, return a real 404 for unknown paths, preserve 200 app-shell fallback only for known routes, and optimize large static assets.",
+      "regressionRisk": "low",
+      "requiredTests": [
+        "known route returns the app shell with status 200",
+        "unknown Sites route returns the branded shell with status 404 and unknown nginx route returns a genuine 404",
+        "shared routes are noindex",
+        "robots, sitemap, manifest, and optimized background fetch with correct MIME types",
+        "production crawler check with and without JavaScript"
+      ],
+      "measurements": {
+        "before": "Blueprint PNG was 1.21 MB; crawl files were absent; unknown Sites routes became soft 404s.",
+        "after": "Blueprint WebP is 14,640 bytes; repository route, crawl, MIME, noindex and Sites tests passed; deployed crawler and proxy responses remain a production gate."
+      },
+      "independentReview": {
+        "status": "verified_local_pending_production_gate",
+        "summary": "Route metadata, seven Sites delivery tests and generated offline assets passed; deployed response and crawler behavior are not recorded for this working tree."
+      },
+      "changeIdentifier": "uncommitted-working-tree:seo-soft-404-static-delivery",
+      "disposition": "verified_local_pending_external_gate"
+    },
+    {
+      "id": "SF-007",
+      "title": "Cloudflare-injected analytics conflicts with the production CSP",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "Public visitors and operators relying on a clean production security console",
+      "evidence": [
+        "The live audit reproduced CSP errors for a Cloudflare-injected script that is not present in this repository.",
+        "The repository CSP intentionally keeps script-src restricted to self and does not add unsafe-inline."
+      ],
+      "rootCause": "An external Cloudflare feature injects a script that is not authorized by the origin's strict CSP.",
+      "proposedChange": "Disable the Cloudflare injection or authorize only the exact script through a supported nonce or hash without weakening the general script policy.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "production browser console has no CSP violations",
+        "script-src remains free of unsafe-inline and broad third-party origins"
+      ],
+      "measurements": {
+        "before": "CSP violations were reproduced on the live deployment.",
+        "after": "No repository change can resolve the injected script; a Cloudflare change and live retest remain required."
+      },
+      "independentReview": {
+        "status": "historically_reproduced_external_blocker",
+        "summary": "The failure was observed live and traced outside the repository."
+      },
+      "changeIdentifier": null,
+      "disposition": "external_configuration_blocker"
+    },
+    {
+      "id": "SF-008",
+      "title": "Live interventions, replay, snapshot, and fork semantics needed an honest execution boundary",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Users pausing a local run, scheduling an outage or policy change, replaying evidence, or branching a completed run",
+      "evidence": [
+        "The previous worker exposed only a final immutable result and could not accept run controls or intervention commands.",
+        "The current protocol supports pause, resume, step, speed, finish, bounded future interventions, deterministic snapshots, replay, and fork fingerprints in apps/web/src/workers/simulation.worker.ts and apps/web/src/lib/completedRun.ts.",
+        "The manifest records engine/input identity, revisions, seed, digest, action schedule, selected delivered frame, and the explicit no-opaque-state boundary; focused tests are in local-simulation.test.ts, completed-run.test.ts, local-run-store.test.ts, and packages/sim-core/tests/interventions.test.ts."
+      ],
+      "rootCause": "The simulator computed a whole result and had no session protocol, action schedule, resumable evidence artifact, or vocabulary separating replay from serialized runtime state.",
+      "proposedChange": "Allow only future actions while paused; recompute deterministically from second zero; reject any changed delivered prefix; bind replays to identical inputs, actions, and result digest; and label snapshots/forks as replay provenance rather than restored in-flight physics.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "future action preserves every delivered frame and event",
+        "past, invalid, stale, and over-capacity actions fail closed",
+        "pause, resume, step, speed, finish, and cancel preserve run identity",
+        "snapshot restoration replays from zero and matches fingerprints",
+        "completed replay verifies identical inputs, action schedule, and result digest",
+        "manifest export excludes private interview content"
+      ],
+      "measurements": {
+        "before": "No run controls, action schedule, manifest, replay proof, snapshot, or fork foundation existed.",
+        "after": "Bounded paused-run recomputation and deterministic replay/fork evidence are present; true serialized mid-run engine state and arbitrary live topology mutation remain absent."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Prefix preservation, action scheduling, snapshot/fork, portable replay, digest comparison and the no-opaque-state boundary passed focused, integrated and browser verification."
+      },
+      "changeIdentifier": "uncommitted-working-tree:session-actions-and-completed-run-manifest-v3",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-009",
+      "title": "Architecture editing lacked safe bulk operations, coherent history, and configuration preservation",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Users connecting, selecting, moving, duplicating, deleting, clearing, laying out, undoing, or restoring architectures",
+      "evidence": [
+        "The audit found destructive whole-edge rewrites, incomplete multi-selection behavior, no coherent undo/redo flow, and no recoverable blank draft.",
+        "apps/web/src/lib/architectureEditing.ts and useLabStore.ts now provide additive connection, mixed node/edge deletion, internal-link duplication, deterministic layout, blank drafts, bounded undo/redo, named snapshots, and coalesced transient drag commits.",
+        "Focused regressions exist in architecture-editing.test.ts, architecture-history.test.ts, lab-selection.test.ts, share.test.ts, inspector.test.tsx, and architecture-lint.test.ts."
+      ],
+      "rootCause": "Editor actions were implemented as unrelated component callbacks without shared immutable operations, controlled selection state, or a bounded history contract.",
+      "proposedChange": "Centralize immutable editing operations, preserve untouched edge/node configuration, track controlled node and edge selection, coalesce drag history, permit an empty persisted editor draft, and block runs with actionable graph lint.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "new links do not strip existing transport configuration",
+        "mixed selection deletion removes connected links exactly once",
+        "duplicate copies only internal links and all nested configuration",
+        "undo and redo round-trip one logical drag as one step",
+        "blank drafts hydrate and share without becoming runnable submissions",
+        "node, edge, and non-actionable lint items route correctly"
+      ],
+      "measurements": {
+        "before": "Editing could lose link configuration and offered no coherent multi-selection, history, or recoverable blank state.",
+        "after": "Editor operations, persistence, history, selection, lint routing and the browser authoring/share workflow passed."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Editor, history, selection, Inspector and graph-lint tests passed, and Edge completed local authoring, sharing and Lab interaction."
+      },
+      "changeIdentifier": "uncommitted-working-tree:architecture-editor-operations-history",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-010",
+      "title": "Aggregate charts did not expose bounded request-path observability",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Users investigating routing, retries, cache decisions, queue lineage, database waits, and modeled failures",
+      "evidence": [
+        "The product previously exposed aggregate frame histories but called some of that evidence traces.",
+        "Engine 0.7.0 emits optional deterministic SampledTrace and SampledSpan records capped at 16 traces and 64 spans per trace.",
+        "apps/web/src/components/TelemetryPanel.tsx exposes executed node/edge order, parent lineage, retry attempts, cache decisions, asynchronous message lineage, query class, inferred connection-pool wait, failure cause, and explicit sampled-not-exhaustive boundaries; telemetry.test.tsx covers selection and empty states."
+      ],
+      "rootCause": "The result contract had aggregate node/edge metrics only and the UI lacked a bounded request-class explanation surface.",
+      "proposedChange": "Emit deterministic representative request-class spans from executed paths and render an accessible selector and modeled span sequence without claiming captured production traces or chronology unsupported by timestamps.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "a real simulated request class yields spans from its executed edge order",
+        "retry, cache, async message, query, pool-wait, and failure fields render",
+        "trace and span caps are enforced deterministically",
+        "undefined traces differ from an explicit empty array",
+        "keyboard selection exposes visible inline detail",
+        "sampled and inferred limitations remain adjacent to the evidence"
+      ],
+      "measurements": {
+        "before": "Only aggregate histories were available and trace wording overstated their granularity.",
+        "after": "Bounded request samples, trace exploration and graph-linked discrete playback are present and passed the real-simulation browser workflow."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Independent review corrected evidence states and wording; telemetry regressions plus keyboard, reduced-motion and Edge path playback passed."
+      },
+      "changeIdentifier": "uncommitted-working-tree:sampled-request-traces",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-011",
+      "title": "Robustness analysis blocked the UI and lacked bounded cancellation and stale-result handling",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "Users running multi-seed robustness comparisons from the Decision Workbench",
+      "evidence": [
+        "The previous Decision Workbench evaluated robustness synchronously on the UI thread.",
+        "apps/web/src/lib/robustnessAnalysis.ts and apps/web/src/workers/robustness.worker.ts add a dedicated worker, deterministic between-seed progress, request/input identity, cancellation, work-unit admission, and wall-clock limits.",
+        "apps/web/tests/robustness-analysis.test.ts and decision-workbench-robustness.test.tsx cover equivalent completion, cancellation, stale completion, timeout, over-budget, worker error, and no-result UI."
+      ],
+      "rootCause": "Multi-seed simulation was called directly from React without a worker lifecycle or bounded admission protocol.",
+      "proposedChange": "Run robustness work in a dedicated worker with revision-bound identity, deterministic progress, immediate session cancellation, and explicit no-result/error states under wall-clock or work-unit limits.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "worker output equals the established robustness calculation",
+        "progress is deterministic between seeds",
+        "cancel terminates the session without publishing a result",
+        "stale revision response is ignored",
+        "wall-clock and work-unit limits produce no result",
+        "UI error and retry states remain accessible"
+      ],
+      "measurements": {
+        "before": "Nine seeded simulations could occupy the browser UI thread with no cancellation or progress boundary.",
+        "after": "The work runs off-thread with progress between seeds; one synchronous seed is interruptible only by terminating the Worker, not cooperatively inside simulate()."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Completion, progress, cancellation, timeout, budget, stale response and no-result semantics passed focused and integrated build verification."
+      },
+      "changeIdentifier": "uncommitted-working-tree:robustness-browser-worker",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-012",
+      "title": "Cold offline use and origin failure fallback did not include the complete Lab runtime",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "Returning users during network or origin failure, cold PWA installs, and operators testing degraded delivery",
+      "evidence": [
+        "The previous service worker cached only a small shell list and did not guarantee lazy route or worker bundles were available offline.",
+        "apps/web/public/sw.js and prepare-sites-build.mjs now generate and install an asset precache containing built JavaScript, CSS, WebP, selected fonts, and worker chunks, while preserving real client errors.",
+        "deploy/nginx.conf adds explicit offline handling and deploy/Caddyfile.systemforge.open adds a no-store branded 503 fallback; service_worker_contract.test.mjs, sites-worker.test.mjs, and edge_contract.test.sh define focused checks.",
+        "The final build prepared 25 offline assets; service-worker, edge and all seven Sites behavior tests passed, and Edge loaded Lab, Scenario, Interview and Replay from a warmed offline cache."
+      ],
+      "rootCause": "The offline cache was a handwritten shell list and neither proxy layer had a fully tested, truthfully worded application fallback contract.",
+      "proposedChange": "Generate the offline asset list from the build, bind cache writes to service-worker event lifetime, bypass API requests, fall back only for network and 5xx failures, and return branded no-store 503 content from Caddy/nginx.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "warmed offline Lab, Scenario, Interview and Replay routes load from the generated precache",
+        "API requests never fall back to cached HTML",
+        "4xx responses remain visible rather than becoming offline content",
+        "5xx navigation uses cached Lab when available",
+        "Caddy and nginx return no-store branded 503 content",
+        "installed service worker upgrades without a mixed-version cache"
+      ],
+      "measurements": {
+        "before": "The cache did not guarantee the lazy Lab and worker runtime for a cold offline session.",
+        "after": "Generated precache, API bypass, lazy route/worker packaging and warmed real-browser offline routes passed; deployed Caddy/nginx failover remains a production-host gate."
+      },
+      "independentReview": {
+        "status": "verified_local_pending_production_proxy_gate",
+        "summary": "Service-worker, edge, Sites packaging and warmed Edge offline navigation passed; deployed proxy failover, mixed-version upgrade and a physical first-install PWA cold-start remain unexecuted."
+      },
+      "changeIdentifier": "uncommitted-working-tree:pwa-offline-caddy-fallback",
+      "disposition": "verified_local_pending_external_gate"
+    },
+    {
+      "id": "SF-013",
+      "title": "Interviewer credentials and Sites HTML responses needed standard authorization and security-header handling",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Interviewer share links, controlled reveal and collaboration requests, and all HTML served through the Sites adapter",
+      "evidence": [
+        "The browser and API previously used a custom x-systemforge-host-token header and existing Sites HTML responses did not receive the production security-header set.",
+        "apps/web/src/lib/api.ts and apps/api/src/app.ts now use a UUID Bearer credential and reject malformed or legacy credential headers.",
+        "apps/web/worker/index.js adds CSP, HSTS, COOP, permissions, referrer, nosniff, frame-denial, and Server-header removal to HTML responses; apps/api/tests/app.test.ts, apps/web/tests/share.test.ts, and sites-worker.test.mjs define focused coverage."
+      ],
+      "rootCause": "A bespoke credential header bypassed standard authorization handling and the Sites fallback adapter returned HTML without the origin security policy.",
+      "proposedChange": "Keep the high-entropy token in the URL fragment, send it only as Authorization: Bearer, parse it strictly, fail closed without disclosing scenario existence, and apply the same HTML security policy on every Sites shell and fallback response.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "valid Bearer credential restores interviewer role",
+        "missing, malformed, wrong, and legacy headers fail closed",
+        "participant requests never receive interviewer-only fields",
+        "all existing and fallback HTML responses receive security headers",
+        "static non-HTML assets do not receive an HTML CSP",
+        "proxy logs redact Authorization in the deployment environment"
+      ],
+      "measurements": {
+        "before": "A custom host-token header was accepted and Sites HTML policy depended on the upstream asset response.",
+        "after": "Strict Bearer parsing, role restoration, candidate projection, Sites HTML headers and noindex behavior passed; deployed proxy log-redaction remains a production gate."
+      },
+      "independentReview": {
+        "status": "verified_local_pending_production_log_gate",
+        "summary": "API, browser privacy, Sites delivery and final Edge interviewer/candidate flows passed; live proxy logging is not verified for this checkout."
+      },
+      "changeIdentifier": "uncommitted-working-tree:bearer-auth-and-sites-html-headers",
+      "disposition": "verified_local_pending_external_gate"
+    },
+    {
+      "id": "SF-014",
+      "title": "Interview reveal was not bound to a completed server run for the exact shared session",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Candidates and interviewers using after-run reveal policies or candidate-derived requirements",
+      "evidence": [
+        "The previous milestone accepted an empty client declaration and local completion could attempt to advance reveal state.",
+        "Run submissions now persist sharedScenarioId and submitted inputs; /api/scenarios/:id/runs requires a UUID run, completed status, retained submission, exact share binding, matching public scenario, and the shared allowCandidateRequirements policy.",
+        "The browser records only a completed, still-current canonical run and preserves candidate-derived requirements without exposing hidden requirements or interviewer notes; focused API/store cases are in apps/api/tests/app.test.ts and apps/web/tests/local-run-store.test.ts."
+      ],
+      "rootCause": "The reveal milestone trusted a client-declared run event and retained no server-side submission binding to the specific shared interview.",
+      "proposedChange": "Persist each run submission, bind it to the exact shared scenario, require retained completed server evidence, compare only public scenario data while enforcing candidate-authoring policy, and reject stale browser/session responses before reveal is applied.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "local or client-declared completion cannot reveal",
+        "queued, failed, missing, expired, unrelated, and cross-share runs cannot reveal",
+        "identical public scenarios in different shares cannot reuse a run",
+        "candidate-derived requirements are accepted only when the shared policy permits them",
+        "hidden requirements, interviewer brief, and interviewer notes never enter candidate responses",
+        "session or scenario revision change rejects a late reveal response",
+        "real PostgreSQL JSONB submission round-trip and terminal-run eviction race fail closed"
+      ],
+      "measurements": {
+        "before": "The milestone body carried no server run identity and was not tied to retained canonical input evidence.",
+        "after": "Per-share completed-run binding, candidate policy and stale-browser race protection passed; a current real-PostgreSQL integration run remains blocked on Docker availability."
+      },
+      "independentReview": {
+        "status": "verified_local_pending_postgres_gate",
+        "summary": "Adversarial API, memory-store, web race and browser privacy review found no surviving reveal bypass; exact-sha PostgreSQL integration remains a protected-CI gate."
+      },
+      "changeIdentifier": "uncommitted-working-tree:server-verified-share-run-milestone",
+      "disposition": "verified_local_pending_external_gate"
+    },
+    {
+      "id": "SF-015",
+      "title": "Private interview material was persisted in durable browser storage",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Interviewers opening private rubrics or collaboration sessions on shared or untrusted devices",
+      "evidence": [
+        "apps/web/src/store/useLabStore.ts now writes only candidateScenario(...) to the persistent draft; hidden requirements and interviewerBrief cannot enter localStorage.",
+        "The full interviewer draft is retained only in tab-scoped sessionStorage, while a host token is accepted for refresh only after the server confirms interviewer role.",
+        "apps/web/tests/local-share-hydration.test.ts and apps/web/tests/share.test.ts cover participant transitions, invalid shares, role changes, candidate projections, and private-sentinel absence from durable storage."
+      ],
+      "rootCause": "Draft persistence treats public and interviewer-private scenario fields as one undifferentiated browser document.",
+      "proposedChange": "Split public draft persistence from ephemeral interviewer-private state, avoid durable storage of hidden rubric content and bearer credentials where possible, clear private state on role/session changes, and document the remaining same-origin trust boundary.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "participant and interviewer reloads preserve only the intended fields",
+        "hidden requirements and interviewer brief never enter durable localStorage",
+        "session switch and sign-out clear private artifacts and credentials",
+        "malformed persisted data fails closed without restoring private state"
+      ],
+      "measurements": {
+        "before": "Full interviewer scenarios can be serialized under systemforge:draft and the host credential under systemforge:session.",
+        "after": "Persistent drafts are candidate-safe; the necessary interviewer draft and confirmed host credential are tab-scoped and cleared on role/session invalidation."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "The role-aware persistence split and fail-closed hydration paths passed focused privacy review and regression coverage."
+      },
+      "changeIdentifier": "uncommitted-working-tree:privacy-safe-browser-persistence",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-016",
+      "title": "Local share decoding allowed unbounded decompression before rejection",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "Anyone opening an untrusted local #share link",
+      "evidence": [
+        "apps/web/src/lib/boundedLzString.ts enforces the decompressed-output limit while decoding instead of allocating an attacker-selected expanded string first.",
+        "Sensitive hash parameters are captured and scrubbed before React mounts; local payload decoding, JSON parsing, and Zod validation run in a disposable worker with a timeout.",
+        "apps/web/tests/bounded-lz-string.test.ts plus local-share hydration/share tests cover compressed bombs, malformed/truncated data, empty values, schema rejection, timeout, role transitions, and valid round trips."
+      ],
+      "rootCause": "Compressed local shares are decoded synchronously and the decisive expansion limit is enforced only after a complete decompressed string exists.",
+      "proposedChange": "Move untrusted share decoding to a bounded disposable worker or adopt a format with enforceable streaming output limits; reduce input budgets and keep checksum and schema validation before hydration.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "high-compression-ratio payload is rejected within memory and wall-clock budgets",
+        "oversized, corrupted, legacy, and unsupported-version links fail without changing the draft",
+        "valid versioned and blank-architecture shares still round-trip",
+        "decode cancellation prevents late hydration after route change"
+      ],
+      "measurements": {
+        "before": "A 50,000-character compressed fragment can expand fully on the main thread before the decoded size is rejected.",
+        "after": "Encoded and decompressed sizes are bounded before hydration, decoding is off the UI thread and timeout-bound, and late or invalid results fail closed."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "The bounded decoder and worker hydration paths passed crafted high-compression and privacy regressions."
+      },
+      "changeIdentifier": "uncommitted-working-tree:bounded-local-share-decoder",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-017",
+      "title": "Shared-session polling and mutations could apply responses out of order",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Candidates and interviewers using synchronized reveal, journal, cursor, and clock state",
+      "evidence": [
+        "apps/web/src/store/useLabStore.ts now coalesces/aborts shared refreshes and serializes reveal/collaboration mutation admission.",
+        "Every response is guarded by the active share, confirmed role/credential, request identity, and mutation epoch before store publication.",
+        "apps/web/tests/local-run-store.test.ts and share tests cover late refresh/reveal/collaboration responses, same-session races, session replacement, and credential invalidation."
+      ],
+      "rootCause": "Shared-session reads and writes have no monotonic request identity, response version, abort lifecycle, or server revision token.",
+      "proposedChange": "Use one abortable/coalesced poll per session, bind every mutation response to the current share, role, credential, and session revision, and add a server version or updatedAt compare-and-set contract for ordered collaboration updates.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "older poll response cannot overwrite a newer response for the same share",
+        "session and role switch abort every old read and mutation",
+        "late reveal response cannot change a new session",
+        "concurrent collaboration edits have an explicit conflict policy",
+        "same-template session-switch race preserves privacy and local work"
+      ],
+      "measurements": {
+        "before": "Overlapping polls and mutation responses have no ordering beyond a share-ID check on refresh.",
+        "after": "Shared reads and writes have abortable, sequence-bound publication and stale responses cannot overwrite the active session."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Independent privacy/async review found the refresh and mutation guards sound under the focused race matrix."
+      },
+      "changeIdentifier": "uncommitted-working-tree:ordered-shared-session-state",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-018",
+      "title": "Seed changes did not generate materially different failure schedules",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Robustness analysis, competitive seeded runs, chaos exploration, and users expecting stochastic failure combinations",
+      "evidence": [
+        "packages/contracts/src/index.ts defines bounded stochastic incident rules, trigger metrics, scope, cooldown, occurrence, and generated-incident caps.",
+        "packages/sim-core/src/simulate.ts deterministically compiles eligible occurrences from the scenario seed and retains each realized incident, affected nodes, correlation, occurrence, and prior-frame trigger evidence.",
+        "The full action schedule and realized stochastic evidence are bound into deterministic results/replay, while same-seed and different-seed behavior, scope compatibility, and caps have focused regressions."
+      ],
+      "rootCause": "There is no versioned stochastic failure distribution or deterministic incident-generation phase in the scenario and engine contracts.",
+      "proposedChange": "Add bounded failure distributions for eligible kinds, targets, domains, timing, duration, and magnitude; compile them deterministically from the seed into an explicit event schedule that is included in run evidence and replay.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "same seed and inputs produce an identical generated failure schedule and result",
+        "different seeds exercise materially different valid schedules",
+        "generated events respect component, region, zone, and failure-domain eligibility",
+        "replay manifest records the realized schedule",
+        "scheduled author events and generated events have deterministic precedence and caps"
+      ],
+      "measurements": {
+        "before": "Multi-seed runs vary workload noise while authored failure timing and targets remain fixed.",
+        "after": "Versioned seeded rules generate bounded, replayable and materially different eligible schedules while preserving same-input determinism."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Contracts, generated-incident physics, replay evidence, authoring controls and multi-seed regressions passed independent engine review."
+      },
+      "changeIdentifier": "uncommitted-working-tree:seeded-stochastic-incidents",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-019",
+      "title": "Component behavior lacked a versioned composable profile registry",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Users expecting many realistic backend technologies, maintainers adding component presets, and reviewers comparing modeled semantics",
+      "evidence": [
+        "packages/sim-core/src/behavioralProfiles.ts contains ten immutable version-1 profiles spanning PostgreSQL, Redis, Kafka, RabbitMQ, DynamoDB and representative AWS variants.",
+        "The contracts validate profile references and kind compatibility; simulation resolves them before frame execution and records assumptions, dated provenance, version, and local overrides per node.",
+        "Inspector apply/detach controls, share/replay round trips and completed-run manifest v3 preserve the profile reference and reject unknown, incompatible, stale or tampered evidence."
+      ],
+      "rootCause": "Defaults, runtime equations, editor fields, and named technology presets have no shared declarative profile contract or compatibility version.",
+      "proposedChange": "Introduce a versioned primitive/profile registry with validated defaults, supported behaviors, editor schema, engine coefficients, failure compatibility, provenance, and migrations; keep named technologies as explicit presets composed from primitives.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "every registered profile validates against the engine contract",
+        "profile defaults round-trip through editor, share, persistence, and replay",
+        "changing profile version changes run identity and digest",
+        "unsupported behavior or failure combinations fail closed",
+        "representative compute, cache, durable-store, queue, replica, network, and region profiles behave distinctly"
+      ],
+      "measurements": {
+        "before": "Component semantics are encoded in scattered kind conditionals and generic node configuration.",
+        "after": "A bounded immutable registry composes named presets from existing primitives and binds versioned profile evidence to simulation and replay identity."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Focused contract, profile, simulator, solver, Inspector, share and completed-run tests passed, including state-capability and tamper cases."
+      },
+      "changeIdentifier": "uncommitted-working-tree:behavioral-profile-registry-v1",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-020",
+      "title": "The Decision Workbench inflated the initial Lab route bundle",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "First-time and resource-constrained visitors opening the Lab",
+      "evidence": [
+        "The historical baseline measured the Lab chunk at 417.19 kB, 118.12 kB gzip.",
+        "apps/web/src/components/DecisionWorkbenchBoundary.tsx dynamically imports the heavy workbench only after first open, preserves the mounted instance, and exposes accessible loading/error/retry/focus restoration.",
+        "At the split point, the Lab chunk fell from 465,620 to 383,627 bytes raw and from 132,986 to 111,468 bytes deterministic gzip; the final feature-complete build keeps the boundary with Lab at 408.02 kB raw and 117.91 kB gzip and Decision Workbench deferred at 106.56 kB raw and 29.43 kB gzip.",
+        "The production manifest records the workbench as a Lab dynamic import, and offline asset preparation includes the deferred module."
+      ],
+      "rootCause": "Code splitting stops at route boundaries even though several heavy Lab tools are modal, secondary, or investigation-only.",
+      "proposedChange": "Measure the current bundle and split optional Lab surfaces such as Decision Workbench, command tools, and investigation-only diagnostics behind stable lazy boundaries while preloading only when user intent is clear.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "production bundle budget with per-chunk sizes",
+        "cold Lab interaction does not request unopened optional tools",
+        "opening every lazy surface succeeds online and from the installed offline cache",
+        "loading and error boundaries remain keyboard accessible",
+        "Core Web Vitals and parse/execute profiling at target devices"
+      ],
+      "measurements": {
+        "before": "Historical Lab chunk: 417.19 kB, 118.12 kB gzip.",
+        "after": "The isolated split saved 81,993 bytes raw and 21,518 bytes gzip at implementation time; the final feature-complete build retains the dynamic boundary and keeps optional decision tools out of initial Lab evaluation."
+      },
+      "independentReview": {
+        "status": "verified_local_pending_target_device_perf_gate",
+        "summary": "Boundary tests, TypeScript, production build, manifest inspection, offline packaging and Sites contracts passed; target-device Core Web Vitals and every-lazy-surface installed-offline profiling remain unexecuted."
+      },
+      "changeIdentifier": "uncommitted-working-tree:lazy-decision-workbench",
+      "disposition": "verified_local_pending_external_gate"
+    },
+    {
+      "id": "SF-021",
+      "title": "The install manifest has no maskable application icon",
+      "severity": "low",
+      "affectedUsersOrWorkflows": "Users installing SystemForge on launchers that apply adaptive icon masks",
+      "evidence": [
+        "apps/web/public/manifest.webmanifest declares 192x192 and 512x512 PNG icons with purpose set only to any.",
+        "No separate safe-zone-tested maskable asset or purpose=maskable entry exists."
+      ],
+      "rootCause": "The existing elephant artwork was reused as a standard icon without a maskable-safe composition and manifest entry.",
+      "proposedChange": "Create a dedicated maskable icon with the required safe zone, retain standard any-purpose icons, and validate installation previews across adaptive mask shapes.",
+      "regressionRisk": "low",
+      "requiredTests": [
+        "manifest includes valid any and maskable 192 and 512 assets",
+        "maskable safe-zone preview does not crop the mark",
+        "production MIME and cache headers serve every icon",
+        "installed-app smoke on at least one adaptive-icon platform"
+      ],
+      "measurements": {
+        "before": "No maskable icon purpose was declared.",
+        "after": "Unchanged in the current worktree; both manifest icons still use purpose=any."
+      },
+      "independentReview": {
+        "status": "reviewed_open",
+        "summary": "Manifest and asset inventory confirm the residual install-icon gap."
+      },
+      "changeIdentifier": null,
+      "disposition": "open"
+    },
+    {
+      "id": "SF-022",
+      "title": "The product vision's AI layer had no bounded implementation",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Scenario authors translating written briefs, interviewers drafting follow-up questions, and reviewers interpreting completed canonical runs",
+      "evidence": [
+        "The baseline repository had no provider configuration, AI contracts, provider adapter, authoring compiler, debrief evidence catalog, interview assistant, or credential-free provider tests.",
+        "packages/contracts/src/index.ts now defines versioned strict request and response contracts, requirement scopes, candidate-visible interview context, and exact evidence references.",
+        "apps/api/src/aiProvider.ts, aiCompilation.ts and aiDebrief.ts keep provider credentials server-side, compile quoted numeric intent through deterministic validation, preserve private rubric scope, and allow debrief observations to cite only bounded deterministic run evidence.",
+        "apps/web/src/components/AiAssistantPanels.tsx exposes explicit preview/apply, canonical-run debrief, and phase-aware interviewer facilitation while the capability remains optional and disabled by default."
+      ],
+      "rootCause": "The deterministic engine and product workflows were implemented, but no trust boundary existed for optional nondeterministic assistance.",
+      "proposedChange": "Add a disabled-by-default server-side provider boundary that returns strict intent, deterministically grounds metrics, operators, units and source spans, projects candidate-safe context, cites exact modeled evidence, and never invokes or replaces simulation physics.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "partial or invalid provider configuration fails closed without exposing credentials",
+        "requirements reject ungrounded metrics, comparators, numbers and incompatible units",
+        "full-scenario proposals retain unspecified incidents and public or private objectives",
+        "candidate debrief and interview prompts exclude hidden rubric content and unrelated shared-run evidence",
+        "malformed, oversized, aborted and timeout provider responses fail with bounded upstream errors",
+        "browser proposals never mutate a draft before an explicit validated Apply action",
+        "stale authoring, debrief and interview responses are canceled or ignored"
+      ],
+      "measurements": {
+        "before": "No AI capability, provider boundary or related verification existed.",
+        "after": "A versioned optional layer now covers requirement compilation, scenario authoring, evidence-linked debrief and phase-aware interview facilitation without changing deterministic engine output or local availability."
+      },
+      "independentReview": {
+        "status": "verified_local_pending_real_provider_gate",
+        "summary": "Independent API privacy/security and web reviews drove closure of hidden-score leakage, cross-share binding, destructive replacement, grounding, cancellation, response bounds and stale-state defects; fake-provider and integrated tests passed, while no real provider transaction was attempted."
+      },
+      "changeIdentifier": "uncommitted-working-tree:optional-bounded-ai-assistance-v1",
+      "disposition": "verified_local_pending_external_gate"
+    },
+    {
+      "id": "SF-023",
+      "title": "Release evidence lacked mutation, stability and tracked browser acceptance gates",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Maintainers reviewing test strength, deterministic behavior, browser regressions and release confidence",
+      "evidence": [
+        "The baseline had coverage reporting but no targeted mutation runner, deterministic order/concurrency stability harness, or tracked self-starting browser acceptance command.",
+        "scripts/run-targeted-mutations.mjs applies four in-memory critical-boundary mutants and requires existing assertions to kill each one.",
+        "scripts/run-test-stability.mjs reruns the non-performance suite serially and in parallel with fixed seeds and no hidden retries.",
+        "scripts/browser-acceptance.mjs builds, starts an isolated Edge profile, checks desktop and mobile routes, exercises run/pause/step/intervention/resume/trace playback, keyboard, reduced motion and warm offline behavior, records artifacts, and cleans up.",
+        ".github/workflows/ci.yml makes hardening and Windows Edge browser jobs prerequisites of container packaging and integration."
+      ],
+      "rootCause": "High aggregate coverage did not independently prove assertion quality, deterministic order stability or full browser workflow behavior.",
+      "proposedChange": "Add bounded targeted mutation, serial/parallel fixed-seed stability and self-contained real-browser acceptance gates, then bind them into CI before immutable image creation.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "each targeted mutant is rejected by an existing externally meaningful assertion",
+        "serial and parallel suites pass under distinct fixed seeds without retry",
+        "desktop and 390-pixel browser flows complete without console errors or document overflow",
+        "keyboard, reduced-motion and warm-offline checks produce reviewable artifacts",
+        "CI cannot package release images until hardening and browser jobs pass"
+      ],
+      "measurements": {
+        "before": "No mutation, stability or tracked browser acceptance scripts were available.",
+        "after": "Four targeted mutants were killed by assertions; serial and parallel 52-file, 408-test stability runs passed without retry; Edge passed all 17 route audits and nine interaction groups with zero unexpected console/network errors or acceptance defects."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Mutation, fixed-seed stability, browser startup, desktop/mobile/offline workflows, artifact emission and cleanup all passed locally and gate downstream CI jobs."
+      },
+      "changeIdentifier": "uncommitted-working-tree:release-hardening-harness",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-024",
+      "title": "A successful main push could reuse persistent approval and mutate production",
+      "severity": "high",
+      "affectedUsersOrWorkflows": "Production availability, release operators, reviewers of the no-deploy boundary and every public visitor",
+      "evidence": [
+        "The previous deploy workflow staged every successful same-repository main push and could deploy when persistent repository variables remained enabled.",
+        ".github/workflows/deploy-hetzner.yml is now workflow_dispatch-only and requires an exact current-main SHA, the numeric successful same-repository main-push CI run ID, and the exact one-time confirmation phrase.",
+        "The validate job binds both the referenced CI run and the executing workflow ref and SHA before artifact access, environment entry or production-secret references.",
+        "scripts/stage_hetzner.sh exits before mutation without the ephemeral confirmation and never closes Caddy or stops a running release on an unauthorized invocation."
+      ],
+      "rootCause": "Deployment authorization was modeled as persistent repository state attached to an automatic main-push workflow instead of an exact-revision operator decision.",
+      "proposedChange": "Require a manual protected-environment dispatch tied to the exact successful CI artifact and still-current main revision, and fail closed before any host mutation when authorization or provenance is absent.",
+      "regressionRisk": "high",
+      "requiredTests": [
+        "main pushes cannot invoke staging or deployment",
+        "wrong confirmation, branch, executing SHA, CI run, repository, event, status or superseded main fails before artifact and secret access",
+        "stage exits before mutation when the ephemeral confirmation is absent",
+        "superseded releases fail rather than being treated as a successful skip",
+        "both host mutation jobs retain protected production-environment approval"
+      ],
+      "measurements": {
+        "before": "A successful main push could enter staging and persistent variables could authorize public deployment.",
+        "after": "Only a manual exact-revision dispatch can reach protected mutation jobs; unauthorized or superseded attempts fail before changing host state."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Focused workflow, shell, YAML and ordering contracts passed, including the adversarial dispatch-from-another-branch case. No deployment, push, secret access or external mutation occurred."
+      },
+      "changeIdentifier": "uncommitted-working-tree:manual-exact-revision-deployment-gate",
+      "disposition": "verified_local_worktree"
+    },
+    {
+      "id": "SF-025",
+      "title": "Completed local runs disappeared after the current session",
+      "severity": "medium",
+      "affectedUsersOrWorkflows": "Learners and interview candidates comparing repeated experiments, preserving a baseline, or reopening a verified replay",
+      "evidence": [
+        "The baseline retained only the latest completed artifact in memory and required manual replay-file management across reloads.",
+        "Official Grafana k6, Gremlin and AWS Well-Architected workflows preserve comparisons, historical reports or milestones, making a bounded local history the closest product-adjacent gap.",
+        "apps/web/src/lib/runHistory.ts stores compact candidate-safe records and verified replay bundles in IndexedDB with a fallback for unsupported environments, serialized cross-tab mutations and explicit retention limits.",
+        "apps/web/src/components/RunHistoryPanel.tsx exposes search, star, annotate, delete, clear, verify/replay, exact comparison, compatible trends and JSON or Markdown comparison export inside the existing Decision Workbench.",
+        "Private interviewer runs, credentials, collaboration state, AI output, full frames, events, traces and reports are excluded; replay payloads are reparsed and digest-verified before use."
+      ],
+      "rootCause": "Run evidence was designed as a single-session artifact and replay portability was file-driven rather than indexed for repeated local experiments.",
+      "proposedChange": "Persist a small candidate-safe local Run library that reuses the replay integrity boundary, deduplicates identical deterministic outputs, preserves divergent outputs, and compares only semantically equivalent objectives.",
+      "regressionRisk": "medium",
+      "requiredTests": [
+        "private interview material never creates or enters a history record or export",
+        "identical inputs and results deduplicate while divergent results remain visible",
+        "retention, byte, replay-size and star caps are enforced without destructive cleanup on transient storage failure",
+        "replay payloads reject tampering before replay or download",
+        "objective deltas are toned only when candidate-visible objective semantics match",
+        "the real browser records a completed run and exposes Verify and replay from Runs"
+      ],
+      "measurements": {
+        "before": "Completed local evidence was latest-only in memory and Report explicitly required manual download for persistence.",
+        "after": "The browser retains at most 24 candidate-safe records, 20 MB total, 2 MB per replay, 30 days for unstarred entries and 6 stars, with explicit per-entry and clear-all deletion."
+      },
+      "independentReview": {
+        "status": "verified_current_worktree",
+        "summary": "Independent storage, privacy and comparison review found no surviving P0-P2 after cleanup atomicity and objective-semantic regressions were added; focused, integrated and Edge workflows passed."
+      },
+      "changeIdentifier": "uncommitted-working-tree:candidate-safe-local-run-library-v1",
+      "disposition": "verified_local_worktree"
+    }
+  ],
+  "verificationRuns": [
+    {
+      "id": "final-local-quality-1",
+      "recordedAt": "2026-08-09",
+      "startedAt": "2026-08-09T15:58:35+02:00",
+      "command": "pnpm quality",
+      "sequence": "1 of 2",
+      "environment": "Windows Node 24.11.0, pnpm 11.16.0, win32 x64, uncommitted working tree",
+      "head": "b180d19c7d1ac749f141a535bc5a1f8c902503d5",
+      "dirtyEntries": 155,
+      "sourceAndTestDigest": "244cdcc20d0baf6f63666716b631bbb09b778d9bea6a195d132967f86c3fc629",
+      "digestScope": "All tracked and untracked non-ignored files except the three self-referential evidence documents: docs/release-readiness.md, design-qa.md and reports/release-hardening-ledger.json.",
+      "result": "passed",
+      "exitCode": 0,
+      "retryCount": 0,
+      "overlappedCpuHeavyWork": false,
+      "measuredStages": {
+        "functional": "52 files and 408 tests in 47.53 seconds",
+        "performance": "2 tests in 3.63 seconds; both internal two-second budgets passed",
+        "webBuild": "4,886 modules in 12.15 seconds; 25 offline assets",
+        "sites": "7 tests in 0.150 seconds"
+      },
+      "evidence": "Prettier, ESLint, TypeScript, functional, performance, all workspace builds and Sites delivery passed without retry or overlapping CPU-heavy work."
+    },
+    {
+      "id": "final-local-quality-2",
+      "recordedAt": "2026-08-09",
+      "startedAt": "2026-08-09T16:00:35+02:00",
+      "command": "pnpm quality",
+      "sequence": "2 of 2",
+      "environment": "Windows Node 24.11.0, pnpm 11.16.0, win32 x64, unchanged uncommitted source and test tree",
+      "head": "b180d19c7d1ac749f141a535bc5a1f8c902503d5",
+      "dirtyEntries": 155,
+      "sourceAndTestDigest": "244cdcc20d0baf6f63666716b631bbb09b778d9bea6a195d132967f86c3fc629",
+      "digestScope": "All tracked and untracked non-ignored files except the three self-referential evidence documents: docs/release-readiness.md, design-qa.md and reports/release-hardening-ledger.json.",
+      "result": "passed",
+      "exitCode": 0,
+      "retryCount": 0,
+      "overlappedCpuHeavyWork": false,
+      "measuredStages": {
+        "functional": "52 files and 408 tests in 159.93 seconds",
+        "performance": "2 tests in 3.61 seconds; both internal two-second budgets passed",
+        "webBuild": "4,886 modules in 12.95 seconds; 25 offline assets",
+        "sites": "7 tests in 0.164 seconds"
+      },
+      "evidence": "The complete quality command passed consecutively on the identical source and test digest with the same functional, build, offline-asset and Sites counts and no retry or overlap."
+    },
+    {
+      "id": "coverage-and-dependency-audit",
+      "recordedAt": "2026-08-09",
+      "commands": [
+        "pnpm test:coverage",
+        "pnpm audit --prod --audit-level=high"
+      ],
+      "result": "passed",
+      "evidence": "408 tests passed; configured critical-file coverage was 92.66% statements, 84.49% branches, 93.47% functions and 93.68% lines; no known production dependency vulnerabilities were reported."
+    },
+    {
+      "id": "mutation-and-stability",
+      "recordedAt": "2026-08-09",
+      "commands": ["pnpm test:mutations", "pnpm test:stability"],
+      "result": "passed",
+      "evidence": "All four targeted mutants were killed; serial seed 819521 and parallel seed 20260809 each passed 52 files and 408 tests without retry."
+    },
+    {
+      "id": "edge-browser-acceptance",
+      "recordedAt": "2026-08-09",
+      "command": "pnpm test:browser",
+      "environment": "Microsoft Edge 151.0.4129.72, CDP 1.3",
+      "result": "passed",
+      "evidence": "17 desktop/mobile/completed/offline route audits and nine interaction groups passed in 35.0 seconds; unexpected console errors, network errors and acceptance defects were zero."
+    },
+    {
+      "id": "repository-contracts",
+      "recordedAt": "2026-08-09",
+      "result": "passed_with_environment_boundary",
+      "evidence": "Shell syntax, deployment, stage, Caddy route, workflow, service-worker, overload, edge, Cloudflare-range, off-site backup, provisioning and release-backup contracts passed. Docker Compose, Caddy-container, image-scan, PostgreSQL and full container integration were not run because the local Docker daemon was unavailable."
+    },
+    {
+      "id": "simulation-output-parity",
+      "recordedAt": "2026-08-09",
+      "scope": "Behavior-neutral simulator hot-path optimization",
+      "result": "passed",
+      "evidence": {
+        "traced": {
+          "bytes": 580222,
+          "sha256": "9a6417b297ca0e2856e7cce5d45dba06f3e33b03b50cace994948e6c5b2771f7"
+        },
+        "untraced": {
+          "bytes": 485979,
+          "sha256": "8953b72da4c9393cb4c507b733a7b2587a1ed1f349e9bae229f24b0c31abc3ae"
+        },
+        "summary": "Pre- and post-optimization JSON outputs matched byte for byte; formulas, ordering, public results and performance thresholds were unchanged."
+      }
+    }
+  ]
+}

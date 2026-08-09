@@ -1,10 +1,12 @@
 import { buildApp } from "./app";
+import { createConfiguredAiProvider } from "./aiProvider";
 import { loadConfig } from "./config";
 import { PostgresControlStore } from "./postgresStore";
 
 const config = loadConfig();
 const store = new PostgresControlStore(config.databaseUrl);
-const app = await buildApp(config, store);
+const aiProvider = createConfiguredAiProvider();
+const app = await buildApp(config, store, undefined, aiProvider);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "graceful shutdown started");

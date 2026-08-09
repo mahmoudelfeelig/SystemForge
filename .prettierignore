@@ -6,3 +6,4 @@ coverage
 apps/web/worker
 apps/web/public/assets
 design-qa.local
+.superdesign

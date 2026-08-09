@@ -4,14 +4,16 @@ The production target is `systemforge.elfeel.me` on the existing Hetzner host. T
 
 ## Required GitHub production configuration
 
-Production remains release-gated even after owner approval. The owner authorized
-the public release on 2026-08-08, but the proxied DNS record must continue to
-serve the hardened 404 route until the exact approved commit passes CI, image
-scanning, integration, backup, restore, and in-network smoke checks. Only the
-protected deployment job may start the application and install the open route.
+Production remains release-gated. The owner authorization recorded on
+2026-08-08 is historical and does not authorize a later checkout. The proxied
+DNS record must continue to serve the last accepted release until an exact
+revision passes CI, image scanning, integration, backup, restore, and in-network
+smoke checks and receives a new one-time deployment authorization. Only the
+protected deployment workflow may start the application and install the open
+route.
 
-Create a protected `production` environment and configure these host variables
-before enabling automatic staging:
+Create a protected `production` environment with required reviewers and
+configure these host variables:
 
 - `HETZNER_HOST=65.21.109.224`
 - `HETZNER_SSH_PORT=22`
@@ -19,11 +21,24 @@ before enabling automatic staging:
 - `HETZNER_SSH_KNOWN_HOSTS=65.21.109.224 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBbsWzd5va1/wwTeM1P1K6AqPaGzG9GlgIpO7pBPBhX6`
 
 Add `HETZNER_SSH_PRIVATE_KEY` as an environment secret. Use a dedicated key
-whose public half is present in `feel`'s `authorized_keys`. After explicit owner
-approval, set both public-release variables exactly as follows:
+whose public half is present in `feel`'s `authorized_keys`. Persistent variables
+do not authorize deployment. A release operator must manually dispatch
+`Deploy SystemForge to Hetzner` with all three values:
 
-- `HETZNER_DEPLOY_ENABLED=true`
-- `SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION`
+- `release_sha`: the exact lowercase 40-character SHA at the current tip of
+  `main`;
+- `ci_run_id`: the numeric run ID of the successful same-repository
+  `SystemForge CI` push for that SHA;
+- `confirmation`: exactly `AUTHORIZE_SYSTEMFORGE_PRODUCTION_RELEASE`.
+
+The validation job checks the referenced run through the GitHub API before an
+artifact is downloaded or production secrets become available. It rejects a
+failed, non-push, fork, non-main, differently named, mismatched, or superseded
+run. The dispatch itself must execute from `refs/heads/main`, and its workflow
+revision must equal `release_sha`; a workflow selected from another branch is
+rejected before API calls, artifact access, or protected-environment entry.
+Staging and deployment then pass through the protected `production` environment
+and use the exact checksum-verified image artifact from that run.
 
 Leave `SYSTEMFORGE_EXTERNAL_SMOKE_URL` unset only during a first approved
 bootstrap. After the open Caddy route and proxied DNS record are serving
@@ -32,18 +47,18 @@ correctly through Cloudflare, set the protected environment variable to
 public shell and readiness smoke to pass before accepting a revision, and the
 scheduled production monitor will become active.
 
-The deployment workflow only accepts a successful same-repository
-`SystemForge CI` push on `main`. CI builds canonical-enabled images tagged with
-that SHA, scans them, packages them as a checksum-addressed two-day artifact,
-and loads the same images for the PostgreSQL integration and restore drill. The
-always-on staging job downloads that artifact, verifies it again, transfers it
-over strict-host-key SSH, loads the exact images, verifies `origin/main`, and
-performs a fast-forward-only pull. While either public-release variable is
-absent, staging also reinstalls the checked-in closed Caddy route and stops web,
-API, worker, and migration services while preserving PostgreSQL. When both
-approval variables are present, a dependent deployment job tells the host to
-use the already-staged images and reject any missing image instead of rebuilding
-a different one.
+CI builds canonical-enabled images tagged with the tested SHA, scans them,
+packages them as a checksum-addressed two-day artifact, and loads the same
+images for the PostgreSQL integration and restore drill. No `main` push invokes
+the deployment workflow. After a valid manual dispatch, the stage job verifies
+the artifact again, transfers it over strict-host-key SSH, confirms the host
+checkout is clean and still matches the current `origin/main`, loads the exact
+images, and performs a fast-forward-only pull. Unapproved staging exits before
+host mutation and never closes Caddy or stops a running release. The dependent
+deployment job rechecks current `main` before transferring backup credentials,
+again on the host immediately before backup provisioning, and once more before
+application or route mutation. It uses the already-staged images and rejects any
+missing or superseded image instead of rebuilding a different one.
 The checked-in host-key value was recovered from the currently trusted local
 entry; verify its fingerprint through the Hetzner console before enabling the
 workflow. CI uses strict host-key checking and will fail closed if the host
@@ -62,6 +77,7 @@ The private environment also exposes explicit overload budgets:
 - `MAX_SOLVER_WORK_UNITS=120000`
 - `SOLVER_TIMEOUT_MS=10000`
 - `MAX_SOLVER_RESULT_BYTES=4000000`
+- `SCENARIO_RATE_LIMIT_MAX=10` per `SCENARIO_RATE_LIMIT_WINDOW=1 day`
 
 Change them only after measuring the VPS under the representative integration
 smoke. Raising a canonical limit never changes the browser-local limits or
@@ -73,6 +89,33 @@ durable budget. The run worker also rejects a serialized canonical result above
 its result-byte ceiling before PostgreSQL persistence, preventing a
 maximum-shape request from multiplying into unbounded durable storage.
 
+Optional AI assistance remains off unless the API container receives all of:
+
+- `SYSTEMFORGE_AI_ENABLED=true`;
+- `SYSTEMFORGE_AI_PROVIDER=cloudflare-workers-ai-responses`;
+- `SYSTEMFORGE_AI_MODEL=@cf/openai/gpt-oss-20b`;
+- `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_GATEWAY_ID`;
+- `CLOUDFLARE_AI_API_TOKEN` as an API-only secret;
+- optional `SYSTEMFORGE_AI_TIMEOUT_MS`, bounded by the service.
+
+Do not use a `VITE_*` variable for any AI credential or model setting, and do
+not add these values to the web or worker containers. The adapter uses the
+account-scoped Cloudflare Responses endpoint, structured JSON output, no tools,
+no streaming, no automatic retry, `store:false`, and per-request Gateway
+headers that disable logging and caching. SystemForge still validates every
+provider response and does not claim that external processing is local.
+
+Create a dedicated `systemforge-production` AI Gateway and configure a blocking
+fixed monthly spend limit of **$4.50**, with no cheaper-model fallback. Do not
+enable the feature until that dashboard rule is visibly active. The API adds a
+second persistent denial-of-wallet boundary: at most ten admitted calls per UTC
+day, a five-cent reservation per admitted call, and at most four dollars of
+reservations per UTC month. The PostgreSQL reservation happens before provider
+I/O and is not refunded on failure or cancellation. The model, request-body
+limit, output-token limit, and reservation are deliberately pinned; changing
+any of them requires a new documented cost proof. Provider failure or budget
+exhaustion must not fail readiness or remove the local Lab.
+
 ## First host bootstrap
 
 Clone the repository to `/opt/systemforge`. Copy `deploy/.env.example` to `deploy/.env`, set a URL-safe random `POSTGRES_PASSWORD`, leave the environment file mode at `0600`, and do not commit it. Then run:
@@ -80,15 +123,16 @@ Clone the repository to `/opt/systemforge`. Copy `deploy/.env.example` to `deplo
 ```sh
 cd /opt/systemforge
 sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0700 /opt/systemforge-backups
-SYSTEMFORGE_RELEASE_APPROVED=I_AM_READY_FOR_PRODUCTION sh scripts/deploy_hetzner.sh "$(git rev-parse HEAD)"
 sh scripts/install_backup_cron.sh
 ```
 
-Without the explicit approval value, deployment and open-route installation exit
-without changing production. Running `sh scripts/install_caddy_route.sh closed`
-installs the checked-in 404-only route. The Caddy installer writes a unique
-timestamped backup, replaces only the marked SystemForge block, and streams the
-exact candidate into Caddy for validation and reload. Streaming avoids stale
+Bootstrap prepares the host but does not deploy it. Use the same protected
+manual workflow after the exact bootstrap revision passes CI. Calling
+`scripts/stage_hetzner.sh` without the one-time confirmation exits 78 before any
+mutation. Running `sh scripts/install_caddy_route.sh closed` installs the
+checked-in 404-only route. The Caddy installer writes a unique timestamped
+backup, replaces only the marked SystemForge block, and streams the exact
+candidate into Caddy for validation and reload. Streaming avoids stale
 single-file Docker bind mounts after a host-side file replacement. A failed
 reload restores and reloads the previous configuration without restarting the
 shared proxy.
@@ -105,9 +149,9 @@ and `https://www.cloudflare.com/ips-v6` when Cloudflare announces a range
 change, validate Caddy, and reload it.
 
 `scripts/verify_cloudflare_ranges.sh` compares the future open Caddy route with
-those live official lists. CI runs it before any green build can trigger a
-deployment, and the gated production monitor repeats it after release. A fetch
-failure or any added, removed, or reordered range fails closed instead of
+those live official lists. CI runs it before a revision becomes eligible for a
+manual release, and the gated production monitor repeats it after release. A
+fetch failure or any added, removed, or reordered range fails closed instead of
 silently deploying an origin allowlist that Cloudflare has superseded.
 
 The API proxy overwrites `X-Forwarded-For` with Cloudflare's single-value
@@ -118,7 +162,7 @@ collapsing all visitors into a shared Cloudflare edge address.
 The zone was verified as Cloudflare Free with the Cloudflare Managed Free Ruleset and L7 DDoS managed ruleset present. The Free plan supports one zone rate-limit rule, but changing the shared zone rule could affect the other `elfeel.me` services. SystemForge therefore enforces its API write limits in Fastify and uses transactionally bounded queue capacity; introduce a zone rate-limit rule only after reviewing the existing shared-zone security configuration and Security Events.
 
 The web container sends browsers `Cache-Control: public, max-age=0,
-must-revalidate` while separately sending Cloudflare
+must-revalidate, no-transform` while separately sending Cloudflare
 `Cloudflare-CDN-Cache-Control: public, max-age=300,
 stale-while-revalidate=60, stale-if-error=86400`. This keeps browser sessions
 fresh, gives the edge a five-minute shell, and permits a previously cached shell
@@ -127,11 +171,38 @@ Cloudflare treats `s-maxage` as proxy revalidation, which disables the intended
 stale fallback. The in-network production smoke checks both headers on the
 actual web image.
 
+`no-transform` is also a security boundary: it prevents Cloudflare from
+injecting Web Analytics or Bot JavaScript into the HTML shell, so the strict
+`script-src 'self'` CSP stays intact without `unsafe-inline` or third-party
+allowlists. Keep edge request analytics and managed network protections, but do
+not re-enable HTML transformation for this hostname. The live browser audit
+must report no `static.cloudflareinsights.com` or
+`/cdn-cgi/challenge-platform/` script on application documents.
+
 Cloudflare recommends proxying HTTP records so traffic is protected at the edge and restricting origin traffic to Cloudflare address ranges. Current documentation: [Cloudflare IP addresses](https://developers.cloudflare.com/fundamentals/concepts/cloudflare-ip-addresses/), [proxied DNS records](https://developers.cloudflare.com/dns/manage-dns-records/reference/proxied-dns-records/), and [rate limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/).
 
 ## Deployment, rollback, and smoke checks
 
-For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the tested Git SHA. In automatic deployments, GitHub transfers the exact scanned and integration-tested SHA-tagged image bundle and sets `SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and never rebuilds them. It then starts the full Compose project with health waits and runs an in-network production smoke. The functional smoke checks the static shell, database readiness, candidate/interviewer privacy separation, controlled reveal and reconceal, digest-only credential storage, stale-engine rejection, an isolated canonical solve with forced hidden-criteria exclusion, queue submission, worker completion, exhausted-lease recovery, engine version, and canonical digest. A second smoke sends 256 concurrent canonical reads from an isolated synthetic visitor while fetching the web shell 48 times. It requires structured capacity or rate-limit responses with retry and local-mode guidance, an unaffected independent visitor, and healthy API and web services after the burst. The deployment then invokes `scripts/verify_release_backups.sh`: it creates a current validated local dump, copies it to the encrypted independent repository, verifies fresh mode-`0600` backup evidence, and requires a successful disposable restore that covers the current migration manifest. Missing, stale, insecure, or mismatched evidence causes deployment rollback. Only after all three gates pass is `.last-successful-sha` updated.
+For a manual bootstrap, `scripts/deploy_hetzner.sh` builds images tagged with the
+tested Git SHA. In a protected manual release, GitHub transfers the exact
+scanned and integration-tested SHA-tagged image bundle and sets
+`SYSTEMFORGE_SKIP_BUILD=true`; the script verifies all three images exist and
+never rebuilds them. It then starts the full Compose project with health waits
+and runs an in-network production smoke. The functional smoke checks the static
+shell, database readiness, candidate/interviewer privacy separation, controlled
+reveal and reconceal, digest-only credential storage, stale-engine rejection,
+an isolated canonical solve with forced hidden-criteria exclusion, queue
+submission, worker completion, exhausted-lease recovery, engine version, and
+canonical digest. A second smoke sends 256 concurrent canonical reads from an
+isolated synthetic visitor while fetching the web shell 48 times. It requires
+structured capacity or rate-limit responses with retry and local-mode guidance,
+an unaffected independent visitor, and healthy API and web services after the
+burst. The deployment then invokes `scripts/verify_release_backups.sh`: it
+creates a current validated local dump, copies it to the encrypted independent
+repository, verifies fresh mode-`0600` backup evidence, and requires a
+successful disposable restore that covers the current migration manifest.
+Missing, stale, insecure, or mismatched evidence causes deployment rollback.
+Only after all three gates pass is `.last-successful-sha` updated.
 
 The interviewer-token migration keeps a nullable legacy column and a hashing
 trigger as a one-release rollback bridge. Current images never write raw tokens;
@@ -139,14 +210,14 @@ the migrator hashes and clears any value written while the previous image is
 temporarily restored. Remove that bridge only in a later, separately validated
 contract migration after the previous image is no longer a rollback target.
 
-During the first explicitly approved bootstrap, the automatic deployment runs
-the complete in-network smoke and backup/restore gate while the public route
-remains closed. It then validates and installs the checked-in open Caddy route
-before attempting the external smoke. A failed first-release smoke restores the
-hardened closed route and stops the application services; an update failure
-restores the last complete application image set behind the existing open
-route. Setting `SYSTEMFORGE_EXTERNAL_SMOKE_URL` to the approved origin makes
-the same deployment verify the public browser shell and readiness endpoint
+During the first explicitly approved bootstrap, the manually dispatched release
+runs the complete in-network smoke and backup/restore gate while the public
+route remains closed. It then validates and installs the checked-in open Caddy
+route before attempting the external smoke. A failed first-release smoke
+restores the hardened closed route and stops the application services; an update
+failure restores the last complete application image set behind the existing
+open route. Setting `SYSTEMFORGE_EXTERNAL_SMOKE_URL` to the approved origin
+makes the same release verify the public browser shell and readiness endpoint
 through Cloudflare before accepting the new revision.
 An external-smoke failure keeps the deployment trap active and restores the
 last successful application images when they are still present locally.

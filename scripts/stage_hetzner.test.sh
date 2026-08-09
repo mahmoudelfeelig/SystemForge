@@ -34,12 +34,6 @@ if test "$1" = "image" && test "$2" = "inspect"; then
 fi
 EOF
 
-cat > "$TEST_APP_DIR/scripts/install_caddy_route.sh" <<'EOF'
-#!/bin/sh
-set -eu
-printf 'caddy %s\n' "$*" >> "$FAKE_LOG"
-EOF
-
 cat > "$TEST_APP_DIR/scripts/install_backup_cron.sh" <<'EOF'
 #!/bin/sh
 set -eu
@@ -49,7 +43,6 @@ EOF
 chmod 700 \
   "$TEST_BIN_DIR/git" \
   "$TEST_BIN_DIR/docker" \
-  "$TEST_APP_DIR/scripts/install_caddy_route.sh" \
   "$TEST_APP_DIR/scripts/install_backup_cron.sh"
 
 run_stage() {
@@ -58,19 +51,28 @@ run_stage() {
     FAKE_LOG="$TEST_LOG" \
     FAKE_MISSING_IMAGE="${FAKE_MISSING_IMAGE:-}" \
     SYSTEMFORGE_APP_DIR="$TEST_APP_DIR" \
-    SYSTEMFORGE_PUBLIC_RELEASE_ENABLED="${FAKE_PUBLIC_RELEASE_ENABLED:-false}" \
+    SYSTEMFORGE_RELEASE_CONFIRMATION="${FAKE_RELEASE_CONFIRMATION:-}" \
     sh scripts/stage_hetzner.sh "$DEPLOY_SHA"
 }
 
-run_stage
-grep -q '^backup-cron install$' "$TEST_LOG"
-grep -q '^caddy closed$' "$TEST_LOG"
-grep -q 'docker compose .* stop systemforge-web systemforge-api systemforge-worker systemforge-migrate$' "$TEST_LOG"
-test "$(grep -c '^docker image inspect ' "$TEST_LOG")" -eq 3
+set +e
+run_stage >/dev/null 2>&1
+UNAPPROVED_STATUS=$?
+set -e
+test "$UNAPPROVED_STATUS" -eq 78
+test ! -s "$TEST_LOG"
 
-: > "$TEST_LOG"
-FAKE_PUBLIC_RELEASE_ENABLED=true
-export FAKE_PUBLIC_RELEASE_ENABLED
+FAKE_RELEASE_CONFIRMATION=AUTHORIZE_SYSTEMFORGE_PRODUCTION_RELEASE_WRONG
+export FAKE_RELEASE_CONFIRMATION
+set +e
+run_stage >/dev/null 2>&1
+WRONG_CONFIRMATION_STATUS=$?
+set -e
+test "$WRONG_CONFIRMATION_STATUS" -eq 78
+test ! -s "$TEST_LOG"
+
+FAKE_RELEASE_CONFIRMATION=AUTHORIZE_SYSTEMFORGE_PRODUCTION_RELEASE
+export FAKE_RELEASE_CONFIRMATION
 run_stage
 grep -q '^backup-cron install$' "$TEST_LOG"
 test "$(grep -c '^caddy ' "$TEST_LOG" || true)" -eq 0
@@ -78,9 +80,8 @@ test "$(grep -c 'docker compose ' "$TEST_LOG" || true)" -eq 0
 test "$(grep -c '^docker image inspect ' "$TEST_LOG")" -eq 3
 
 : > "$TEST_LOG"
-FAKE_PUBLIC_RELEASE_ENABLED=false
 FAKE_MISSING_IMAGE="systemforge-worker:$DEPLOY_SHA"
-export FAKE_PUBLIC_RELEASE_ENABLED FAKE_MISSING_IMAGE
+export FAKE_MISSING_IMAGE
 set +e
 run_stage >/dev/null 2>&1
 MISSING_IMAGE_STATUS=$?

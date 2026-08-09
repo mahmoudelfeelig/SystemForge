@@ -1,12 +1,18 @@
 {
   "name": "SystemForge",
   "short_name": "SystemForge",
-  "description": "A deterministic distributed-systems laboratory.",
+  "description": "Build a topology, run workloads and failures, and trace bottlenecks in your browser.",
   "start_url": "/lab",
   "display": "standalone",
   "background_color": "#071015",
   "theme_color": "#071015",
   "icons": [
+    {
+      "src": "/assets/mahmoud-elephant-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/assets/mahmoud-elephant.png",
       "sizes": "512x512",

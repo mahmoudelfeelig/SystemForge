@@ -4,6 +4,7 @@ set -eu
 WORKFLOW=.github/workflows/deploy-hetzner.yml
 CI_WORKFLOW=.github/workflows/ci.yml
 TEST_ROOT=$(mktemp -d)
+VALIDATE_BLOCK="$TEST_ROOT/validate"
 STAGE_BLOCK="$TEST_ROOT/stage"
 DEPLOY_BLOCK="$TEST_ROOT/deploy"
 
@@ -12,6 +13,11 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+awk '
+  /^  validate:/ { selected = 1 }
+  /^  stage:/ { selected = 0 }
+  selected { print }
+' "$WORKFLOW" > "$VALIDATE_BLOCK"
 awk '
   /^  stage:/ { selected = 1 }
   /^  deploy:/ { selected = 0 }
@@ -22,38 +28,90 @@ awk '
   selected { print }
 ' "$WORKFLOW" > "$DEPLOY_BLOCK"
 
-# Every trusted green main CI run stages the immutable image bundle on Hetzner.
-# Public deployment remains a separate job guarded by both approval variables.
-grep -Fq 'github.event.workflow_run.conclusion == '\''success'\''' "$STAGE_BLOCK"
-grep -Fq 'github.event.workflow_run.event == '\''push'\''' "$STAGE_BLOCK"
-grep -Fq 'github.event.workflow_run.head_branch == '\''main'\''' "$STAGE_BLOCK"
-grep -Fq 'github.event.workflow_run.head_repository.full_name == github.repository' "$STAGE_BLOCK"
-grep -Fq 'SYSTEMFORGE_PUBLIC_RELEASE_ENABLED=$PUBLIC_RELEASE_ENABLED' "$STAGE_BLOCK"
-grep -Fq 'sh scripts/stage_hetzner.sh \"$DEPLOY_SHA\"' "$STAGE_BLOCK"
-grep -Fq 'test -z \"\$(git status --porcelain)\"' "$STAGE_BLOCK"
-grep -Fq 'staged: ${{ steps.stage.outputs.staged }}' "$STAGE_BLOCK"
-grep -Fq 'public_release_enabled: ${{ steps.stage.outputs.public_release_enabled }}' "$STAGE_BLOCK"
-grep -Fq 'id: stage' "$STAGE_BLOCK"
-grep -Fq 'exit 75' "$STAGE_BLOCK"
-grep -Fq 'echo "staged=false" >> "$GITHUB_OUTPUT"' "$STAGE_BLOCK"
-grep -Fq 'echo "public_release_enabled=$PUBLIC_RELEASE_ENABLED" >> "$GITHUB_OUTPUT"' "$STAGE_BLOCK"
-if grep -Fq "vars.HETZNER_DEPLOY_ENABLED == 'true'" "$STAGE_BLOCK"; then
-  echo "Hetzner staging must not be disabled by the public deployment gate." >&2
+# Production mutation is possible only through an explicit dispatch whose
+# requested SHA and run ID are independently validated against trusted main CI.
+grep -Fq 'workflow_dispatch:' "$WORKFLOW"
+grep -Fq 'release_sha:' "$WORKFLOW"
+grep -Fq 'ci_run_id:' "$WORKFLOW"
+grep -Fq 'confirmation:' "$WORKFLOW"
+grep -Fq 'Type AUTHORIZE_SYSTEMFORGE_PRODUCTION_RELEASE exactly' "$WORKFLOW"
+if grep -Fq 'workflow_run:' "$WORKFLOW"; then
+  echo "Production deployment must not trigger automatically after CI." >&2
   exit 1
 fi
 
-grep -Fq 'needs: stage' "$DEPLOY_BLOCK"
-grep -Fq "needs.stage.outputs.staged == 'true'" "$DEPLOY_BLOCK"
-grep -Fq "needs.stage.outputs.public_release_enabled == 'true'" "$DEPLOY_BLOCK"
-if grep -Eq 'vars\.(HETZNER_DEPLOY_ENABLED|SYSTEMFORGE_RELEASE_APPROVED)' "$DEPLOY_BLOCK"; then
-  echo "The deploy job gate must use the stage output because environment variables are unavailable before job start." >&2
+grep -Fq 'CI_RUN_ID: ${{ inputs.ci_run_id }}' "$VALIDATE_BLOCK"
+grep -Fq 'DISPATCH_REF: ${{ github.ref }}' "$VALIDATE_BLOCK"
+grep -Fq 'DISPATCH_SHA: ${{ github.sha }}' "$VALIDATE_BLOCK"
+grep -Fq 'RELEASE_CONFIRMATION: ${{ inputs.confirmation }}' "$VALIDATE_BLOCK"
+grep -Fq 'RELEASE_SHA: ${{ inputs.release_sha }}' "$VALIDATE_BLOCK"
+grep -Fq 'test "$RELEASE_CONFIRMATION" != AUTHORIZE_SYSTEMFORGE_PRODUCTION_RELEASE' "$VALIDATE_BLOCK"
+grep -Fq 'test "${#RELEASE_SHA}" -ne 40' "$VALIDATE_BLOCK"
+grep -Fq '*[!0-9a-f]*)' "$VALIDATE_BLOCK"
+grep -Fq '""|*[!0-9]*)' "$VALIDATE_BLOCK"
+grep -Fq 'test "$DISPATCH_REF" != refs/heads/main' "$VALIDATE_BLOCK"
+grep -Fq 'test "$DISPATCH_SHA" != "$RELEASE_SHA"' "$VALIDATE_BLOCK"
+grep -Fq '"$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID"' "$VALIDATE_BLOCK"
+grep -Fq '(.id | tostring) == $run_id' "$VALIDATE_BLOCK"
+grep -Fq '.status == "completed"' "$VALIDATE_BLOCK"
+grep -Fq '.conclusion == "success"' "$VALIDATE_BLOCK"
+grep -Fq '.event == "push"' "$VALIDATE_BLOCK"
+grep -Fq '.head_branch == "main"' "$VALIDATE_BLOCK"
+grep -Fq '.head_sha == $sha' "$VALIDATE_BLOCK"
+grep -Fq '.repository.full_name == $repo' "$VALIDATE_BLOCK"
+grep -Fq '.head_repository.full_name == $repo' "$VALIDATE_BLOCK"
+grep -Fq '.name == "SystemForge CI"' "$VALIDATE_BLOCK"
+grep -Fq '.path == ".github/workflows/ci.yml"' "$VALIDATE_BLOCK"
+grep -Fq '"$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/heads/main"' "$VALIDATE_BLOCK"
+grep -Fq 'exit 75' "$VALIDATE_BLOCK"
+
+grep -Fq 'needs: validate' "$STAGE_BLOCK"
+grep -Fq 'environment: production' "$STAGE_BLOCK"
+grep -Fq 'name: systemforge-images-${{ needs.validate.outputs.release_sha }}' "$STAGE_BLOCK"
+grep -Fq 'run-id: ${{ needs.validate.outputs.ci_run_id }}' "$STAGE_BLOCK"
+grep -Fq 'DEPLOY_SHA: ${{ needs.validate.outputs.release_sha }}' "$STAGE_BLOCK"
+grep -Fq 'RELEASE_CONFIRMATION: ${{ inputs.confirmation }}' "$STAGE_BLOCK"
+grep -Fq 'SYSTEMFORGE_RELEASE_CONFIRMATION=$RELEASE_CONFIRMATION' "$STAGE_BLOCK"
+grep -Fq 'sh scripts/stage_hetzner.sh \"$DEPLOY_SHA\"' "$STAGE_BLOCK"
+grep -Fq 'test -z \"\$(git status --porcelain)\"' "$STAGE_BLOCK"
+grep -Fq 'exit 75' "$STAGE_BLOCK"
+
+grep -Fq 'needs: [validate, stage]' "$DEPLOY_BLOCK"
+grep -Fq 'environment: production' "$DEPLOY_BLOCK"
+grep -Fq 'DEPLOY_SHA: ${{ needs.validate.outputs.release_sha }}' "$DEPLOY_BLOCK"
+grep -Fq 'Revalidate the release before production mutation' "$DEPLOY_BLOCK"
+grep -Fq 'systemforge-main-ref-before-deploy.json' "$DEPLOY_BLOCK"
+grep -Fq 'superseded before production mutation' "$DEPLOY_BLOCK"
+grep -Fq 'exit 75' "$DEPLOY_BLOCK"
+if grep -Eq 'vars\.(HETZNER_DEPLOY_ENABLED|SYSTEMFORGE_RELEASE_APPROVED)' "$WORKFLOW"; then
+  echo "Production approval must come from the one-time dispatch, not persistent variables." >&2
   exit 1
 fi
-grep -Fq "github.event.workflow_run.conclusion == 'success'" "$DEPLOY_BLOCK"
-grep -Fq "github.event.workflow_run.event == 'push'" "$DEPLOY_BLOCK"
-grep -Fq "github.event.workflow_run.head_branch == 'main'" "$DEPLOY_BLOCK"
-grep -Fq "github.event.workflow_run.head_repository.full_name == github.repository" "$DEPLOY_BLOCK"
-grep -Fq 'DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}' "$WORKFLOW"
+if grep -Eq 'github\.event\.workflow_run|SYSTEMFORGE_PUBLIC_RELEASE_ENABLED|staged=false|0\|75' "$WORKFLOW"; then
+  echo "Superseded or unapproved releases must fail instead of being treated as successful no-ops." >&2
+  exit 1
+fi
+
+VALIDATION_LINE=$(grep -nF 'jq --exit-status' "$WORKFLOW" | head -1 | cut -d: -f1)
+DISPATCH_GATE_LINE=$(grep -nF 'test "$DISPATCH_REF" != refs/heads/main' "$WORKFLOW" | cut -d: -f1)
+RUN_API_LINE=$(grep -nF 'actions/runs/$CI_RUN_ID' "$WORKFLOW" | cut -d: -f1)
+ARTIFACT_LINE=$(grep -nF 'uses: actions/download-artifact@' "$WORKFLOW" | head -1 | cut -d: -f1)
+SECRET_LINE=$(grep -nF 'secrets.HETZNER_SSH_PRIVATE_KEY' "$WORKFLOW" | head -1 | cut -d: -f1)
+test "$DISPATCH_GATE_LINE" -lt "$RUN_API_LINE"
+test "$DISPATCH_GATE_LINE" -lt "$ARTIFACT_LINE"
+test "$DISPATCH_GATE_LINE" -lt "$SECRET_LINE"
+test "$VALIDATION_LINE" -lt "$ARTIFACT_LINE"
+test "$VALIDATION_LINE" -lt "$SECRET_LINE"
+
+GATE_LINE=$(grep -nF 'SYSTEMFORGE_RELEASE_CONFIRMATION:-' scripts/stage_hetzner.sh | cut -d: -f1)
+MUTATION_LINE=$(grep -nF 'install_backup_cron.sh' scripts/stage_hetzner.sh | cut -d: -f1)
+test "$GATE_LINE" -lt "$MUTATION_LINE"
+grep -Fq 'exit 78' scripts/stage_hetzner.sh
+if grep -Eq 'install_caddy_route\.sh|docker compose|SYSTEMFORGE_PUBLIC_RELEASE_ENABLED' scripts/stage_hetzner.sh; then
+  echo "Staging must not close routes or stop live services." >&2
+  exit 1
+fi
+
 grep -Fq 'R2_ACCESS_KEY_ID: ${{ secrets.SYSTEMFORGE_R2_ACCESS_KEY_ID }}' "$DEPLOY_BLOCK"
 grep -Fq 'R2_ACCOUNT_ID: ${{ vars.SYSTEMFORGE_R2_ACCOUNT_ID }}' "$DEPLOY_BLOCK"
 grep -Fq 'R2_BUCKET: ${{ vars.SYSTEMFORGE_R2_BUCKET }}' "$DEPLOY_BLOCK"
@@ -72,6 +130,12 @@ grep -Fq 'sh scripts/provision_offsite_backup.sh' "$DEPLOY_BLOCK"
 grep -Fq 'sh scripts/provision_offsite_backup.test.sh' "$CI_WORKFLOW"
 PROVISION_LINE=$(grep -nF 'sh scripts/provision_offsite_backup.sh' "$DEPLOY_BLOCK" | cut -d: -f1)
 DEPLOY_LINE=$(grep -nF 'sh scripts/deploy_hetzner.sh' "$DEPLOY_BLOCK" | cut -d: -f1)
+REVALIDATE_LINE=$(grep -nF 'Revalidate the release before production mutation' "$DEPLOY_BLOCK" | cut -d: -f1)
+BACKUP_SCP_LINE=$(grep -nF '"$SSH_USER@$SSH_HOST:/tmp/"' "$DEPLOY_BLOCK" | head -1 | cut -d: -f1)
+PROVISION_FETCH_LINE=$(grep -nF 'git fetch origin main' "$DEPLOY_BLOCK" | head -1 | cut -d: -f1)
+test "$(grep -cF 'git fetch origin main' "$DEPLOY_BLOCK")" -ge 2
+test "$REVALIDATE_LINE" -lt "$BACKUP_SCP_LINE"
+test "$PROVISION_FETCH_LINE" -lt "$PROVISION_LINE"
 test "$PROVISION_LINE" -lt "$DEPLOY_LINE"
 
 # The release script opens the approved route only after in-network smoke and
@@ -116,9 +180,13 @@ grep -Fq 'sh "$APP_DIR/scripts/verify_release_backups.sh"' scripts/deploy_hetzne
 grep -Fq 'sh "$RESTORE_VERIFIER" "$RESTORED_DUMP"' scripts/verify_offsite_restore.sh
 grep -Fq 'sh "$APP_DIR/scripts/install_caddy_route.sh" open' scripts/deploy_hetzner.sh
 grep -Fq 'sh "$APP_DIR/scripts/install_caddy_route.sh" closed' scripts/deploy_hetzner.sh
+if grep -Fq 'PUBLIC_ROUTE_INSTALLED' scripts/deploy_hetzner.sh; then
+  echo "First-release rollback must always restore the closed route." >&2
+  exit 1
+fi
 grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8' "$WORKFLOW"
 grep -Fq 'actions: read' "$WORKFLOW"
-grep -Fq 'run-id: ${{ github.event.workflow_run.id }}' "$WORKFLOW"
+grep -Fq 'run-id: ${{ needs.validate.outputs.ci_run_id }}' "$WORKFLOW"
 grep -Fq 'docker load --input /tmp/systemforge-images-$DEPLOY_SHA.tar.gz' "$WORKFLOW"
 FETCH_LINE=$(grep -nF 'git fetch origin main' "$STAGE_BLOCK" | head -1 | cut -d: -f1)
 LOAD_LINE=$(grep -nF 'docker load --input /tmp/systemforge-images-$DEPLOY_SHA.tar.gz' "$STAGE_BLOCK" | cut -d: -f1)

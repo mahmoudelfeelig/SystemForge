@@ -28,6 +28,8 @@ const config: ApiConfig = {
   maxSolverResultBytes: 4_000_000,
   rateLimitMax: 100,
   rateLimitWindow: "1 minute",
+  scenarioRateLimitMax: 10,
+  scenarioRateLimitWindow: "1 day",
 };
 
 let app: FastifyInstance | undefined;

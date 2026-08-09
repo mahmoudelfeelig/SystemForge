@@ -1,5 +1,10 @@
 import {
+  ArrowClockwise,
   CheckCircle,
+  FlowArrow,
+  HardDrives,
+  Pulse,
+  Queue,
   Warning,
   WarningOctagon,
   XCircle,
@@ -7,9 +12,10 @@ import {
 import type {
   ArchitectureNode,
   NodeMetricSnapshot,
+  SampledSpan,
 } from "@systemforge/contracts";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { COMPONENT_ICONS } from "./componentIcons";
 
 export interface SystemNodeData extends Record<string, unknown> {
@@ -19,6 +25,12 @@ export interface SystemNodeData extends Record<string, unknown> {
   causalFocus: boolean;
   throughputRps?: number;
   history: number[];
+  pathPlayback?: {
+    role: "node" | "source" | "target";
+    kind: SampledSpan["kind"];
+    status: SampledSpan["status"];
+    failureCause?: SampledSpan["failureCause"];
+  };
 }
 
 export type SystemFlowNode = Node<SystemNodeData, "system">;
@@ -27,7 +39,7 @@ const metricLabel = (
   component: ArchitectureNode,
   metrics: NodeMetricSnapshot | undefined,
 ): string => {
-  if (!metrics) return "capacity armed";
+  if (!metrics) return "modeled result unavailable";
   if (component.kind === "database")
     return `${Math.round(metrics.iopsUtilization * 100)}% IOPS · ${Math.round(metrics.connectionUtilization * 100)}% CONN`;
   if (component.kind === "queue" || component.kind === "stream")
@@ -42,6 +54,35 @@ const primaryMetric = (
   metrics: NodeMetricSnapshot | undefined,
   throughputRps: number | undefined,
 ): { value: string; label: string } => {
+  if (!metrics) {
+    if (
+      component.kind === "users" ||
+      component.kind === "database" ||
+      component.kind === "queue" ||
+      component.kind === "stream" ||
+      component.kind === "network" ||
+      component.kind === "cdn"
+    ) {
+      return {
+        value: "—",
+        label:
+          component.kind === "users"
+            ? "RPS"
+            : component.kind === "database"
+              ? "IOPS"
+              : component.kind === "queue" || component.kind === "stream"
+                ? "queued"
+                : "network",
+      };
+    }
+    return {
+      value: String(component.config.instances),
+      label:
+        component.config.instances === 1
+          ? "configured instance"
+          : "configured instances",
+    };
+  }
   if (component.kind === "users")
     return {
       value: Math.round(throughputRps ?? 0).toLocaleString(),
@@ -110,11 +151,23 @@ function NodeSparkline({ values }: { values: number[] }) {
 export function ComponentNode({ data, selected }: NodeProps<SystemFlowNode>) {
   const { component, metrics } = data;
   const Icon = COMPONENT_ICONS[component.kind];
-  const state = metrics?.state ?? "healthy";
+  const state = metrics?.state ?? "not-run";
+  const topology = component.config.behavior?.topology;
   const utilization = metrics?.utilization ?? 0;
   const primary = primaryMetric(component, metrics, data.throughputRps);
-  const StateIcon =
-    state === "offline"
+  const pathPlayback = data.pathPlayback;
+  const PathIcon = pathPlayback?.failureCause
+    ? WarningOctagon
+    : pathPlayback?.kind === "retry"
+      ? ArrowClockwise
+      : pathPlayback?.kind === "cache"
+        ? HardDrives
+        : pathPlayback?.kind === "async-queue"
+          ? Queue
+          : FlowArrow;
+  const StateIcon = !metrics
+    ? Pulse
+    : state === "offline"
       ? XCircle
       : state === "critical"
         ? WarningOctagon
@@ -124,8 +177,20 @@ export function ComponentNode({ data, selected }: NodeProps<SystemFlowNode>) {
 
   return (
     <article
-      className={`system-node system-node--kind-${component.kind} system-node--${state} ${selected ? "system-node--selected" : ""} ${data.causalFocus ? "system-node--causal" : ""}`}
-      aria-label={`${component.name}, ${state}, ${Math.round(utilization * 100)} percent utilized`}
+      className={`system-node system-node--kind-${component.kind} system-node--${state} ${selected ? "system-node--selected" : ""} ${data.causalFocus ? "system-node--causal" : ""} ${pathPlayback ? `system-node--path system-node--path-${pathPlayback.role} system-node--path-${pathPlayback.status}` : ""}`}
+      aria-label={
+        metrics
+          ? `${component.name}, ${state}, ${Math.round(utilization * 100)} percent utilized`
+          : `${component.name}, not run, utilization unavailable`
+      }
+      style={
+        metrics
+          ? undefined
+          : ({
+              "--node-health": "var(--muted)",
+              boxShadow: "inset 0 0 18px rgba(126, 150, 161, 0.025)",
+            } as CSSProperties)
+      }
     >
       <Handle type="target" position={Position.Left} />
       <header>
@@ -133,14 +198,17 @@ export function ComponentNode({ data, selected }: NodeProps<SystemFlowNode>) {
           <Icon size={15} weight="duotone" />
         </span>
         <div>
-          <small>{component.kind.replaceAll("-", " ")}</small>
+          <small>
+            {component.kind.replaceAll("-", " ")}
+            {topology?.region ? ` · ${topology.region}` : ""}
+          </small>
           <strong>{component.name}</strong>
         </div>
         <StateIcon
           className="system-node__state"
           size={15}
-          weight="fill"
-          aria-label={state}
+          weight={metrics ? "fill" : "regular"}
+          aria-label={metrics ? state : "not run"}
         />
       </header>
       <div className="system-node__readout">
@@ -148,7 +216,7 @@ export function ComponentNode({ data, selected }: NodeProps<SystemFlowNode>) {
           <strong>{primary.value}</strong>
           <small>{primary.label}</small>
         </span>
-        <NodeSparkline values={data.history} />
+        <NodeSparkline values={metrics ? data.history : []} />
       </div>
       <span className="system-node__track" aria-hidden="true">
         <span style={{ width: `${Math.min(100, utilization * 100)}%` }} />
@@ -156,9 +224,20 @@ export function ComponentNode({ data, selected }: NodeProps<SystemFlowNode>) {
       <footer>
         <span>{metricLabel(component, metrics)}</span>
         <small>
-          {Math.round(utilization * 100)}% {state}
+          {metrics ? `${Math.round(utilization * 100)}% ${state}` : "not run"}
+          {topology?.failureDomain ? ` · ${topology.failureDomain}` : ""}
         </small>
       </footer>
+      {pathPlayback ? (
+        <span
+          className="system-node__path-badge"
+          aria-label={`Path playback ${pathPlayback.kind.replaceAll("-", " ")} ${pathPlayback.role}${pathPlayback.failureCause ? `, failure ${pathPlayback.failureCause.replaceAll("-", " ")}` : ""}`}
+        >
+          <PathIcon size={11} weight="duotone" aria-hidden="true" />
+          <b>{pathPlayback.failureCause ? "failure" : pathPlayback.kind}</b>
+          <small>{pathPlayback.role}</small>
+        </span>
+      ) : null}
       <Handle type="source" position={Position.Right} />
     </article>
   );
