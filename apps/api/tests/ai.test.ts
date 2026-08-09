@@ -26,6 +26,7 @@ import {
   MAX_AI_DAILY_REQUESTS,
   MAX_AI_MONTHLY_RESERVED_COST_CENTS,
   MAX_AI_TIMEOUT_MS,
+  MIN_CLOUDFLARE_AI_TIMEOUT_MS,
   OpenAiResponsesProvider,
   createConfiguredAiProvider,
   type AiProvider,
@@ -171,6 +172,7 @@ describe("optional AI provider boundary", () => {
       "cf-aig-collect-log": "false",
       "cf-aig-skip-cache": "true",
       "cf-aig-max-attempts": "1",
+      "cf-aig-request-timeout": String(MIN_CLOUDFLARE_AI_TIMEOUT_MS - 1_000),
     });
     if (typeof init?.body !== "string")
       throw new Error("Expected a serialized provider request body.");

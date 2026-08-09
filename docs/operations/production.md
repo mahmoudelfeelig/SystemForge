@@ -96,7 +96,9 @@ Optional AI assistance remains off unless the API container receives all of:
 - `SYSTEMFORGE_AI_MODEL=@cf/openai/gpt-oss-20b`;
 - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_GATEWAY_ID`;
 - `CLOUDFLARE_AI_API_TOKEN` as an API-only secret;
-- optional `SYSTEMFORGE_AI_TIMEOUT_MS`, bounded by the service.
+- `SYSTEMFORGE_AI_TIMEOUT_MS=30000`; Cloudflare inference is held to a
+  30-second ceiling even when an older deployment still carries a shorter
+  legacy value.
 
 Do not use a `VITE_*` variable for any AI credential or model setting, and do
 not add these values to the web or worker containers. The adapter uses

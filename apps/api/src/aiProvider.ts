@@ -7,7 +7,8 @@ import type { ZodType } from "zod";
 export const MAX_AI_PROVIDER_RESPONSE_BYTES = 32_000;
 export const MAX_AI_PROVIDER_REQUEST_BYTES = 96_000;
 export const DEFAULT_AI_TIMEOUT_MS = 12_000;
-export const MAX_AI_TIMEOUT_MS = 14_000;
+export const MIN_CLOUDFLARE_AI_TIMEOUT_MS = 30_000;
+export const MAX_AI_TIMEOUT_MS = 30_000;
 export const MAX_AI_DAILY_REQUESTS = 10;
 export const MAX_AI_MONTHLY_RESERVED_COST_CENTS = 400;
 export const CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST = 5;
@@ -325,6 +326,10 @@ export class CloudflareWorkersAiResponsesProvider extends ResponsesApiProvider {
     fetchImplementation: typeof fetch = fetch,
     timeoutMs = DEFAULT_AI_TIMEOUT_MS,
   ) {
+    const effectiveTimeoutMs = Math.max(
+      MIN_CLOUDFLARE_AI_TIMEOUT_MS,
+      timeoutMs,
+    );
     super(
       {
         endpoint: `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`,
@@ -338,12 +343,13 @@ export class CloudflareWorkersAiResponsesProvider extends ResponsesApiProvider {
           "cf-aig-collect-log": "false",
           "cf-aig-skip-cache": "true",
           "cf-aig-max-attempts": "1",
+          "cf-aig-request-timeout": String(effectiveTimeoutMs - 1_000),
         },
         reservedCostCents: CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
         format: "chat-completions",
       },
       fetchImplementation,
-      timeoutMs,
+      effectiveTimeoutMs,
     );
   }
 }
