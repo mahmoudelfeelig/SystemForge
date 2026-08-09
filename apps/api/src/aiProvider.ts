@@ -7,6 +7,7 @@ import type { ZodType } from "zod";
 export const MAX_AI_PROVIDER_RESPONSE_BYTES = 32_000;
 export const MAX_AI_PROVIDER_REQUEST_BYTES = 96_000;
 export const DEFAULT_AI_TIMEOUT_MS = 12_000;
+export const MAX_AI_TIMEOUT_MS = 14_000;
 export const MAX_AI_DAILY_REQUESTS = 10;
 export const MAX_AI_MONTHLY_RESERVED_COST_CENTS = 400;
 export const CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST = 5;
@@ -365,7 +366,7 @@ export const createConfiguredAiProvider = (
     10,
   );
   const timeoutMs = Number.isFinite(parsedTimeout)
-    ? Math.max(1_000, Math.min(14_000, parsedTimeout))
+    ? Math.max(1_000, Math.min(MAX_AI_TIMEOUT_MS, parsedTimeout))
     : DEFAULT_AI_TIMEOUT_MS;
   if (providerId === "cloudflare-workers-ai-responses") {
     const accountId = environment.CLOUDFLARE_ACCOUNT_ID?.trim();

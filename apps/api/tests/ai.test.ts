@@ -25,12 +25,18 @@ import {
   CloudflareWorkersAiResponsesProvider,
   MAX_AI_DAILY_REQUESTS,
   MAX_AI_MONTHLY_RESERVED_COST_CENTS,
+  MAX_AI_TIMEOUT_MS,
   OpenAiResponsesProvider,
   createConfiguredAiProvider,
   type AiProvider,
   type AiStructuredGenerationRequest,
 } from "../src/aiProvider";
-import { bindAiDisconnectAbort, buildApp } from "../src/app";
+import {
+  API_CONNECTION_TIMEOUT_MS,
+  API_REQUEST_TIMEOUT_MS,
+  bindAiDisconnectAbort,
+  buildApp,
+} from "../src/app";
 import type { ApiConfig } from "../src/config";
 import { MemoryControlStore } from "../src/memoryStore";
 
@@ -98,6 +104,14 @@ afterEach(async () => {
 });
 
 describe("optional AI provider boundary", () => {
+  it("keeps HTTP requests open beyond the maximum provider deadline", async () => {
+    app = await buildApp(config, new MemoryControlStore());
+
+    expect(API_CONNECTION_TIMEOUT_MS).toBeGreaterThan(MAX_AI_TIMEOUT_MS);
+    expect(API_REQUEST_TIMEOUT_MS).toBeGreaterThan(MAX_AI_TIMEOUT_MS);
+    expect(app.initialConfig.connectionTimeout).toBe(API_CONNECTION_TIMEOUT_MS);
+  });
+
   it("stays disabled by default and fails closed on partial configuration", () => {
     expect(createConfiguredAiProvider({})).toBeNull();
     expect(() =>

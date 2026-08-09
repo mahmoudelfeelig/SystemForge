@@ -38,6 +38,7 @@ import {
   CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
   MAX_AI_DAILY_REQUESTS,
   MAX_AI_MONTHLY_RESERVED_COST_CENTS,
+  MAX_AI_TIMEOUT_MS,
   type AiProvider,
 } from "./aiProvider";
 import type { ApiConfig } from "./config";
@@ -51,6 +52,9 @@ import {
 import { runMatchesSharedScenario } from "./sharedScenarioBinding";
 
 export type { SolverRunner } from "./runSolverInThread";
+
+export const API_REQUEST_TIMEOUT_MS = MAX_AI_TIMEOUT_MS + 6_000;
+export const API_CONNECTION_TIMEOUT_MS = MAX_AI_TIMEOUT_MS + 6_000;
 
 const solverWeightsSchema = z
   .object({
@@ -189,8 +193,8 @@ export async function buildApp(
     logger: process.env.NODE_ENV !== "test",
     trustProxy: config.trustProxy,
     bodyLimit: 1_048_576,
-    requestTimeout: 15_000,
-    connectionTimeout: 8_000,
+    requestTimeout: API_REQUEST_TIMEOUT_MS,
+    connectionTimeout: API_CONNECTION_TIMEOUT_MS,
   });
 
   await app.register(helmet, {
