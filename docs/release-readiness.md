@@ -2,10 +2,12 @@
 
 ## Current status — 2026-08-09
 
-The current uncommitted checkout is a locally verified candidate, not yet an
-immutable release candidate. It is not the build currently served at
-`systemforge.elfeel.me`, and no deployment, commit, push, or production
-mutation was performed during this pass.
+The reviewed release candidate was committed as
+`257ebee73123d4a86fcd6b46873c748ca406bc9b`, passed protected push CI run
+`31323801471`, and was manually promoted by exact-SHA deployment run
+`31324114324`. The immutable web, API, and worker images, high-severity image
+scans, PostgreSQL migrations, container integration, overload behavior,
+encrypted backup, and restore gates all passed before the public route opened.
 
 Current local evidence:
 
@@ -35,9 +37,9 @@ Current local evidence:
 - `pnpm audit --prod --audit-level=high` reported no known production
   dependency vulnerabilities. Shell, workflow, service-worker, overload,
   edge, Cloudflare-range, backup, provisioning, and release-backup contracts
-  passed. Docker Compose, Caddy-container, PostgreSQL, image-scan, and full
-  container integration checks were not rerun because the local Docker daemon
-  was unavailable; protected CI must supply that evidence for the exact SHA.
+  passed. Protected CI supplied the Docker Compose, PostgreSQL,
+  immutable-image, scan, backup, restore, and full container-integration
+  evidence for the exact promoted SHA.
 - Independent engine, privacy, async-state, static-delivery, AI-boundary,
   workflow, and UI acceptance reviews found no surviving source-confirmed or
   browser-confirmed P0, P1, or P2 issue in the current checkout.
@@ -64,26 +66,21 @@ configuration was exercised. The browser pass also does not
 constitute a screen-reader certification, target-device Core Web Vitals run,
 or physical-device install test. The offline evidence used an already warmed
 service worker rather than a first-install cold PWA, and the manifest still
-lacks a safe-zone-tested maskable icon. These are recorded local limitations,
-not evidence that the stale hosted deployment is ready.
+lacks a safe-zone-tested maskable icon. These are recorded external-validation
+limitations, not evidence supplied by the automated release.
 
-The hosted production site is **NO-GO** until the current checkout is committed,
-tested as an immutable revision, explicitly authorized for deployment, and
-re-audited. The fresh 2026-08-09 live audit found an older engine 0.3.0 build,
-missing Replay routing, soft unknown-route behavior, SPA HTML at the robots,
-sitemap, asset-manifest, and asset-precache URLs, a stale web manifest with the
-wrong MIME type, an obsolete service worker, and the old 1.21 MB blueprint PNG.
-Cloudflare also injected an inline challenge-platform loader that the
-intentionally strict `script-src 'self'` policy blocked. The release candidate
-now emits `Cache-Control: no-transform` for HTML so Cloudflare does not alter
-the application document, while retaining the strict CSP. The live deployment
-must prove that the injected challenge and analytics scripts are absent.
-
-Promotion still requires the exact committed SHA to pass protected CI and image
-gates, an explicit owner deployment authorization, cache purge of the affected
-special URLs, public revision evidence, and a fresh live route, header, mobile,
-offline, and canonical-run audit. Local success does not satisfy those hosted
-gates.
+The first post-promotion live matrix confirmed the current application shell,
+engine 0.7.0 assets, Replay route, crawl files, manifest MIME, service worker,
+shared-link noindex, API readiness, strict CSP, and `no-transform` responses.
+Known SPA routes returned 200, unknown routes returned a real 404, and the old
+Cloudflare script injections were absent from application HTML. The audit also
+found that nginx returned its generic 404 body instead of the application route
+state and that Cloudflare still served the removed 1.21 MB blueprint PNG from
+an old immutable cache key even though a cache-busted origin request returned 404. The current follow-up keeps the real 404 status while serving the
+accessible application route state and adds an explicitly confirmed external
+Edge acceptance mode. That follow-up still requires exact-SHA CI, manual
+promotion, a full public browser pass, and a Cloudflare purge of the legacy PNG
+key before the hosted disposition can be recorded as fully clean.
 
 ## Historical release authorization and rehearsals
 

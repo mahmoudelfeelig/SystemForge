@@ -179,6 +179,26 @@ not re-enable HTML transformation for this hostname. The live browser audit
 must report no `static.cloudflareinsights.com` or
 `/cdn-cgi/challenge-platform/` script on application documents.
 
+After every promotion, run the tracked browser workflow directly against the
+public origin. External mode is deliberately fail-closed: it accepts only an
+HTTPS origin and requires an explicit production-audit confirmation. It uses an
+isolated browser profile, exercises browser-local authoring and simulation, and
+does not submit a canonical run or invoke an available AI provider.
+
+```sh
+SYSTEMFORGE_BROWSER_ORIGIN=https://systemforge.elfeel.me \
+SYSTEMFORGE_BROWSER_LIVE_CONFIRMATION=AUDIT_SYSTEMFORGE_PRODUCTION \
+pnpm test:browser
+```
+
+Purge Cloudflare cache entries for the shell routes, `manifest.webmanifest`,
+`robots.txt`, `sitemap.xml`, `sw.js`, `asset-manifest.json`,
+`asset-precache.json`, and any removed immutable asset path after promotion.
+Do not infer a purge from a cache-busted request: verify both the normal cache
+key and a fresh origin request. A removed immutable asset returning a cached
+200 on its ordinary URL while a cache-busted URL returns origin 404 is still a
+failed purge.
+
 Cloudflare recommends proxying HTTP records so traffic is protected at the edge and restricting origin traffic to Cloudflare address ranges. Current documentation: [Cloudflare IP addresses](https://developers.cloudflare.com/fundamentals/concepts/cloudflare-ip-addresses/), [proxied DNS records](https://developers.cloudflare.com/dns/manage-dns-records/reference/proxied-dns-records/), and [rate limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/).
 
 ## Deployment, rollback, and smoke checks

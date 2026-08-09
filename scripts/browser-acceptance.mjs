@@ -25,6 +25,31 @@ const BUILD_TIMEOUT_MS = 120_000;
 const ASSET_PREPARATION_TIMEOUT_MS = 60_000;
 const PROCESS_CLEANUP_TIMEOUT_MS = 10_000;
 const CDP_CONNECT_TIMEOUT_MS = 10_000;
+const PRODUCTION_AUDIT_CONFIRMATION = "AUDIT_SYSTEMFORGE_PRODUCTION";
+const requestedOrigin = process.env.SYSTEMFORGE_BROWSER_ORIGIN?.replace(
+  /\/$/,
+  "",
+);
+const externalOrigin = (() => {
+  if (!requestedOrigin) return null;
+  const url = new URL(requestedOrigin);
+  assert.equal(
+    url.origin,
+    requestedOrigin,
+    "SYSTEMFORGE_BROWSER_ORIGIN must contain only an HTTPS origin.",
+  );
+  assert.equal(
+    url.protocol,
+    "https:",
+    "External browser acceptance requires HTTPS.",
+  );
+  assert.equal(
+    process.env.SYSTEMFORGE_BROWSER_LIVE_CONFIRMATION,
+    PRODUCTION_AUDIT_CONFIRMATION,
+    `External browser acceptance requires SYSTEMFORGE_BROWSER_LIVE_CONFIRMATION=${PRODUCTION_AUDIT_CONFIRMATION}.`,
+  );
+  return url.origin;
+})();
 const report = {
   startedAt: new Date().toISOString(),
   browser: null,
@@ -38,6 +63,7 @@ const report = {
   expectedOfflineNetworkErrors: [],
   acceptanceDefects: [],
   result: "failed",
+  mode: externalOrigin ? "external" : "local-preview",
 };
 
 const commandOutput = (child) => {
@@ -153,7 +179,7 @@ const reservePort = async () => {
 const waitForHttp = async (url, child, output) => {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null)
+    if (child && child.exitCode !== null)
       throw new Error(`Preview stopped before it was ready.\n${output()}`);
     try {
       const response = await fetch(url, {
@@ -165,7 +191,9 @@ const waitForHttp = async (url, child, output) => {
     }
     await delay(100);
   }
-  throw new Error(`Preview did not become ready.\n${output()}`);
+  throw new Error(
+    `${child ? "Preview" : "External origin"} did not become ready.\n${output()}`,
+  );
 };
 
 const edgeCandidates = () => {
@@ -633,61 +661,67 @@ let profileDirectory = null;
 let executionPassed = false;
 
 try {
-  const build = spawn(process.execPath, [vite, "build"], {
-    cwd: webRoot,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const buildOutput = commandOutput(build);
-  try {
-    await waitForExit(build, "Production web build", BUILD_TIMEOUT_MS);
-  } catch (error) {
-    const buildError =
-      error instanceof Error ? error : new Error(String(error));
-    throw new Error(`${buildError.message}\n${buildOutput()}`, {
-      cause: error,
-    });
-  }
-  const prepare = spawn(process.execPath, [prepareSitesBuild], {
-    cwd: webRoot,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const prepareOutput = commandOutput(prepare);
-  try {
-    await waitForExit(
-      prepare,
-      "Production asset preparation",
-      ASSET_PREPARATION_TIMEOUT_MS,
-    );
-  } catch (error) {
-    const prepareError =
-      error instanceof Error ? error : new Error(String(error));
-    throw new Error(`${prepareError.message}\n${prepareOutput()}`, {
-      cause: error,
-    });
-  }
-
-  const previewPort = await reservePort();
-  const origin = `http://127.0.0.1:${previewPort}`;
-  report.origin = origin;
-  preview = spawn(
-    process.execPath,
-    [
-      vite,
-      "preview",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(previewPort),
-      "--strictPort",
-    ],
-    {
+  let origin = externalOrigin;
+  if (!origin) {
+    const build = spawn(process.execPath, [vite, "build"], {
       cwd: webRoot,
       stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    },
-  );
-  const previewOutput = commandOutput(preview);
-  await waitForHttp(origin, preview, previewOutput);
+    });
+    const buildOutput = commandOutput(build);
+    try {
+      await waitForExit(build, "Production web build", BUILD_TIMEOUT_MS);
+    } catch (error) {
+      const buildError =
+        error instanceof Error ? error : new Error(String(error));
+      throw new Error(`${buildError.message}\n${buildOutput()}`, {
+        cause: error,
+      });
+    }
+    const prepare = spawn(process.execPath, [prepareSitesBuild], {
+      cwd: webRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const prepareOutput = commandOutput(prepare);
+    try {
+      await waitForExit(
+        prepare,
+        "Production asset preparation",
+        ASSET_PREPARATION_TIMEOUT_MS,
+      );
+    } catch (error) {
+      const prepareError =
+        error instanceof Error ? error : new Error(String(error));
+      throw new Error(`${prepareError.message}\n${prepareOutput()}`, {
+        cause: error,
+      });
+    }
+
+    const previewPort = await reservePort();
+    origin = `http://127.0.0.1:${previewPort}`;
+    preview = spawn(
+      process.execPath,
+      [
+        vite,
+        "preview",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(previewPort),
+        "--strictPort",
+      ],
+      {
+        cwd: webRoot,
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      },
+    );
+    const previewOutput = commandOutput(preview);
+    await waitForHttp(origin, preview, previewOutput);
+  } else {
+    await waitForHttp(origin, null, () => "");
+  }
+  assert(origin);
+  report.origin = origin;
 
   const edgePath = await findEdge();
   profileDirectory = await mkdtemp(join(tmpdir(), "systemforge-edge-"));
@@ -778,17 +812,26 @@ try {
     if (offlineExpected) report.expectedOfflineNetworkErrors.push(failure);
     else report.networkErrors.push(failure);
   });
+  let externalNotFoundObserved = false;
   client.on("Network.responseReceived", (event) => {
     const status = event.response?.status ?? 0;
     if (status < 400) return;
     const url = event.response?.url ?? "unknown URL";
     let isAvailabilityProbe = false;
+    let isExpectedExternalNotFound = false;
     try {
-      isAvailabilityProbe = new URL(url).pathname.startsWith("/api/health/");
+      const pathname = new URL(url).pathname;
+      isAvailabilityProbe = pathname.startsWith("/api/health/");
+      isExpectedExternalNotFound =
+        externalOrigin !== null &&
+        status === 404 &&
+        pathname === "/acceptance-route-not-found";
     } catch {
       // Retain malformed response URLs as errors.
     }
-    if (!isAvailabilityProbe) report.networkErrors.push(`${status} ${url}`);
+    if (isExpectedExternalNotFound) externalNotFoundObserved = true;
+    else if (!isAvailabilityProbe)
+      report.networkErrors.push(`${status} ${url}`);
   });
 
   const routes = [
@@ -805,6 +848,12 @@ try {
     await navigate(client, `${origin}${route}`, readyText);
     await auditPage(client, route, "desktop-1440x900");
   }
+  if (externalOrigin)
+    assert.equal(
+      externalNotFoundObserved,
+      true,
+      "The external unknown route did not preserve HTTP 404.",
+    );
 
   await navigate(client, `${origin}/lab`, "SYSTEM TOPOLOGY");
   await openDecisionWorkbench(client);
@@ -885,27 +934,36 @@ try {
   await navigate(client, `${origin}/custom`, "Define the test");
   await waitFor(
     client,
-    'document.querySelector("[aria-label=\'AI drafting assistant\']")?.textContent?.includes("release-locked") === true',
-    "the release-locked AI capability state",
+    `(() => {
+      const panel = document.querySelector("[aria-label='AI drafting assistant']");
+      return Boolean(panel && [...panel.querySelectorAll("button")].some((button) => button.textContent?.includes("Prepare validated proposal")));
+    })()`,
+    "the bounded AI drafting assistant state",
+  );
+  const aiCapabilityState = await evaluate(
+    client,
+    `(() => {
+      const panel = document.querySelector("[aria-label='AI drafting assistant']");
+      const prepare = [...(panel?.querySelectorAll("button") || [])].find((button) => button.textContent?.includes("Prepare validated proposal"));
+      return {
+        available: Boolean(prepare && !prepare.disabled),
+        releaseLocked: Boolean(panel?.textContent?.includes("release-locked")),
+        manualFieldsPresent: Boolean(document.querySelector("input") && document.querySelector("textarea")),
+      };
+    })()`,
   );
   assert.equal(
-    await evaluate(
-      client,
-      `(() => {
-        const panel = document.querySelector("[aria-label='AI drafting assistant']");
-        const prepare = [...(panel?.querySelectorAll("button") || [])].find((button) => button.textContent?.includes("Prepare validated proposal"));
-        return Boolean(
-          panel
-          && prepare?.disabled
-          && panel.textContent?.includes("release-locked")
-          && document.querySelector("input")
-          && document.querySelector("textarea"),
-        );
-      })()`,
-    ),
+    aiCapabilityState.manualFieldsPresent,
     true,
-    "Capability-off AI state did not preserve and explain the manual workflow.",
+    "The AI boundary did not preserve the manual authoring workflow.",
   );
+  if (!externalOrigin)
+    assert.deepEqual(
+      aiCapabilityState,
+      { available: false, releaseLocked: true, manualFieldsPresent: true },
+      "The local capability-off AI boundary changed unexpectedly.",
+    );
+  report.aiCapabilityState = aiCapabilityState;
   const originalCustomLink = await readLabeledField(client, "Scenario link");
   const customTitle = "Edge acceptance checkout surge";
   await setLabeledField(client, "Scenario title", customTitle);
@@ -918,7 +976,10 @@ try {
     "the updated browser-local scenario link",
   );
   const customShareLink = await readLabeledField(client, "Scenario link");
-  assert.match(customShareLink, /^http:\/\/127\.0\.0\.1:\d+\/lab#share=/);
+  const customShareUrl = new URL(customShareLink);
+  assert.equal(customShareUrl.origin, origin);
+  assert.equal(customShareUrl.pathname, "/lab");
+  assert.match(customShareUrl.hash, /^#share=/);
   await clickControl(client, "Open in Lab");
   await waitFor(
     client,

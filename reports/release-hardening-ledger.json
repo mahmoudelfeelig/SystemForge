@@ -11,9 +11,9 @@
   },
   "currentSnapshot": {
     "recordedAt": "2026-08-09",
-    "checkoutState": "uncommitted working tree",
+    "checkoutState": "deployed release with a locally verified route-state follow-up",
     "localCandidate": {
-      "status": "verified_pending_immutable_release_gates",
+      "status": "verified_followup_pending_immutable_release_gates",
       "engineVersion": "0.7.0",
       "qualityGate": "a fresh complete isolated run passed after the bounded Cloudflare provider and edge-header changes",
       "functionalTests": "52 files and 412 tests passed",
@@ -27,14 +27,13 @@
       "independentAcceptance": "no surviving source-confirmed or browser-confirmed P0-P2 finding"
     },
     "hostedProduction": {
-      "status": "no_go_stale_deployment",
-      "evidence": "The live hostname serves an older engine 0.3.0 build with stale routing, SPA HTML at crawl and asset-manifest URLs, a stale web manifest with the wrong MIME type, service-worker v3 and the old blueprint PNG; a Cloudflare challenge-platform loader conflicts with the strict application CSP.",
+      "status": "current_release_live_followup_pending",
+      "evidence": "Commit 257ebee73123d4a86fcd6b46873c748ca406bc9b passed protected CI run 31323801471 and exact-SHA deployment run 31324114324. The live shell, engine 0.7.0 assets, routes, crawl files, manifest, service worker, API readiness, strict CSP, no-transform boundary and shared-route noindex are current. The post-release audit found a generic nginx 404 body and one removed immutable PNG still served from an old Cloudflare cache key.",
       "requiredBeforeGo": [
-        "commit and run protected CI and immutable-image gates for the exact reviewed revision",
-        "obtain explicit owner authorization before deployment",
-        "disable or nonce-integrate Cloudflare script injection without weakening CSP",
-        "deploy the exact tested revision and purge affected special URL caches",
-        "publish revision evidence and repeat the live route, header, mobile, offline and canonical-run audit"
+        "run protected CI and immutable-image gates for the route-state follow-up",
+        "manually deploy only that exact successful follow-up SHA",
+        "purge the removed blueprint-grid.png Cloudflare cache key",
+        "repeat the live route, header, mobile, offline and browser interaction audit"
       ]
     },
     "currentMitigations": [
@@ -44,13 +43,12 @@
       "Known and unknown routes, shared-link noindex, crawl assets, manifest MIME, service-worker API bypass, and immutable 404 cache behavior have repository contracts.",
       "The local UI covers every main route and has evidence-linked sampled-trace path playback tied to real modeled spans.",
       "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI gpt-oss-20b behind 10 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit, but no real provider transaction or retention configuration was exercised.",
-      "HTML responses emit Cache-Control no-transform so Cloudflare cannot inject scripts into the strict self-only CSP document; the live hostname still requires verification after promotion."
+      "HTML responses emit Cache-Control no-transform; the promoted live documents contain no injected challenge-platform or analytics script and retain the strict self-only CSP."
     ],
     "knownLocalLimitations": [
       "The manifest has no safe-zone-tested maskable application icon.",
       "The Edge offline gate used a warmed service worker; a first-install cold PWA and every lazy worker on a physical device were not exercised.",
       "No target-device Core Web Vitals profile or complete screen-reader certification was run.",
-      "Docker-backed Compose, Caddy-container, PostgreSQL, image-scan and full integration gates await protected CI because the local Docker daemon was unavailable.",
       "The optional AI boundary was tested with fake providers only and no real provider retention or billing path was exercised."
     ]
   },
@@ -957,6 +955,35 @@
         },
         "summary": "Pre- and post-optimization JSON outputs matched byte for byte; formulas, ordering, public results and performance thresholds were unchanged."
       }
+    },
+    {
+      "id": "protected-ci-257ebee",
+      "recordedAt": "2026-08-09",
+      "revision": "257ebee73123d4a86fcd6b46873c748ca406bc9b",
+      "runId": "31323801471",
+      "result": "passed",
+      "evidence": "Repository, hardening, quality, browser, immutable container image and high-severity scan jobs passed. PostgreSQL migrations, canonical smoke, overload, encrypted backup and restore integration also passed for the exact push/main revision."
+    },
+    {
+      "id": "manual-production-deploy-257ebee",
+      "recordedAt": "2026-08-09",
+      "revision": "257ebee73123d4a86fcd6b46873c748ca406bc9b",
+      "runId": "31324114324",
+      "result": "passed",
+      "evidence": "The manual exact-SHA workflow validated the successful CI run, staged the immutable artifacts, passed backup and in-network smoke gates, opened the Cloudflare-only route, and passed the external shell and readiness smoke."
+    },
+    {
+      "id": "first-live-release-audit-257ebee",
+      "recordedAt": "2026-08-09",
+      "revision": "257ebee73123d4a86fcd6b46873c748ca406bc9b",
+      "result": "passed_with_followup",
+      "evidence": "The live route and header matrix confirmed the current shell, engine 0.7.0 assets, Replay, crawl files, manifest MIME, service worker, shared-route noindex, API readiness, strict CSP and no-transform boundary. It found a generic nginx unknown-route body and a stale immutable Cloudflare cache entry for the removed 1.21 MB blueprint PNG; both are tracked as follow-up release gates."
+    },
+    {
+      "id": "route-state-followup-local",
+      "recordedAt": "2026-08-09",
+      "result": "passed",
+      "evidence": "The complete quality gate passed 52 files and 412 functional tests, both performance budgets, all workspace builds and seven Sites tests. Edge 151 repeated all 17 local-preview route audits and nine interaction groups with zero unexpected console, network or acceptance defects. The actual nginx image returned the application shell with HTTP 404 for an unknown document route, retained a plain 404 for a missing asset, and preserved known-route and manifest responses."
     }
   ]
 }
