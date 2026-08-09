@@ -42,7 +42,7 @@
       "Replay hashes are described as internal consistency checks and not author authentication.",
       "Known and unknown routes, shared-link noindex, crawl assets, manifest MIME, service-worker API bypass, and immutable 404 cache behavior have repository contracts.",
       "The local UI covers every main route and has evidence-linked sampled-trace path playback tied to real modeled spans.",
-      "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI llama-3.1-8b-instruct-fast behind 10 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit. A bounded production request reached the live AI endpoint but did not return structured output; the replacement model still requires a post-deploy transaction, and Gateway billing and retention settings require account-side review.",
+      "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI llama-3.1-8b-instruct-fast behind 12 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit. The user explicitly approved the 12-call UTC allowance. A bounded production request reached the live AI endpoint but did not return structured output; the replacement model still requires a post-deploy transaction, and Gateway billing and retention settings require account-side review.",
       "HTML responses emit Cache-Control no-transform; the promoted live documents contain no injected challenge-platform or analytics script and retain the strict self-only CSP."
     ],
     "knownLocalLimitations": [

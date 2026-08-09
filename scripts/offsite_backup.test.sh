@@ -92,6 +92,7 @@ run_backup() {
     SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_FILE" \
     SYSTEMFORGE_RESTIC_BIN="$TEST_BIN_DIR/restic" \
     SYSTEMFORGE_OFFSITE_STATUS_FILE="$STATUS_FILE" \
+    SYSTEMFORGE_BACKUP_LOCK_WAIT_SECONDS="${SYSTEMFORGE_BACKUP_LOCK_WAIT_SECONDS:-300}" \
     sh scripts/backup_offsite.sh
 }
 
@@ -119,6 +120,35 @@ grep -q '^check --read-data-subset=5%$' "$RESTIC_LOG"
 test "$(stat -c '%a' "$STATUS_FILE")" = 600
 grep -q '^source_filename=systemforge.20260808T120000Z.dump$' "$STATUS_FILE"
 grep -q "^source_sha256=$(sha256sum "$SOURCE_DUMP" | cut -d ' ' -f 1)$" "$STATUS_FILE"
+grep -q '^backup_run_id=scheduled$' "$STATUS_FILE"
+
+STATUS_SHA256=$(sha256sum "$STATUS_FILE" | cut -d ' ' -f 1)
+exec 8>"$BACKUP_DIR/.offsite-backup.lock"
+flock 8
+set +e
+SYSTEMFORGE_BACKUP_LOCK_WAIT_SECONDS=0 run_backup >/dev/null 2>&1
+LOCK_CONTENTION_STATUS=$?
+set -e
+flock -u 8
+exec 8>&-
+test "$LOCK_CONTENTION_STATUS" -ne 0
+test "$(sha256sum "$STATUS_FILE" | cut -d ' ' -f 1)" = "$STATUS_SHA256"
+
+POSTGRES_LOCK_DIR="$TEST_ROOT/postgres-lock-backups"
+mkdir -p "$POSTGRES_LOCK_DIR"
+exec 8>"$POSTGRES_LOCK_DIR/.backup.lock"
+flock 8
+set +e
+SYSTEMFORGE_APP_DIR="$TEST_ROOT/unreached-app" \
+  SYSTEMFORGE_BACKUP_DIR="$POSTGRES_LOCK_DIR" \
+  SYSTEMFORGE_BACKUP_LOCK_WAIT_SECONDS=0 \
+  sh scripts/backup_postgres.sh >/dev/null 2>&1
+POSTGRES_LOCK_CONTENTION_STATUS=$?
+set -e
+flock -u 8
+exec 8>&-
+test "$POSTGRES_LOCK_CONTENTION_STATUS" -ne 0
+test "$(find "$POSTGRES_LOCK_DIR" -maxdepth 1 -type f -name 'systemforge.*.dump' | wc -l)" -eq 0
 
 : > "$RESTIC_LOG"
 rm -f "$STATUS_FILE"

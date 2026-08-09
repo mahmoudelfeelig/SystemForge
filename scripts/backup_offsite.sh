@@ -12,6 +12,8 @@ KEEP_MONTHLY=${SYSTEMFORGE_RESTIC_KEEP_MONTHLY:-12}
 CHECK_SUBSET=${SYSTEMFORGE_RESTIC_CHECK_SUBSET:-5%}
 STATUS_FILE=${SYSTEMFORGE_OFFSITE_STATUS_FILE:-"$BACKUP_DIR/offsite-backup.status"}
 LOCK_FILE="$BACKUP_DIR/.offsite-backup.lock"
+LOCK_WAIT_SECONDS=${SYSTEMFORGE_BACKUP_LOCK_WAIT_SECONDS:-300}
+BACKUP_RUN_ID=${SYSTEMFORGE_BACKUP_RUN_ID:-scheduled}
 
 fail() {
   echo "Off-site backup failed: $*" >&2
@@ -68,10 +70,14 @@ positive_integer() {
 case "$BACKUP_DIR" in
   '' | /) fail "backup directory is too broad." ;;
 esac
+positive_integer "$LOCK_WAIT_SECONDS" "backup lock wait"
+case "$BACKUP_RUN_ID" in
+  *[!A-Za-z0-9._:-]* | '') fail "backup run identifier is malformed." ;;
+esac
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 exec 9>"$LOCK_FILE"
-flock -n 9 || exit 0
+flock -w "$LOCK_WAIT_SECONDS" 9 || fail "off-site backup lock remained busy for $LOCK_WAIT_SECONDS seconds."
 
 secure_file "$CONFIG_FILE" "configuration"
 set -a
@@ -129,6 +135,7 @@ trap 'rm -f "$STATUS_TEMP"' EXIT HUP INT TERM
 umask 077
 {
   printf 'last_backup_utc=%s\n' "$STAMP"
+  printf 'backup_run_id=%s\n' "$BACKUP_RUN_ID"
   printf 'source_filename=%s\n' "$(basename "$BACKUP_FILE")"
   printf 'source_sha256=%s\n' "$SOURCE_SHA256"
   printf 'backup_host=%s\n' "$BACKUP_HOST"

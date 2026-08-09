@@ -7,11 +7,22 @@ COMPOSE_FILE="$APP_DIR/deploy/docker-compose.prod.yml"
 ENV_FILE=${SYSTEMFORGE_ENV_FILE:-"$APP_DIR/deploy/.env"}
 RETENTION_DAYS=${SYSTEMFORGE_BACKUP_RETENTION_DAYS:-14}
 LOCK_FILE="$BACKUP_DIR/.backup.lock"
+LOCK_WAIT_SECONDS=${SYSTEMFORGE_BACKUP_LOCK_WAIT_SECONDS:-300}
+
+case "$LOCK_WAIT_SECONDS" in
+  '' | *[!0-9]*)
+    echo "Backup lock wait must be a non-negative integer." >&2
+    exit 64
+    ;;
+esac
 
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 exec 9>"$LOCK_FILE"
-flock -n 9 || exit 0
+if ! flock -w "$LOCK_WAIT_SECONDS" 9; then
+  echo "PostgreSQL backup lock remained busy for $LOCK_WAIT_SECONDS seconds." >&2
+  exit 75
+fi
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 TEMP="$BACKUP_DIR/systemforge.$STAMP.dump.partial"

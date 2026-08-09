@@ -118,7 +118,7 @@ processing is local.
 Create a dedicated `systemforge-production` AI Gateway and configure a blocking
 fixed monthly spend limit of **$4.50**, with no cheaper-model fallback. Do not
 enable the feature until that dashboard rule is visibly active. The API adds a
-second persistent denial-of-wallet boundary: at most ten admitted calls per UTC
+second persistent denial-of-wallet boundary: at most twelve admitted calls per UTC
 day, a five-cent reservation per admitted call, and at most four dollars of
 reservations per UTC month. The PostgreSQL reservation happens before provider
 I/O and is not refunded on failure or cancellation. The model, request-body
@@ -308,7 +308,10 @@ installation is required. Failed credential rotation restores the previously
 working user-owned configuration and binary.
 
 An explicitly approved release cannot bypass this setup. Every deployment
-creates and integrity-checks a current encrypted off-site backup. It also runs
+creates and integrity-checks a current encrypted off-site backup. The release
+tags that backup with a unique gate-run identifier and rejects older status,
+including a concurrent scheduled run; lock contention waits for up to five
+minutes and then fails closed. It also runs
 an independent restore when no restore evidence exists, the evidence is older
 than 90 days, or the checked-in migration manifest changed since the last
 drill. The release stops and rolls back if either operation fails.

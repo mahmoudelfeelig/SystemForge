@@ -1916,6 +1916,7 @@ describe("AI HTTP surface", () => {
   });
 
   it("fails closed after the global daily AI request budget is reserved", async () => {
+    expect(MAX_AI_DAILY_REQUESTS).toBe(12);
     const sourceText = "Keep p95 latency below 400 ms.";
     const provider = new FakeAiProvider({
       "compile-requirements": {

@@ -94,6 +94,8 @@ case "$MIGRATION_MANIFEST_SHA256" in
 esac
 test "${#MIGRATION_MANIFEST_SHA256}" -eq 64 || fail "migration manifest digest is invalid."
 export SYSTEMFORGE_MIGRATION_MANIFEST_SHA256="$MIGRATION_MANIFEST_SHA256"
+RELEASE_BACKUP_RUN_ID=$(printf '%s:%s:%s\n' "$MIGRATION_MANIFEST_SHA256" "$(current_epoch)" "$$" | sha256sum | cut -d ' ' -f 1)
+export SYSTEMFORGE_BACKUP_RUN_ID="$RELEASE_BACKUP_RUN_ID"
 
 SYSTEMFORGE_APP_DIR="$APP_DIR" \
   SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
@@ -102,6 +104,8 @@ SYSTEMFORGE_APP_DIR="$APP_DIR" \
   "$RUN_BACKUPS"
 
 require_fresh_status "$BACKUP_STATUS" "off-site backup status" last_backup_utc "$MAX_BACKUP_AGE_SECONDS"
+test "$(field "$BACKUP_STATUS" backup_run_id)" = "$RELEASE_BACKUP_RUN_ID" \
+  || fail "off-site backup evidence was not created by this release gate run."
 
 RESTORE_REQUIRED=true
 if test -f "$RESTORE_STATUS" && test -r "$RESTORE_STATUS"; then

@@ -31,6 +31,7 @@ STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 umask 077
 {
   printf 'last_backup_utc=%s\n' "$STAMP"
+  printf 'backup_run_id=%s\n' "$SYSTEMFORGE_BACKUP_RUN_ID"
   printf 'backup_host=systemforge-production\n'
   printf 'backup_tag=systemforge-postgres\n'
 } > "$SYSTEMFORGE_OFFSITE_STATUS_FILE"
@@ -73,10 +74,40 @@ run_gate
 test "$(grep -c '^backup$' "$CALL_LOG")" -eq 2
 test "$(grep -c '^restore$' "$CALL_LOG")" -eq 1
 
+cat > "$APP_DIR/scripts/run_backups.sh" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' backup >> "$FAKE_CALL_LOG"
+# Preserve the previous status to prove that an earlier release run cannot
+# satisfy this gate.
+EOF
+chmod 700 "$APP_DIR/scripts/run_backups.sh"
+set +e
+run_gate >/dev/null 2>&1
+STALE_RELEASE_EVIDENCE_STATUS=$?
+set -e
+test "$STALE_RELEASE_EVIDENCE_STATUS" -ne 0
+test "$(grep -c '^backup$' "$CALL_LOG")" -eq 3
+
+cat > "$APP_DIR/scripts/run_backups.sh" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' backup >> "$FAKE_CALL_LOG"
+STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+umask 077
+{
+  printf 'last_backup_utc=%s\n' "$STAMP"
+  printf 'backup_run_id=%s\n' "$SYSTEMFORGE_BACKUP_RUN_ID"
+  printf 'backup_host=systemforge-production\n'
+  printf 'backup_tag=systemforge-postgres\n'
+} > "$SYSTEMFORGE_OFFSITE_STATUS_FILE"
+EOF
+chmod 700 "$APP_DIR/scripts/run_backups.sh"
+
 printf '%s\n' 'alter table release_gate_test add column name text;' \
   >> "$APP_DIR/apps/api/migrations/001_release_gate.sql"
 run_gate
-test "$(grep -c '^backup$' "$CALL_LOG")" -eq 3
+test "$(grep -c '^backup$' "$CALL_LOG")" -eq 4
 test "$(grep -c '^restore$' "$CALL_LOG")" -eq 2
 
 chmod 644 "$CONFIG_FILE"
@@ -85,7 +116,7 @@ run_gate >/dev/null 2>&1
 INSECURE_CONFIG_STATUS=$?
 set -e
 test "$INSECURE_CONFIG_STATUS" -ne 0
-test "$(grep -c '^backup$' "$CALL_LOG")" -eq 3
+test "$(grep -c '^backup$' "$CALL_LOG")" -eq 4
 chmod 600 "$CONFIG_FILE"
 
 rm -f "$RESTORE_STATUS"

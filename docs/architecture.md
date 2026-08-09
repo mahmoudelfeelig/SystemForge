@@ -120,7 +120,7 @@ The production adapter is pinned to Cloudflare Workers AI
 `@cf/meta/llama-3.1-8b-instruct-fast` through the `systemforge-production` AI
 Gateway. The
 API admits one provider call at a time and reserves each admitted call in
-PostgreSQL before any network request. A global ten-request UTC daily ceiling
+PostgreSQL before any network request. A global twelve-request UTC daily ceiling
 and four-dollar UTC monthly reservation ceiling remain fixed in application
 code. Failed and cancelled calls retain their reservation. The Gateway must
 separately block at $4.50 per month, disable request/response logging and cache,
