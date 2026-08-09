@@ -2019,7 +2019,7 @@ label {
 
 .architecture-workspace .react-flow__pane {
   background-color: #030a0f;
-  background-image: url("/assets/blueprint-grid.webp");
+  background-image: url("/assets/blueprint-grid.webp?v=4d82d0b0");
   background-size: 720px 720px;
   background-blend-mode: screen;
   filter: saturate(1.2) contrast(1.04);
@@ -8310,7 +8310,7 @@ html[data-systemforge-density="comfortable"]
   position: relative;
   border-right: 1px solid var(--line-bright);
   background-color: #030a0f;
-  background-image: url("/assets/blueprint-grid.webp");
+  background-image: url("/assets/blueprint-grid.webp?v=4d82d0b0");
   background-size: 720px 720px;
   overflow: hidden;
 }
@@ -9048,7 +9048,7 @@ html[data-systemforge-density="comfortable"]
   justify-items: start;
   padding: clamp(32px, 8vw, 110px);
   background-color: #030a0f;
-  background-image: url("/assets/blueprint-grid.webp");
+  background-image: url("/assets/blueprint-grid.webp?v=4d82d0b0");
   background-size: 720px 720px;
 }
 
@@ -9534,7 +9534,7 @@ html[data-systemforge-density="comfortable"]
   display: grid;
   grid-template-columns: 224px minmax(0, 1fr) 286px;
   background-color: #030a0f;
-  background-image: url("/assets/blueprint-grid.webp");
+  background-image: url("/assets/blueprint-grid.webp?v=4d82d0b0");
   background-size: 560px 560px;
 }
 

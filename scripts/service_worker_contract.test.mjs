@@ -3,6 +3,12 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const source = await readFile("apps/web/public/sw.js", "utf8");
+const registrationSource = await readFile("apps/web/src/main.tsx", "utf8");
+assert.match(
+  registrationSource,
+  /serviceWorker\.register\("\/sw\.js\?v=7"\)/,
+  "the browser must bypass stale service-worker cache keys",
+);
 const listeners = new Map();
 const cachedLab = new Response("cached local lab", { status: 200 });
 const cachedReplay = new Response("cached replay console", { status: 200 });
@@ -27,6 +33,7 @@ const context = vm.createContext({
               "/assets/simulation.worker-test.js",
               "/assets/share.worker-test.js",
               "/assets/replayComparison.worker-test.js",
+              "/assets/blueprint-grid.webp?v=4d82d0b0",
             ],
           }),
           { status: 200, headers: { "content-type": "application/json" } },
@@ -80,6 +87,15 @@ await installPromise;
 assert.ok(precached.includes("/lab"), "Lab route was not precached");
 assert.ok(precached.includes("/replay"), "Replay route was not precached");
 assert.ok(
+  precached.includes("/assets/mahmoud-elephant-192.png?v=8bb95beb"),
+  "the content-versioned PWA icon was not precached",
+);
+assert.equal(
+  precached.includes("/assets/mahmoud-elephant-192.png"),
+  false,
+  "the negatively cached unversioned PWA icon must not be precached",
+);
+assert.ok(
   precached.includes("/assets/LabPage-test.js"),
   "lazy Lab chunk was not precached",
 );
@@ -98,6 +114,10 @@ assert.ok(
 assert.ok(
   precached.includes("/assets/replayComparison.worker-test.js"),
   "replay comparison worker was not precached",
+);
+assert.ok(
+  precached.includes("/assets/blueprint-grid.webp?v=4d82d0b0"),
+  "content-versioned stable asset was not precached",
 );
 
 const dispatch = (request) => {

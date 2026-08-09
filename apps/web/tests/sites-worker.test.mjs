@@ -206,6 +206,15 @@ test("emits the files required by Sites packaging", async () => {
     ),
     "replay comparison worker must be available to a warm offline session",
   );
+  assert.ok(
+    precache.assets.includes("/assets/blueprint-grid.webp?v=4d82d0b0"),
+    "stable public assets must use content-versioned cache keys",
+  );
+  assert.equal(
+    precache.assets.includes("/assets/blueprint-grid.webp"),
+    false,
+    "the negatively cached unversioned blueprint key must not be precached",
+  );
   assert.equal(
     precache.assets.some((asset) => asset.includes("-latin-ext-")),
     false,

@@ -27,12 +27,12 @@
       "independentAcceptance": "no surviving source-confirmed or browser-confirmed P0-P2 finding"
     },
     "hostedProduction": {
-      "status": "current_release_live_followup_pending",
-      "evidence": "Commit 257ebee73123d4a86fcd6b46873c748ca406bc9b passed protected CI run 31323801471 and exact-SHA deployment run 31324114324. The live shell, engine 0.7.0 assets, routes, crawl files, manifest, service worker, API readiness, strict CSP, no-transform boundary and shared-route noindex are current. The post-release audit found a generic nginx 404 body and one removed immutable PNG still served from an old Cloudflare cache key.",
+      "status": "current_release_live_asset_followup_pending",
+      "evidence": "Commit 8a2fa1f1e7bf4d869e7e725610d094accd740586 passed protected CI run 31325487101 and exact-SHA deployment run 31325787671. The live shell, engine 0.7.0 assets, routes, application 404 state, crawl files, manifest, service worker, API readiness, strict CSP, no-transform boundary and shared-route noindex are current. External Edge completed every route and interaction before stale Cloudflare 404s for the unversioned WebP blueprint and 192px PWA icon blocked service-worker readiness; the current candidate moves both consumers to verified content-versioned keys.",
       "requiredBeforeGo": [
-        "run protected CI and immutable-image gates for the route-state follow-up",
-        "manually deploy only that exact successful follow-up SHA",
-        "purge the removed blueprint-grid.png Cloudflare cache key",
+        "run protected CI and immutable-image gates for the content-versioned asset follow-up",
+        "manually deploy only that exact successful asset follow-up SHA",
+        "purge the removed blueprint-grid.png and stale negative asset cache keys",
         "repeat the live route, header, mobile, offline and browser interaction audit"
       ]
     },
@@ -984,6 +984,19 @@
       "recordedAt": "2026-08-09",
       "result": "passed",
       "evidence": "The complete quality gate passed 52 files and 412 functional tests, both performance budgets, all workspace builds and seven Sites tests. Edge 151 repeated all 17 local-preview route audits and nine interaction groups with zero unexpected console, network or acceptance defects. The actual nginx image returned the application shell with HTTP 404 for an unknown document route, retained a plain 404 for a missing asset, and preserved known-route and manifest responses."
+    },
+    {
+      "id": "first-external-edge-followup-audit",
+      "recordedAt": "2026-08-09",
+      "revision": "8a2fa1f1e7bf4d869e7e725610d094accd740586",
+      "result": "failed_with_actionable_edge_cache_finding",
+      "evidence": "External Edge passed all desktop/mobile routes, route-state 404, authoring, simulation, trace, replay, history, fork and interview privacy interactions. It then found stale Cloudflare 404s for the current WebP blueprint and 192px PWA icon, preventing service-worker readiness; no application assertion, CSP, layout, privacy or simulation defect occurred."
+    },
+    {
+      "id": "content-versioned-offline-assets-local",
+      "recordedAt": "2026-08-09",
+      "result": "passed",
+      "evidence": "The public origin returned the proposed content-versioned WebP, PWA icon and service-worker URLs with exact expected hashes. The service-worker contract, web typecheck, scoped lint, production build and seven Sites tests passed; the generated precache manifest contains the versioned blueprint and excludes its negatively cached legacy key. Edge 151 then passed all 17 local-preview routes, nine interaction groups and warmed offline navigation with zero unexpected errors or acceptance defects."
     }
   ]
 }

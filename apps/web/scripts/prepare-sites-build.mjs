@@ -15,6 +15,7 @@ const index = path.join(dist, "client", "index.html");
 const worker = path.join(root, "worker", "index.js");
 const hosting = path.join(root, ".openai", "hosting.json");
 const clientAssets = path.join(dist, "client", "assets");
+const stableAssetVersions = new Map([["blueprint-grid.webp", "4d82d0b0"]]);
 
 for (const file of [index, worker, hosting]) {
   if (!existsSync(file)) throw new Error("Missing Sites build input: " + file);
@@ -34,7 +35,10 @@ const offlineAssets = readdirSync(clientAssets)
       (/-latin-\d+-normal-/.test(name) && name.endsWith(".woff2")),
   )
   .sort()
-  .map((name) => `/assets/${name}`);
+  .map((name) => {
+    const version = stableAssetVersions.get(name);
+    return `/assets/${name}${version ? `?v=${version}` : ""}`;
+  });
 writeFileSync(
   path.join(dist, "client", "asset-precache.json"),
   `${JSON.stringify({ schemaVersion: 1, assets: offlineAssets }, null, 2)}\n`,

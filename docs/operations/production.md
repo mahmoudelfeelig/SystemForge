@@ -199,6 +199,12 @@ key and a fresh origin request. A removed immutable asset returning a cached
 200 on its ordinary URL while a cache-busted URL returns origin 404 is still a
 failed purge.
 
+Stable public assets referenced by the shell, manifest, CSS, or service worker
+must carry a content-derived `?v=` key. The service-worker allowlist accepts
+only an eight-character lowercase hexadecimal version. This prevents an old
+negative or immutable cache entry from breaking a later release while keeping
+the underlying path auditable; it does not replace purging obsolete keys.
+
 Cloudflare recommends proxying HTTP records so traffic is protected at the edge and restricting origin traffic to Cloudflare address ranges. Current documentation: [Cloudflare IP addresses](https://developers.cloudflare.com/fundamentals/concepts/cloudflare-ip-addresses/), [proxied DNS records](https://developers.cloudflare.com/dns/manage-dns-records/reference/proxied-dns-records/), and [rate limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/).
 
 ## Deployment, rollback, and smoke checks

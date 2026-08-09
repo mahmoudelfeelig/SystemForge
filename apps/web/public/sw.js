@@ -1,4 +1,4 @@
-const CACHE = "systemforge-shell-v6";
+const CACHE = "systemforge-shell-v7";
 const PRECACHE_MANIFEST = "/asset-precache.json";
 const SHELL = [
   "/",
@@ -7,7 +7,7 @@ const SHELL = [
   "/interview",
   "/replay",
   "/manifest.webmanifest",
-  "/assets/mahmoud-elephant-192.png",
+  "/assets/mahmoud-elephant-192.png?v=8bb95beb",
   "/assets/mahmoud-elephant.png",
 ];
 
@@ -16,7 +16,7 @@ const manifestAssets = (manifest) =>
     ? [...new Set(manifest.assets)].filter(
         (asset) =>
           typeof asset === "string" &&
-          /^\/assets\/[A-Za-z0-9._-]+$/.test(asset),
+          /^\/assets\/[A-Za-z0-9._-]+(?:\?v=[a-f0-9]{8})?$/.test(asset),
       )
     : [];
 

@@ -82,6 +82,18 @@ Edge acceptance mode. That follow-up still requires exact-SHA CI, manual
 promotion, a full public browser pass, and a Cloudflare purge of the legacy PNG
 key before the hosted disposition can be recorded as fully clean.
 
+The first external Edge pass against that follow-up completed every desktop and
+mobile route, authoring, simulation, replay, and privacy workflow, then exposed
+two older Cloudflare negative-cache entries: the current WebP blueprint and
+192px PWA icon existed at origin but their unversioned public keys returned
+cached 404s, preventing service-worker installation. The current repair uses
+content-versioned URLs for both files, versions the service-worker registration,
+bumps its cache generation, and rejects the broken unversioned blueprint key in
+the generated precache manifest. The exact versioned URLs were verified against
+the public origin before the change, and the complete local Edge offline gate
+passed afterward. The old keys still require account-authorized purge as edge
+cleanup; the application no longer depends on them.
+
 ## Historical release authorization and rehearsals
 
 The owner authorized a SystemForge public release on 2026-08-08. That approval
