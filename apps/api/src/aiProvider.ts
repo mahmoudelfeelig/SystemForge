@@ -12,7 +12,9 @@ export const MAX_AI_TIMEOUT_MS = 30_000;
 export const MAX_AI_DAILY_REQUESTS = 10;
 export const MAX_AI_MONTHLY_RESERVED_COST_CENTS = 400;
 export const CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST = 5;
-export const CLOUDFLARE_WORKERS_AI_MODEL = "@cf/openai/gpt-oss-20b";
+export const CLOUDFLARE_WORKERS_AI_MODEL =
+  "@cf/meta/llama-3.1-8b-instruct-fast";
+export const LEGACY_CLOUDFLARE_WORKERS_AI_MODEL = "@cf/openai/gpt-oss-20b";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -386,7 +388,10 @@ export const createConfiguredAiProvider = (
       /[\r\n]/u.test(apiToken) ||
       !gatewayId ||
       !/^[a-z0-9-]{1,64}$/u.test(gatewayId) ||
-      model !== CLOUDFLARE_WORKERS_AI_MODEL
+      ![
+        CLOUDFLARE_WORKERS_AI_MODEL,
+        LEGACY_CLOUDFLARE_WORKERS_AI_MODEL,
+      ].includes(model)
     )
       throw new Error("The configured Cloudflare AI credentials are invalid.");
     return new CloudflareWorkersAiResponsesProvider(

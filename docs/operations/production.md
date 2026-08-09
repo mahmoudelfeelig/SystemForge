@@ -93,12 +93,17 @@ Optional AI assistance remains off unless the API container receives all of:
 
 - `SYSTEMFORGE_AI_ENABLED=true`;
 - `SYSTEMFORGE_AI_PROVIDER=cloudflare-workers-ai-responses`;
-- `SYSTEMFORGE_AI_MODEL=@cf/openai/gpt-oss-20b`;
+- `SYSTEMFORGE_AI_MODEL=@cf/meta/llama-3.1-8b-instruct-fast`;
 - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_GATEWAY_ID`;
 - `CLOUDFLARE_AI_API_TOKEN` as an API-only secret;
 - `SYSTEMFORGE_AI_TIMEOUT_MS=30000`; Cloudflare inference is held to a
   30-second ceiling even when an older deployment still carries a shorter
   legacy value.
+
+For one migration window, the API also accepts the former
+`@cf/openai/gpt-oss-20b` environment value and routes it to the pinned fast
+model. Update the Hetzner environment to the current value before removing
+that compatibility alias.
 
 Do not use a `VITE_*` variable for any AI credential or model setting, and do
 not add these values to the web or worker containers. The adapter uses

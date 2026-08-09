@@ -62,12 +62,14 @@ Current local evidence:
 
 The optional AI layer was verified with credential-free fake-provider tests
 and remains disabled by default. Its production profile pins Cloudflare
-Workers AI `@cf/openai/gpt-oss-20b`, allows at most 10 provider reservations per
-UTC day, reserves 5 cents per request, and fails closed at 400 reserved cents
-per UTC month. The documented Cloudflare AI Gateway must additionally have a
-blocking $4.50 monthly spend limit with no fallback provider. No real provider
-credential, billing path, Gateway spend limit, or provider-retention
-configuration was exercised. The browser pass also does not
+Workers AI `@cf/meta/llama-3.1-8b-instruct-fast`, allows at most 10 provider
+reservations per UTC day, reserves 5 cents per request, and fails closed at 400
+reserved cents per UTC month. The documented Cloudflare AI Gateway must
+additionally have a blocking $4.50 monthly spend limit with no fallback
+provider. A bounded production request reached the live AI endpoint but did not
+return valid structured output; the replacement fast-model path still needs a
+post-deploy transaction. Gateway billing controls and provider-retention
+configuration also require account-side review. The browser pass does not
 constitute a screen-reader certification, target-device Core Web Vitals run,
 or physical-device install test. The offline evidence used an already warmed
 service worker rather than a first-install cold PWA. Dedicated 192px and 512px

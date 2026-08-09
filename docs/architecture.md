@@ -117,7 +117,8 @@ content leaves SystemForge and provider retention depends on the configured
 account and data controls.
 
 The production adapter is pinned to Cloudflare Workers AI
-`@cf/openai/gpt-oss-20b` through the `systemforge-production` AI Gateway. The
+`@cf/meta/llama-3.1-8b-instruct-fast` through the `systemforge-production` AI
+Gateway. The
 API admits one provider call at a time and reserves each admitted call in
 PostgreSQL before any network request. A global ten-request UTC daily ceiling
 and four-dollar UTC monthly reservation ceiling remain fixed in application

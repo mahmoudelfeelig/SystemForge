@@ -42,13 +42,13 @@
       "Replay hashes are described as internal consistency checks and not author authentication.",
       "Known and unknown routes, shared-link noindex, crawl assets, manifest MIME, service-worker API bypass, and immutable 404 cache behavior have repository contracts.",
       "The local UI covers every main route and has evidence-linked sampled-trace path playback tied to real modeled spans.",
-      "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI gpt-oss-20b behind 10 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit, but no real provider transaction or retention configuration was exercised.",
+      "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI llama-3.1-8b-instruct-fast behind 10 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit. A bounded production request reached the live AI endpoint but did not return structured output; the replacement model still requires a post-deploy transaction, and Gateway billing and retention settings require account-side review.",
       "HTML responses emit Cache-Control no-transform; the promoted live documents contain no injected challenge-platform or analytics script and retain the strict self-only CSP."
     ],
     "knownLocalLimitations": [
       "The Edge offline gate used a warmed service worker; a first-install cold PWA and every lazy worker on a physical device were not exercised.",
       "No target-device Core Web Vitals profile or complete screen-reader certification was run.",
-      "The optional AI boundary was tested with fake providers only and no real provider retention or billing path was exercised."
+      "The optional AI endpoint received one bounded live request without returning structured output; the replacement fast-model path, provider retention and Gateway billing controls still require account-side review."
     ]
   },
   "baseline": {

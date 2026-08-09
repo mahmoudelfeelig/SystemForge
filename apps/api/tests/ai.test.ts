@@ -23,6 +23,7 @@ import {
   CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
   CLOUDFLARE_WORKERS_AI_MODEL,
   CloudflareWorkersAiResponsesProvider,
+  LEGACY_CLOUDFLARE_WORKERS_AI_MODEL,
   MAX_AI_DAILY_REQUESTS,
   MAX_AI_MONTHLY_RESERVED_COST_CENTS,
   MAX_AI_TIMEOUT_MS,
@@ -213,6 +214,15 @@ describe("optional AI provider boundary", () => {
       CLOUDFLARE_AI_GATEWAY_ID: "systemforge-production",
     };
     expect(createConfiguredAiProvider(environment)?.evidence).toEqual({
+      id: "cloudflare-workers-ai-responses",
+      model: CLOUDFLARE_WORKERS_AI_MODEL,
+    });
+    expect(
+      createConfiguredAiProvider({
+        ...environment,
+        SYSTEMFORGE_AI_MODEL: LEGACY_CLOUDFLARE_WORKERS_AI_MODEL,
+      })?.evidence,
+    ).toEqual({
       id: "cloudflare-workers-ai-responses",
       model: CLOUDFLARE_WORKERS_AI_MODEL,
     });
