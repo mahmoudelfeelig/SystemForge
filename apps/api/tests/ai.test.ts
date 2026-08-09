@@ -112,16 +112,13 @@ describe("optional AI provider boundary", () => {
     ).toThrow(/provider credentials are invalid/u);
   });
 
-  it("uses the bounded Cloudflare Responses endpoint without gateway logging, caching, or retries", async () => {
+  it("uses bounded Cloudflare structured chat without gateway logging, caching, or retries", async () => {
     const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
-          output: [
+          choices: [
             {
-              type: "message",
-              content: [
-                { type: "output_text", text: JSON.stringify({ ok: true }) },
-              ],
+              message: { content: JSON.stringify({ ok: true }) },
             },
           ],
         }),
@@ -152,7 +149,7 @@ describe("optional AI provider boundary", () => {
     expect(fetchImplementation).toHaveBeenCalledOnce();
     const [url, init] = fetchImplementation.mock.calls[0]!;
     expect(url).toBe(
-      "https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/v1/responses",
+      "https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/v1/chat/completions",
     );
     expect(init?.headers).toMatchObject({
       authorization: "Bearer cloudflare-token",
@@ -166,9 +163,28 @@ describe("optional AI provider boundary", () => {
     const body = JSON.parse(init.body) as Record<string, unknown>;
     expect(body).toMatchObject({
       model: CLOUDFLARE_WORKERS_AI_MODEL,
-      store: false,
-      max_output_tokens: 2_000,
+      stream: false,
+      max_tokens: 2_000,
+      temperature: 0,
+      messages: [
+        { role: "system", content: "Return the requested object." },
+        {
+          role: "user",
+          content: JSON.stringify({ brief: "Keep the system bounded." }),
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: { ok: { type: "boolean" } },
+          required: ["ok"],
+        },
+      },
     });
+    expect(body.store).toBeUndefined();
+    expect(body.tools).toBeUndefined();
   });
 
   it("requires the pinned Cloudflare model and complete server-only configuration", () => {

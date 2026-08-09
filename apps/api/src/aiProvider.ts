@@ -65,11 +65,20 @@ interface OpenAiResponsesBody {
   }>;
 }
 
+interface OpenAiChatCompletionsBody {
+  choices?: Array<{
+    message?: { content?: string | null };
+  }>;
+}
+
+type StructuredApiFormat = "responses" | "chat-completions";
+
 interface ResponsesApiProviderConfiguration {
   endpoint: string;
   evidence: AiAssistantProviderEvidence;
   headers: Record<string, string>;
   reservedCostCents: number;
+  format?: StructuredApiFormat;
 }
 
 const extractOutputText = (body: OpenAiResponsesBody): string | null => {
@@ -78,6 +87,15 @@ const extractOutputText = (body: OpenAiResponsesBody): string | null => {
     .flatMap((item) => item.content ?? [])
     .filter((content) => content.type === "output_text")
     .map((content) => content.text ?? "")
+    .join("");
+  return text || null;
+};
+
+const extractChatCompletionText = (
+  body: OpenAiChatCompletionsBody,
+): string | null => {
+  const text = (body.choices ?? [])
+    .map((choice) => choice.message?.content ?? "")
     .join("");
   return text || null;
 };
@@ -172,21 +190,39 @@ class ResponsesApiProvider implements AiProvider {
     };
     signal?.addEventListener("abort", abortForCaller, { once: true });
     try {
-      const requestBody = JSON.stringify({
-        model: this.evidence.model,
-        store: false,
-        max_output_tokens: 2_000,
-        instructions: request.instructions,
-        input: JSON.stringify(request.input),
-        text: {
-          format: {
-            type: "json_schema",
-            name: request.schemaName,
-            strict: true,
-            schema: request.outputSchema,
-          },
-        },
-      });
+      const format = this.configuration.format ?? "responses";
+      const requestBody = JSON.stringify(
+        format === "chat-completions"
+          ? {
+              model: this.evidence.model,
+              stream: false,
+              max_tokens: 2_000,
+              temperature: 0,
+              messages: [
+                { role: "system", content: request.instructions },
+                { role: "user", content: JSON.stringify(request.input) },
+              ],
+              response_format: {
+                type: "json_schema",
+                json_schema: request.outputSchema,
+              },
+            }
+          : {
+              model: this.evidence.model,
+              store: false,
+              max_output_tokens: 2_000,
+              instructions: request.instructions,
+              input: JSON.stringify(request.input),
+              text: {
+                format: {
+                  type: "json_schema",
+                  name: request.schemaName,
+                  strict: true,
+                  schema: request.outputSchema,
+                },
+              },
+            },
+      );
       if (
         new TextEncoder().encode(requestBody).byteLength >
         MAX_AI_PROVIDER_REQUEST_BYTES
@@ -213,16 +249,20 @@ class ResponsesApiProvider implements AiProvider {
           "ai_provider_unavailable",
           `The configured AI provider returned HTTP ${response.status}.`,
         );
-      let responseBody: OpenAiResponsesBody;
+      let responseBody: OpenAiResponsesBody | OpenAiChatCompletionsBody;
       try {
-        responseBody = JSON.parse(raw) as OpenAiResponsesBody;
+        responseBody = JSON.parse(raw) as
+          OpenAiResponsesBody | OpenAiChatCompletionsBody;
       } catch {
         throw new AiProviderError(
           "ai_output_rejected",
           "The configured AI provider returned invalid JSON.",
         );
       }
-      const outputText = extractOutputText(responseBody);
+      const outputText =
+        format === "chat-completions"
+          ? extractChatCompletionText(responseBody as OpenAiChatCompletionsBody)
+          : extractOutputText(responseBody as OpenAiResponsesBody);
       if (!outputText)
         throw new AiProviderError(
           "ai_output_rejected",
@@ -286,7 +326,7 @@ export class CloudflareWorkersAiResponsesProvider extends ResponsesApiProvider {
   ) {
     super(
       {
-        endpoint: `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/responses`,
+        endpoint: `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`,
         evidence: {
           id: "cloudflare-workers-ai-responses",
           model: CLOUDFLARE_WORKERS_AI_MODEL,
@@ -299,6 +339,7 @@ export class CloudflareWorkersAiResponsesProvider extends ResponsesApiProvider {
           "cf-aig-max-attempts": "1",
         },
         reservedCostCents: CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
+        format: "chat-completions",
       },
       fetchImplementation,
       timeoutMs,

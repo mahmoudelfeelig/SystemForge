@@ -99,11 +99,14 @@ Optional AI assistance remains off unless the API container receives all of:
 - optional `SYSTEMFORGE_AI_TIMEOUT_MS`, bounded by the service.
 
 Do not use a `VITE_*` variable for any AI credential or model setting, and do
-not add these values to the web or worker containers. The adapter uses the
-account-scoped Cloudflare Responses endpoint, structured JSON output, no tools,
-no streaming, no automatic retry, `store:false`, and per-request Gateway
-headers that disable logging and caching. SystemForge still validates every
-provider response and does not claim that external processing is local.
+not add these values to the web or worker containers. The adapter uses
+Cloudflare's account-scoped OpenAI-compatible Chat Completions endpoint with
+`response_format` JSON Schema, no tools, no streaming, and no automatic retry.
+Per-request Gateway headers disable logging and caching. The historical
+`cloudflare-workers-ai-responses` configuration identifier remains for
+deployment compatibility; it does not describe the transport. SystemForge
+still validates every provider response and does not claim that external
+processing is local.
 
 Create a dedicated `systemforge-production` AI Gateway and configure a blocking
 fixed monthly spend limit of **$4.50**, with no cheaper-model fallback. Do not
