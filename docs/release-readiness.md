@@ -62,7 +62,7 @@ Current local evidence:
 
 The optional AI layer was verified with credential-free fake-provider tests
 and remains disabled by default. Its production profile pins Cloudflare
-Workers AI `@cf/meta/llama-3.1-8b-instruct-fast`, allows at most 10 provider
+Workers AI `@cf/meta/llama-3.1-8b-instruct-fast`, allows at most 12 provider
 reservations per UTC day, reserves 5 cents per request, and fails closed at 400
 reserved cents per UTC month. The documented Cloudflare AI Gateway must
 additionally have a blocking $4.50 monthly spend limit with no fallback
