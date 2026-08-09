@@ -1,4 +1,4 @@
-const CACHE = "systemforge-shell-v7";
+const CACHE = "systemforge-shell-v8";
 const PRECACHE_MANIFEST = "/asset-precache.json";
 const SHELL = [
   "/",
@@ -9,6 +9,8 @@ const SHELL = [
   "/manifest.webmanifest",
   "/assets/mahmoud-elephant-192.png?v=8bb95beb",
   "/assets/mahmoud-elephant.png",
+  "/assets/mahmoud-elephant-maskable-192.png?v=c55dc0c7",
+  "/assets/mahmoud-elephant-maskable.png?v=b915c02a",
 ];
 
 const manifestAssets = (manifest) =>

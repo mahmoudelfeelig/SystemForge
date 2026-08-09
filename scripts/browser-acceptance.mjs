@@ -63,6 +63,7 @@ const report = {
   networkErrors: [],
   expectedOfflineNetworkErrors: [],
   acceptanceDefects: [],
+  pwaManifest: null,
   result: "failed",
   mode: externalOrigin ? "external" : "local-preview",
 };
@@ -875,6 +876,55 @@ try {
     );
 
   await navigate(client, `${origin}/lab`, "SYSTEM TOPOLOGY");
+  assert.equal(
+    await evaluate(
+      client,
+      "navigator.serviceWorker.ready.then((registration) => Boolean(registration.active))",
+      true,
+    ),
+    true,
+    "The PWA service worker did not become active.",
+  );
+  const appManifest = await client.call("Page.getAppManifest");
+  assert.equal(
+    appManifest.errors?.length ?? 0,
+    0,
+    `The PWA manifest was invalid: ${JSON.stringify(appManifest.errors ?? [])}`,
+  );
+  assert.ok(appManifest.data, "The PWA manifest data was unavailable.");
+  const parsedManifest = JSON.parse(appManifest.data);
+  const maskableIcons = parsedManifest.icons.filter((icon) =>
+    String(icon.purpose).split(/\s+/).includes("maskable"),
+  );
+  assert.deepEqual(
+    maskableIcons.map(({ sizes, type }) => ({ sizes, type })),
+    [
+      { sizes: "192x192", type: "image/png" },
+      { sizes: "512x512", type: "image/png" },
+    ],
+    "The PWA manifest did not expose the dedicated maskable PNG sizes.",
+  );
+  const installability = await client.call("Page.getInstallabilityErrors");
+  assert.deepEqual(
+    installability.installabilityErrors,
+    [],
+    `The PWA was not installable: ${JSON.stringify(installability.installabilityErrors)}`,
+  );
+  report.pwaManifest = {
+    url: appManifest.url,
+    errors: appManifest.errors ?? [],
+    maskableIcons: maskableIcons.map(({ src, sizes, type, purpose }) => ({
+      src,
+      sizes,
+      type,
+      purpose,
+    })),
+    installabilityErrors: installability.installabilityErrors,
+  };
+  report.interactions.push(
+    "installable PWA manifest with dedicated maskable 192px and 512px icons",
+  );
+
   await openDecisionWorkbench(client);
   await waitFor(
     client,

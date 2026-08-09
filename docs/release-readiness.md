@@ -2,16 +2,18 @@
 
 ## Current status — 2026-08-09
 
-The reviewed release candidate was committed as
-`257ebee73123d4a86fcd6b46873c748ca406bc9b`, passed protected push CI run
-`31323801471`, and was manually promoted by exact-SHA deployment run
-`31324114324`. The immutable web, API, and worker images, high-severity image
+The current production revision is
+`d55fb3eb99184aa29ea42836dd07465dacbbe17e`. It passed protected push CI run
+`31327099117` and was manually promoted by exact-SHA deployment run
+`31327390155`. The immutable web, API, and worker images, high-severity image
 scans, PostgreSQL migrations, container integration, overload behavior,
 encrypted backup, and restore gates all passed before the public route opened.
+The final external Edge pass then completed 17 route audits and nine interaction
+groups with zero unexpected console, network, or acceptance defects.
 
 Current local evidence:
 
-- A fresh isolated `pnpm quality` gate passed formatting, ESLint,
+- Two consecutive isolated `pnpm quality` gates passed formatting, ESLint,
   TypeScript project references, 52 files and 412 functional tests, both
   performance budgets, all workspace builds, and 7 Sites packaging tests on
   the same final working tree. The web build transformed 4,886 modules and
@@ -31,7 +33,10 @@ Current local evidence:
   completion, sampled-trace path playback, replay export/import/comparison,
   automatic candidate-safe Run library persistence, interviewer-versus-candidate
   privacy, mobile fit and touch targets, reduced motion, and four warmed offline
-  routes. Unexpected console errors, network errors, acceptance defects,
+  routes. The current installability follow-up adds dedicated safe-zone
+  maskable icons and a tenth interaction group that verifies the manifest and
+  Chromium installability result. Unexpected console errors, network errors,
+  acceptance defects,
   unnamed focusables, duplicate IDs, and document-level horizontal overflow
   were zero.
 - `pnpm audit --prod --audit-level=high` reported no known production
@@ -65,8 +70,10 @@ credential, billing path, Gateway spend limit, or provider-retention
 configuration was exercised. The browser pass also does not
 constitute a screen-reader certification, target-device Core Web Vitals run,
 or physical-device install test. The offline evidence used an already warmed
-service worker rather than a first-install cold PWA, and the manifest still
-lacks a safe-zone-tested maskable icon. These are recorded external-validation
+service worker rather than a first-install cold PWA. Dedicated 192px and 512px
+maskable icons now keep the unchanged approved elephant mark inside the
+mask-safe center, and Edge reports zero installability errors, but a physical
+launcher preview remains external. These are recorded external-validation
 limitations, not evidence supplied by the automated release.
 
 The first post-promotion live matrix confirmed the current application shell,
@@ -76,11 +83,10 @@ Known SPA routes returned 200, unknown routes returned a real 404, and the old
 Cloudflare script injections were absent from application HTML. The audit also
 found that nginx returned its generic 404 body instead of the application route
 state and that Cloudflare still served the removed 1.21 MB blueprint PNG from
-an old immutable cache key even though a cache-busted origin request returned 404. The current follow-up keeps the real 404 status while serving the
-accessible application route state and adds an explicitly confirmed external
-Edge acceptance mode. That follow-up still requires exact-SHA CI, manual
-promotion, a full public browser pass, and a Cloudflare purge of the legacy PNG
-key before the hosted disposition can be recorded as fully clean.
+an old immutable cache key even though a cache-busted origin request returned 404. The promoted route-state and content-versioned asset follow-ups now keep
+the real 404 status while serving the accessible application route state,
+avoid the stale keys, and have passed exact-SHA CI, deployment, and the complete
+public browser matrix.
 
 The first external Edge pass against that follow-up completed every desktop and
 mobile route, authoring, simulation, replay, and privacy workflow, then exposed
@@ -92,7 +98,9 @@ bumps its cache generation, and rejects the broken unversioned blueprint key in
 the generated precache manifest. The exact versioned URLs were verified against
 the public origin before the change, and the complete local Edge offline gate
 passed afterward. The old keys still require account-authorized purge as edge
-cleanup; the application no longer depends on them.
+housekeeping; the application and service worker no longer depend on them.
+Cloudflare account credentials were not present in this checkout, so that purge
+and a real Workers AI transaction remain external operator actions.
 
 ## Historical release authorization and rehearsals
 

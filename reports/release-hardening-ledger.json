@@ -11,29 +11,29 @@
   },
   "currentSnapshot": {
     "recordedAt": "2026-08-09",
-    "checkoutState": "deployed release with a locally verified route-state follow-up",
+    "checkoutState": "deployed exact-SHA release with a locally verified maskable-icon follow-up",
     "localCandidate": {
-      "status": "verified_followup_pending_immutable_release_gates",
+      "status": "verified_maskable_icon_followup_pending_immutable_release_gates",
       "engineVersion": "0.7.0",
-      "qualityGate": "a fresh complete isolated run passed after the bounded Cloudflare provider and edge-header changes",
+      "qualityGate": "two consecutive complete isolated runs passed on the maskable-icon candidate",
       "functionalTests": "52 files and 412 tests passed",
       "coverage": "412 tests passed with 92.72% statements, 84.54% branches, 93.54% functions, and 93.73% lines across the configured critical-file denominator; thresholds remain 92%, 84%, 93%, and 93%",
       "performanceTests": "2 passed; 250 representative simulations and five bounded solves remained within separate two-second measured budgets",
       "build": "passed; 4,886 web modules transformed and 25 offline assets prepared",
       "sitesDelivery": "7 tests passed",
-      "browserEvidence": "Edge 151 passed 17 desktop, mobile, completed and warmed-offline route audits at 1440x900 and 390x844; authoring, privacy, run controls, intervention, fork, completion, trace playback, candidate-safe Run library persistence and portable replay passed with zero unexpected console/network errors, acceptance defects or document overflow",
+      "browserEvidence": "Edge 151 passed 17 desktop, mobile, completed and warmed-offline route audits at 1440x900 and 390x844 plus 10 interaction groups; authoring, privacy, run controls, intervention, fork, completion, trace playback, candidate-safe Run library persistence, portable replay and PWA manifest installability passed with zero unexpected console/network errors, acceptance defects or document overflow",
       "hardeningEvidence": "All four targeted mutants were killed; serial and parallel fixed-seed 52-file, 412-test stability passes completed without retry",
       "dependencyAudit": "pnpm production audit reported no known vulnerabilities",
       "independentAcceptance": "no surviving source-confirmed or browser-confirmed P0-P2 finding"
     },
     "hostedProduction": {
-      "status": "current_release_live_asset_followup_pending",
-      "evidence": "Commit 8a2fa1f1e7bf4d869e7e725610d094accd740586 passed protected CI run 31325487101 and exact-SHA deployment run 31325787671. The live shell, engine 0.7.0 assets, routes, application 404 state, crawl files, manifest, service worker, API readiness, strict CSP, no-transform boundary and shared-route noindex are current. External Edge completed every route and interaction before stale Cloudflare 404s for the unversioned WebP blueprint and 192px PWA icon blocked service-worker readiness; the current candidate moves both consumers to verified content-versioned keys.",
+      "status": "exact_sha_release_live_maskable_followup_pending",
+      "evidence": "Commit d55fb3eb99184aa29ea42836dd07465dacbbe17e passed protected CI run 31327099117 and exact-SHA deployment run 31327390155. The live shell, engine 0.7.0 assets, routes, application 404 state, crawl files, manifest, service worker, API readiness, strict CSP, no-transform boundary, shared-route noindex and warmed offline behavior are current. External Edge passed 17 route audits and nine interaction groups with zero unexpected console, network or acceptance defects. The current candidate adds dedicated 192px and 512px maskable icons and locally passes Chromium installability with a tenth interaction group.",
       "requiredBeforeGo": [
-        "run protected CI and immutable-image gates for the content-versioned asset follow-up",
-        "manually deploy only that exact successful asset follow-up SHA",
-        "purge the removed blueprint-grid.png and stale negative asset cache keys",
-        "repeat the live route, header, mobile, offline and browser interaction audit"
+        "run protected CI and immutable-image gates for the maskable-icon follow-up",
+        "manually deploy only that exact successful maskable-icon SHA",
+        "repeat the live route, header, mobile, offline, installability and browser interaction audit",
+        "purge historical unused Cloudflare cache keys when account credentials are available"
       ]
     },
     "currentMitigations": [
@@ -46,7 +46,6 @@
       "HTML responses emit Cache-Control no-transform; the promoted live documents contain no injected challenge-platform or analytics script and retain the strict self-only CSP."
     ],
     "knownLocalLimitations": [
-      "The manifest has no safe-zone-tested maskable application icon.",
       "The Edge offline gate used a warmed service worker; a first-install cold PWA and every lazy worker on a physical device were not exercised.",
       "No target-device Core Web Vitals profile or complete screen-reader certification was run.",
       "The optional AI boundary was tested with fake providers only and no real provider retention or billing path was exercised."
@@ -103,7 +102,7 @@
         "status": "verified_current_worktree",
         "summary": "Independent engine review reran the adversarial route, fan-out, cache, regional, failure and durability cases; the focused and integrated gates passed."
       },
-      "changeIdentifier": "uncommitted-working-tree:engine-0.7.0-topology-execution",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:engine-0.7.0-topology-execution",
       "disposition": "verified_local_worktree"
     },
     {
@@ -135,7 +134,7 @@
         "status": "verified_current_worktree",
         "summary": "Identity, cancellation, stale-result and replay lifecycle paths passed focused, integrated and browser verification."
       },
-      "changeIdentifier": "uncommitted-working-tree:local-simulation-session-protocol",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:local-simulation-session-protocol",
       "disposition": "verified_local_worktree"
     },
     {
@@ -165,7 +164,7 @@
         "status": "verified_current_worktree",
         "summary": "A trace-specific review corrected the omitted-versus-empty ambiguity; focused, integrated and real-browser evidence states passed."
       },
-      "changeIdentifier": "uncommitted-working-tree:not-run-and-empty-evidence-states",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:not-run-and-empty-evidence-states",
       "disposition": "verified_local_worktree"
     },
     {
@@ -195,7 +194,7 @@
         "status": "verified_local_pending_assistive_technology_gate",
         "summary": "Focused accessibility regressions and the tracked Edge desktop/mobile gate passed; a complete screen-reader or physical-device certification is not claimed."
       },
-      "changeIdentifier": "uncommitted-working-tree:responsive-accessibility-hardening",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:responsive-accessibility-hardening",
       "disposition": "verified_local_pending_external_gate"
     },
     {
@@ -225,7 +224,7 @@
         "status": "verified_current_worktree",
         "summary": "The route/copy matrix, trace truthfulness review, replay authenticity wording and final browser route audit passed."
       },
-      "changeIdentifier": "uncommitted-working-tree:truthful-product-copy",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:truthful-product-copy",
       "disposition": "verified_local_worktree"
     },
     {
@@ -251,14 +250,14 @@
       ],
       "measurements": {
         "before": "Blueprint PNG was 1.21 MB; crawl files were absent; unknown Sites routes became soft 404s.",
-        "after": "Blueprint WebP is 14,640 bytes; repository route, crawl, MIME, noindex and Sites tests passed; deployed crawler and proxy responses remain a production gate."
+        "after": "Blueprint WebP is 14,640 bytes; repository and production route, crawl, MIME, noindex and application-404 responses passed."
       },
       "independentReview": {
-        "status": "verified_local_pending_production_gate",
-        "summary": "Route metadata, seven Sites delivery tests and generated offline assets passed; deployed response and crawler behavior are not recorded for this working tree."
+        "status": "verified_production",
+        "summary": "Route metadata, seven Sites delivery tests, generated offline assets, deployed crawl files, MIME responses and real application 404 behavior passed."
       },
-      "changeIdentifier": "uncommitted-working-tree:seo-soft-404-static-delivery",
-      "disposition": "verified_local_pending_external_gate"
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:seo-soft-404-static-delivery",
+      "disposition": "verified_local_worktree"
     },
     {
       "id": "SF-007",
@@ -267,7 +266,8 @@
       "affectedUsersOrWorkflows": "Public visitors and operators relying on a clean production security console",
       "evidence": [
         "The live audit reproduced CSP errors for a Cloudflare-injected script that is not present in this repository.",
-        "The repository CSP intentionally keeps script-src restricted to self and does not add unsafe-inline."
+        "The repository CSP intentionally keeps script-src restricted to self and does not add unsafe-inline.",
+        "The promoted HTML responses use Cache-Control no-transform; the final external Edge audit found zero CSP violations and the injected challenge and analytics scripts were absent."
       ],
       "rootCause": "An external Cloudflare feature injects a script that is not authorized by the origin's strict CSP.",
       "proposedChange": "Disable the Cloudflare injection or authorize only the exact script through a supported nonce or hash without weakening the general script policy.",
@@ -278,14 +278,14 @@
       ],
       "measurements": {
         "before": "CSP violations were reproduced on the live deployment.",
-        "after": "No repository change can resolve the injected script; a Cloudflare change and live retest remain required."
+        "after": "The promoted no-transform boundary retained the strict self-only CSP, and the final production browser audit found zero injected scripts or CSP violations."
       },
       "independentReview": {
-        "status": "historically_reproduced_external_blocker",
-        "summary": "The failure was observed live and traced outside the repository."
+        "status": "verified_production",
+        "summary": "The final live browser matrix verified the strict CSP without the historical Cloudflare script injection."
       },
-      "changeIdentifier": null,
-      "disposition": "external_configuration_blocker"
+      "changeIdentifier": "d55fb3eb99184aa29ea42836dd07465dacbbe17e:no-transform-csp-boundary",
+      "disposition": "verified_local_worktree"
     },
     {
       "id": "SF-008",
@@ -316,7 +316,7 @@
         "status": "verified_current_worktree",
         "summary": "Prefix preservation, action scheduling, snapshot/fork, portable replay, digest comparison and the no-opaque-state boundary passed focused, integrated and browser verification."
       },
-      "changeIdentifier": "uncommitted-working-tree:session-actions-and-completed-run-manifest-v3",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:session-actions-and-completed-run-manifest-v3",
       "disposition": "verified_local_worktree"
     },
     {
@@ -348,7 +348,7 @@
         "status": "verified_current_worktree",
         "summary": "Editor, history, selection, Inspector and graph-lint tests passed, and Edge completed local authoring, sharing and Lab interaction."
       },
-      "changeIdentifier": "uncommitted-working-tree:architecture-editor-operations-history",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:architecture-editor-operations-history",
       "disposition": "verified_local_worktree"
     },
     {
@@ -380,7 +380,7 @@
         "status": "verified_current_worktree",
         "summary": "Independent review corrected evidence states and wording; telemetry regressions plus keyboard, reduced-motion and Edge path playback passed."
       },
-      "changeIdentifier": "uncommitted-working-tree:sampled-request-traces",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:sampled-request-traces",
       "disposition": "verified_local_worktree"
     },
     {
@@ -412,7 +412,7 @@
         "status": "verified_current_worktree",
         "summary": "Completion, progress, cancellation, timeout, budget, stale response and no-result semantics passed focused and integrated build verification."
       },
-      "changeIdentifier": "uncommitted-working-tree:robustness-browser-worker",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:robustness-browser-worker",
       "disposition": "verified_local_worktree"
     },
     {
@@ -445,7 +445,7 @@
         "status": "verified_local_pending_production_proxy_gate",
         "summary": "Service-worker, edge, Sites packaging and warmed Edge offline navigation passed; deployed proxy failover, mixed-version upgrade and a physical first-install PWA cold-start remain unexecuted."
       },
-      "changeIdentifier": "uncommitted-working-tree:pwa-offline-caddy-fallback",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:pwa-offline-caddy-fallback",
       "disposition": "verified_local_pending_external_gate"
     },
     {
@@ -477,7 +477,7 @@
         "status": "verified_local_pending_production_log_gate",
         "summary": "API, browser privacy, Sites delivery and final Edge interviewer/candidate flows passed; live proxy logging is not verified for this checkout."
       },
-      "changeIdentifier": "uncommitted-working-tree:bearer-auth-and-sites-html-headers",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:bearer-auth-and-sites-html-headers",
       "disposition": "verified_local_pending_external_gate"
     },
     {
@@ -504,14 +504,14 @@
       ],
       "measurements": {
         "before": "The milestone body carried no server run identity and was not tied to retained canonical input evidence.",
-        "after": "Per-share completed-run binding, candidate policy and stale-browser race protection passed; a current real-PostgreSQL integration run remains blocked on Docker availability."
+        "after": "Per-share completed-run binding, candidate policy and stale-browser race protection passed; the exact promoted SHA passed protected PostgreSQL migration and integration gates."
       },
       "independentReview": {
-        "status": "verified_local_pending_postgres_gate",
-        "summary": "Adversarial API, memory-store, web race and browser privacy review found no surviving reveal bypass; exact-sha PostgreSQL integration remains a protected-CI gate."
+        "status": "verified_production",
+        "summary": "Adversarial API, memory-store, web race, browser privacy and exact-SHA PostgreSQL integration found no surviving reveal bypass."
       },
-      "changeIdentifier": "uncommitted-working-tree:server-verified-share-run-milestone",
-      "disposition": "verified_local_pending_external_gate"
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:server-verified-share-run-milestone",
+      "disposition": "verified_local_worktree"
     },
     {
       "id": "SF-015",
@@ -540,7 +540,7 @@
         "status": "verified_current_worktree",
         "summary": "The role-aware persistence split and fail-closed hydration paths passed focused privacy review and regression coverage."
       },
-      "changeIdentifier": "uncommitted-working-tree:privacy-safe-browser-persistence",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:privacy-safe-browser-persistence",
       "disposition": "verified_local_worktree"
     },
     {
@@ -570,7 +570,7 @@
         "status": "verified_current_worktree",
         "summary": "The bounded decoder and worker hydration paths passed crafted high-compression and privacy regressions."
       },
-      "changeIdentifier": "uncommitted-working-tree:bounded-local-share-decoder",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:bounded-local-share-decoder",
       "disposition": "verified_local_worktree"
     },
     {
@@ -601,7 +601,7 @@
         "status": "verified_current_worktree",
         "summary": "Independent privacy/async review found the refresh and mutation guards sound under the focused race matrix."
       },
-      "changeIdentifier": "uncommitted-working-tree:ordered-shared-session-state",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:ordered-shared-session-state",
       "disposition": "verified_local_worktree"
     },
     {
@@ -632,7 +632,7 @@
         "status": "verified_current_worktree",
         "summary": "Contracts, generated-incident physics, replay evidence, authoring controls and multi-seed regressions passed independent engine review."
       },
-      "changeIdentifier": "uncommitted-working-tree:seeded-stochastic-incidents",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:seeded-stochastic-incidents",
       "disposition": "verified_local_worktree"
     },
     {
@@ -663,7 +663,7 @@
         "status": "verified_current_worktree",
         "summary": "Focused contract, profile, simulator, solver, Inspector, share and completed-run tests passed, including state-capability and tamper cases."
       },
-      "changeIdentifier": "uncommitted-working-tree:behavioral-profile-registry-v1",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:behavioral-profile-registry-v1",
       "disposition": "verified_local_worktree"
     },
     {
@@ -695,17 +695,19 @@
         "status": "verified_local_pending_target_device_perf_gate",
         "summary": "Boundary tests, TypeScript, production build, manifest inspection, offline packaging and Sites contracts passed; target-device Core Web Vitals and every-lazy-surface installed-offline profiling remain unexecuted."
       },
-      "changeIdentifier": "uncommitted-working-tree:lazy-decision-workbench",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:lazy-decision-workbench",
       "disposition": "verified_local_pending_external_gate"
     },
     {
       "id": "SF-021",
-      "title": "The install manifest has no maskable application icon",
+      "title": "The install manifest needed dedicated maskable application icons",
       "severity": "low",
       "affectedUsersOrWorkflows": "Users installing SystemForge on launchers that apply adaptive icon masks",
       "evidence": [
-        "apps/web/public/manifest.webmanifest declares 192x192 and 512x512 PNG icons with purpose set only to any.",
-        "No separate safe-zone-tested maskable asset or purpose=maskable entry exists."
+        "The baseline manifest declared only standard any-purpose icons.",
+        "apps/web/public/assets/mahmoud-elephant-maskable-192.png and mahmoud-elephant-maskable.png place the unchanged approved mark inside the mask-safe center on the product background.",
+        "The service-worker contract verifies PNG dimensions, content-versioned hashes, manifest purpose=maskable entries and offline precaching.",
+        "Edge Page.getAppManifest and Page.getInstallabilityErrors report the expected 192px and 512px maskable entries with zero installability errors."
       ],
       "rootCause": "The existing elephant artwork was reused as a standard icon without a maskable-safe composition and manifest entry.",
       "proposedChange": "Create a dedicated maskable icon with the required safe zone, retain standard any-purpose icons, and validate installation previews across adaptive mask shapes.",
@@ -718,14 +720,14 @@
       ],
       "measurements": {
         "before": "No maskable icon purpose was declared.",
-        "after": "Unchanged in the current worktree; both manifest icons still use purpose=any."
+        "after": "Dedicated 192px and 512px maskable icons are declared, hash-versioned, precached and locally installable; a physical adaptive-launcher preview remains external."
       },
       "independentReview": {
-        "status": "reviewed_open",
-        "summary": "Manifest and asset inventory confirm the residual install-icon gap."
+        "status": "verified_local_pending_physical_install_gate",
+        "summary": "Manifest parsing, asset integrity, service-worker packaging and Chromium installability pass; a physical-device launcher preview remains external."
       },
-      "changeIdentifier": null,
-      "disposition": "open"
+      "changeIdentifier": "pending-release:maskable-pwa-icons-v1",
+      "disposition": "verified_local_pending_external_gate"
     },
     {
       "id": "SF-022",
@@ -758,7 +760,7 @@
         "status": "verified_local_pending_real_provider_gate",
         "summary": "Independent API privacy/security and web reviews drove closure of hidden-score leakage, cross-share binding, destructive replacement, grounding, cancellation, response bounds and stale-state defects; fake-provider and integrated tests passed, while no real provider transaction was attempted."
       },
-      "changeIdentifier": "uncommitted-working-tree:optional-bounded-ai-assistance-v1",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:optional-bounded-ai-assistance-v1",
       "disposition": "verified_local_pending_external_gate"
     },
     {
@@ -785,13 +787,13 @@
       ],
       "measurements": {
         "before": "No mutation, stability or tracked browser acceptance scripts were available.",
-        "after": "Four targeted mutants were killed by assertions; serial and parallel 52-file, 408-test stability runs passed without retry; Edge passed all 17 route audits and nine interaction groups with zero unexpected console/network errors or acceptance defects."
+        "after": "Four targeted mutants were killed by assertions; serial and parallel 52-file, 412-test stability runs passed without retry; Edge passed all 17 route audits and 10 interaction groups, including manifest installability, with zero unexpected console/network errors or acceptance defects."
       },
       "independentReview": {
         "status": "verified_current_worktree",
         "summary": "Mutation, fixed-seed stability, browser startup, desktop/mobile/offline workflows, artifact emission and cleanup all passed locally and gate downstream CI jobs."
       },
-      "changeIdentifier": "uncommitted-working-tree:release-hardening-harness",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:release-hardening-harness",
       "disposition": "verified_local_worktree"
     },
     {
@@ -823,7 +825,7 @@
         "status": "verified_current_worktree",
         "summary": "Focused workflow, shell, YAML and ordering contracts passed, including the adversarial dispatch-from-another-branch case. No deployment, push, secret access or external mutation occurred."
       },
-      "changeIdentifier": "uncommitted-working-tree:manual-exact-revision-deployment-gate",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:manual-exact-revision-deployment-gate",
       "disposition": "verified_local_worktree"
     },
     {
@@ -857,7 +859,7 @@
         "status": "verified_current_worktree",
         "summary": "Independent storage, privacy and comparison review found no surviving P0-P2 after cleanup atomicity and objective-semantic regressions were added; focused, integrated and Edge workflows passed."
       },
-      "changeIdentifier": "uncommitted-working-tree:candidate-safe-local-run-library-v1",
+      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:candidate-safe-local-run-library-v1",
       "disposition": "verified_local_worktree"
     }
   ],
@@ -997,6 +999,77 @@
       "recordedAt": "2026-08-09",
       "result": "passed",
       "evidence": "The public origin returned the proposed content-versioned WebP, PWA icon and service-worker URLs with exact expected hashes. The service-worker contract, web typecheck, scoped lint, production build and seven Sites tests passed; the generated precache manifest contains the versioned blueprint and excludes its negatively cached legacy key. Edge 151 then passed all 17 local-preview routes, nine interaction groups and warmed offline navigation with zero unexpected errors or acceptance defects."
+    },
+    {
+      "id": "protected-ci-d55fb3e",
+      "recordedAt": "2026-08-09",
+      "revision": "d55fb3eb99184aa29ea42836dd07465dacbbe17e",
+      "runId": "31327099117",
+      "result": "passed",
+      "evidence": "Repository, hardening, quality, browser, immutable container image and high-severity scan jobs passed. PostgreSQL migrations, canonical smoke, overload, encrypted backup and restore integration passed for the exact push/main revision."
+    },
+    {
+      "id": "manual-production-deploy-d55fb3e",
+      "recordedAt": "2026-08-09",
+      "revision": "d55fb3eb99184aa29ea42836dd07465dacbbe17e",
+      "runId": "31327390155",
+      "result": "passed",
+      "evidence": "The manual exact-SHA workflow validated the successful CI run, staged immutable artifacts, passed backup, restore and in-network smoke gates, opened the Cloudflare-only route, and passed external shell and readiness smoke."
+    },
+    {
+      "id": "final-external-edge-d55fb3e",
+      "recordedAt": "2026-08-09",
+      "revision": "d55fb3eb99184aa29ea42836dd07465dacbbe17e",
+      "result": "passed",
+      "evidence": "External Edge passed all 17 desktop, mobile, completed and warmed-offline route audits plus nine interaction groups. Unexpected console errors, network errors and acceptance defects were zero; live routes, headers, mobile layout, offline behavior, canonical services and the published revision were current."
+    },
+    {
+      "id": "maskable-icon-quality-1",
+      "recordedAt": "2026-08-09",
+      "command": "pnpm quality",
+      "sequence": "1 of 2",
+      "head": "d55fb3eb99184aa29ea42836dd07465dacbbe17e",
+      "result": "passed",
+      "retryCount": 0,
+      "overlappedCpuHeavyWork": false,
+      "evidence": "Prettier, ESLint, TypeScript, 52 files and 412 functional tests, two performance tests, all workspace builds and seven Sites delivery tests passed. The web build transformed 4,886 modules and prepared 25 offline assets."
+    },
+    {
+      "id": "maskable-icon-quality-2",
+      "recordedAt": "2026-08-09",
+      "command": "pnpm quality",
+      "sequence": "2 of 2",
+      "head": "d55fb3eb99184aa29ea42836dd07465dacbbe17e",
+      "result": "passed",
+      "retryCount": 0,
+      "overlappedCpuHeavyWork": false,
+      "measuredStages": {
+        "functional": "52 files and 412 tests in 52.05 seconds",
+        "performance": "2 tests in 3.49 seconds; both internal two-second budgets passed",
+        "webBuild": "4,886 modules in 12.35 seconds; 25 offline assets",
+        "sites": "7 tests in 0.143 seconds"
+      },
+      "evidence": "The complete quality command passed consecutively on the unchanged application source, assets and tests with no retry or overlapping CPU-heavy work. Documentation and ledger text were refreshed afterward."
+    },
+    {
+      "id": "maskable-icon-coverage-mutation-stability-audit",
+      "recordedAt": "2026-08-09",
+      "commands": [
+        "pnpm test:coverage",
+        "pnpm test:mutations",
+        "pnpm test:stability",
+        "pnpm audit --prod --audit-level=high"
+      ],
+      "result": "passed",
+      "evidence": "Coverage passed 52 files and 412 tests at 92.72% statements, 84.54% branches, 93.54% functions and 93.73% lines. All four targeted mutants were killed. Serial seed 819521 and parallel seed 20260809 each passed 52 files and 412 tests without retry. The production dependency audit reported no known vulnerabilities."
+    },
+    {
+      "id": "maskable-icon-edge-installability",
+      "recordedAt": "2026-08-09",
+      "command": "pnpm test:browser",
+      "environment": "Microsoft Edge 151.0.4129.72, CDP 1.3, local preview",
+      "result": "passed",
+      "evidence": "From 18:09:39Z to 18:10:16Z, Edge passed 17 route audits and 10 interaction groups with zero unexpected console errors, network errors or acceptance defects. Page.getAppManifest returned the dedicated content-versioned 192px and 512px maskable PNGs, and Page.getInstallabilityErrors returned no errors."
     }
   ]
 }

@@ -1,13 +1,60 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const source = await readFile("apps/web/public/sw.js", "utf8");
 const registrationSource = await readFile("apps/web/src/main.tsx", "utf8");
+const manifest = JSON.parse(
+  await readFile("apps/web/public/manifest.webmanifest", "utf8"),
+);
 assert.match(
   registrationSource,
-  /serviceWorker\.register\("\/sw\.js\?v=7"\)/,
+  /serviceWorker\.register\("\/sw\.js\?v=8"\)/,
   "the browser must bypass stale service-worker cache keys",
+);
+assert.deepEqual(
+  manifest.icons.filter((icon) => icon.purpose === "maskable"),
+  [
+    {
+      src: "/assets/mahmoud-elephant-maskable-192.png?v=c55dc0c7",
+      sizes: "192x192",
+      type: "image/png",
+      purpose: "maskable",
+    },
+    {
+      src: "/assets/mahmoud-elephant-maskable.png?v=b915c02a",
+      sizes: "512x512",
+      type: "image/png",
+      purpose: "maskable",
+    },
+  ],
+  "the install manifest must expose dedicated content-versioned maskable icons",
+);
+const assertPngAsset = async (path, expectedSize, expectedVersion) => {
+  const contents = await readFile(path);
+  assert.deepEqual(
+    [...contents.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10],
+    `${path} must be a PNG`,
+  );
+  assert.equal(contents.readUInt32BE(16), expectedSize, `${path} width`);
+  assert.equal(contents.readUInt32BE(20), expectedSize, `${path} height`);
+  assert.equal(
+    createHash("sha256").update(contents).digest("hex").slice(0, 8),
+    expectedVersion,
+    `${path} cache version must match its content`,
+  );
+};
+await assertPngAsset(
+  "apps/web/public/assets/mahmoud-elephant-maskable-192.png",
+  192,
+  "c55dc0c7",
+);
+await assertPngAsset(
+  "apps/web/public/assets/mahmoud-elephant-maskable.png",
+  512,
+  "b915c02a",
 );
 const listeners = new Map();
 const cachedLab = new Response("cached local lab", { status: 200 });
@@ -94,6 +141,14 @@ assert.equal(
   precached.includes("/assets/mahmoud-elephant-192.png"),
   false,
   "the negatively cached unversioned PWA icon must not be precached",
+);
+assert.ok(
+  precached.includes("/assets/mahmoud-elephant-maskable-192.png?v=c55dc0c7"),
+  "the 192px maskable icon was not precached",
+);
+assert.ok(
+  precached.includes("/assets/mahmoud-elephant-maskable.png?v=b915c02a"),
+  "the 512px maskable icon was not precached",
 );
 assert.ok(
   precached.includes("/assets/LabPage-test.js"),
