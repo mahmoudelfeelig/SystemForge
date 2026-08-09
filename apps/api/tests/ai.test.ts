@@ -465,6 +465,80 @@ describe("source-grounded AI compilation", () => {
     );
   });
 
+  it("resolves exact unique excerpts without asking the provider to calculate character offsets", async () => {
+    const sourceText = "Availability must stay at or above 99.95%.";
+    const provider = new FakeAiProvider({
+      "compile-requirements": {
+        requirements: [
+          {
+            label: "Availability target",
+            metric: "availability",
+            operator: "gte",
+            metricSource: { excerpt: "Availability" },
+            operatorSource: { excerpt: "at or above" },
+            targetSource: { excerpt: "99.95%" },
+          },
+        ],
+        unresolvedQuestions: [],
+        assumptions: [],
+      },
+    });
+
+    const response = await compileAiRequirements(provider, {
+      contractVersion: 1,
+      sourceText,
+      scope: "custom-public",
+      context: {
+        scenario: DEFAULT_SCENARIO,
+        architecture: DEFAULT_ARCHITECTURE,
+      },
+    });
+
+    expect(response.requirements[0]).toMatchObject({
+      metric: "availability",
+      operator: "gte",
+      target: 99.95,
+      unit: "%",
+    });
+    const outputSchema = JSON.stringify(provider.requests[0]?.outputSchema);
+    expect(outputSchema).toContain('"excerpt"');
+    expect(outputSchema).not.toContain('"start"');
+    expect(outputSchema).not.toContain('"end"');
+  });
+
+  it("rejects excerpt-only citations that occur more than once", async () => {
+    const sourceText =
+      "Keep p95 latency below 400 ms while p95 latency remains visible.";
+    const provider = new FakeAiProvider({
+      "compile-requirements": {
+        requirements: [
+          {
+            label: "Latency target",
+            metric: "p95LatencyMs",
+            operator: "lte",
+            metricSource: { excerpt: "p95 latency" },
+            operatorSource: { excerpt: "below" },
+            targetSource: { excerpt: "400 ms" },
+          },
+        ],
+        unresolvedQuestions: [],
+        assumptions: [],
+      },
+    });
+
+    await expect(
+      compileAiRequirements(provider, {
+        contractVersion: 1,
+        sourceText,
+        scope: "custom-public",
+        context: {
+          scenario: DEFAULT_SCENARIO,
+          architecture: DEFAULT_ARCHITECTURE,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "ai_output_rejected" });
+  });
+
   it("rejects a hallucinated target span instead of returning a partial proposal", async () => {
     const sourceText = "Keep p95 latency below the stated limit.";
     const provider = new FakeAiProvider({
