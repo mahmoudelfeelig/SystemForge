@@ -126,6 +126,19 @@ limit, output-token limit, and reservation are deliberately pinned; changing
 any of them requires a new documented cost proof. Provider failure or budget
 exhaustion must not fail readiness or remove the local Lab.
 
+The twelve-call daily allowance does not increase the monthly admission total:
+the five-cent reservation and 400-cent ceiling still admit at most 80 calls per
+UTC month. The provider request is capped at 96,000 UTF-8 bytes and output at
+2,000 tokens. Treating every request byte as a token and conservatively applying
+Cloudflare's higher standard Llama 3.1 8B rates ($0.282 per million input tokens
+and $0.827 per million output tokens) gives at most $0.028726 per call and
+$2.29808 for all 80 admitted calls. Cloudflare's current same-family FP8-fast
+listing is below that standard rate, but the independent $4.50
+Gateway block remains mandatory because provider prices and billing behavior are
+external state. Recheck this proof against
+`https://developers.cloudflare.com/workers-ai/platform/pricing/` before changing
+the model, byte cap, output cap, reservation, or monthly limit.
+
 ## First host bootstrap
 
 Clone the repository to `/opt/systemforge`. Copy `deploy/.env.example` to `deploy/.env`, set a URL-safe random `POSTGRES_PASSWORD`, leave the environment file mode at `0600`, and do not commit it. Then run:
@@ -175,8 +188,13 @@ The web container sends browsers `Cache-Control: public, max-age=0,
 must-revalidate, no-transform` while separately sending Cloudflare
 `Cloudflare-CDN-Cache-Control: public, max-age=300,
 stale-while-revalidate=60, stale-if-error=86400`. This keeps browser sessions
-fresh, gives the edge a five-minute shell, and permits a previously cached shell
-to survive origin errors. Do not replace the edge policy with `s-maxage`:
+fresh and defines the intended edge lifetime, but Cloudflare does not cache HTML
+by default. A hostname-scoped Cache Rule must explicitly mark the known GET/HEAD
+shell routes as eligible and respect the origin edge-cache policy before the
+five-minute shell or stale origin fallback may be claimed. Verify a `MISS`
+followed by `HIT` and `Age`, then exercise a controlled stale-origin response.
+Until that evidence exists, `CF-Cache-Status: DYNAMIC` means the shell is not
+edge-cached. Do not replace the edge policy with `s-maxage`:
 Cloudflare treats `s-maxage` as proxy revalidation, which disables the intended
 stale fallback. The in-network production smoke checks both headers on the
 actual web image.

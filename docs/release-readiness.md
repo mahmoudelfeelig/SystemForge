@@ -1,15 +1,22 @@
 # Release-readiness evidence
 
-## Current status — 2026-08-09
+## Current status — 2026-08-10
 
 The current production revision is
-`d55fb3eb99184aa29ea42836dd07465dacbbe17e`. It passed protected push CI run
-`31327099117` and was manually promoted by exact-SHA deployment run
-`31327390155`. The immutable web, API, and worker images, high-severity image
+`6f350b5cca5ddd6f44395d3911e27b648d0c25b4`. It passed protected push CI run
+[`31339309430`](https://github.com/mahmoudelfeelig/SystemForge/actions/runs/31339309430)
+and was manually promoted by exact-SHA deployment run
+[`31339562358`](https://github.com/mahmoudelfeelig/SystemForge/actions/runs/31339562358).
+The immutable web, API, and worker images, high-severity image
 scans, PostgreSQL migrations, container integration, overload behavior,
 encrypted backup, and restore gates all passed before the public route opened.
-The final external Edge pass then completed 17 route audits and nine interaction
-groups with zero unexpected console, network, or acceptance defects.
+The release also binds encrypted backup evidence to a unique gate-run identifier
+and fails closed on unresolved backup lock contention. The final external Edge
+pass then completed 17 route audits and ten interaction
+groups with zero unexpected console, network, or acceptance defects. Scheduled
+production monitor run
+[`31340517949`](https://github.com/mahmoudelfeelig/SystemForge/actions/runs/31340517949)
+subsequently passed on the same exact production SHA.
 
 Current local evidence:
 
@@ -18,7 +25,7 @@ Current local evidence:
   performance budgets, all workspace builds, and 7 Sites packaging tests on
   the same final working tree. The web build transformed 4,886 modules and
   prepared 25 offline assets.
-- A fresh `pnpm test:coverage` run passed all 412 tests and reported 92.72%
+- Protected CI passed 53 files and 416 tests with coverage and reported 92.72%
   statements, 84.54% branches, 93.54% functions, and 93.73% lines across the
   selected critical simulation, contract, API, worker, sharing, and solver
   surfaces. The checked thresholds remain 92%, 84%, 93%, and 93% respectively.
@@ -66,10 +73,16 @@ Workers AI `@cf/meta/llama-3.1-8b-instruct-fast`, allows at most 12 provider
 reservations per UTC day, reserves 5 cents per request, and fails closed at 400
 reserved cents per UTC month. The documented Cloudflare AI Gateway must
 additionally have a blocking $4.50 monthly spend limit with no fallback
-provider. A bounded production request reached the live AI endpoint but did not
-return valid structured output; the replacement fast-model path still needs a
-post-deploy transaction. Gateway billing controls and provider-retention
-configuration also require account-side review. The browser pass does not
+provider. A bounded post-deploy production request completed through the
+application API, AI Gateway, and Workers AI in 2.2 seconds with HTTP 200. The
+validated response compiled the exact source statement into an availability
+objective at or above 99.9%. The application database recorded 11 reservations
+and 55 reserved cents for that UTC day after the check. The inference token
+cannot read Gateway configuration: both the Gateway and account spending-limit
+read endpoints returned HTTP 403. The documented $4.50 blocking rule,
+no-fallback setting, logging/cache controls, and provider-retention
+configuration therefore still require account-side review and are not claimed
+as verified. The browser pass does not
 constitute a screen-reader certification, target-device Core Web Vitals run,
 or physical-device install test. The offline evidence used an already warmed
 service worker rather than a first-install cold PWA. Dedicated 192px and 512px
@@ -101,8 +114,9 @@ the generated precache manifest. The exact versioned URLs were verified against
 the public origin before the change, and the complete local Edge offline gate
 passed afterward. The old keys still require account-authorized purge as edge
 housekeeping; the application and service worker no longer depend on them.
-Cloudflare account credentials were not present in this checkout, so that purge
-and a real Workers AI transaction remain external operator actions.
+The deployed inference token has no zone-cache permission, so that historical
+purge remains an external operator action. The real Workers AI transaction is
+now verified.
 
 ## Historical release authorization and rehearsals
 
@@ -323,3 +337,9 @@ The release is complete only after those gates pass for the same committed SHA
 and the public shell and readiness endpoint respond through Cloudflare. Any
 failed gate must leave the hardened closed route or restore the last complete
 release rather than expose a partial stack.
+
+The scheduled monitor and release-bound encrypted backup/restore evidence are
+now recorded for the promoted SHA. A deliberate public incident-response or
+rollback exercise has not been performed; it remains an explicit operational
+evidence gap because intentionally disrupting production requires separate
+authorization and a controlled maintenance window.

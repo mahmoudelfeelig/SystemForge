@@ -11,13 +11,13 @@
   },
   "currentSnapshot": {
     "recordedAt": "2026-08-09",
-    "checkoutState": "deployed exact-SHA release with a locally verified maskable-icon follow-up",
+    "checkoutState": "deployed exact-SHA release with current protected CI and live browser evidence",
     "localCandidate": {
-      "status": "verified_maskable_icon_followup_pending_immutable_release_gates",
+      "status": "verified_exact_sha_release",
       "engineVersion": "0.7.0",
       "qualityGate": "two consecutive complete isolated runs passed on the maskable-icon candidate",
-      "functionalTests": "52 files and 412 tests passed",
-      "coverage": "412 tests passed with 92.72% statements, 84.54% branches, 93.54% functions, and 93.73% lines across the configured critical-file denominator; thresholds remain 92%, 84%, 93%, and 93%",
+      "functionalTests": "53 files and 416 tests passed in protected CI",
+      "coverage": "416 tests passed with 92.72% statements, 84.54% branches, 93.54% functions, and 93.73% lines across the configured critical-file denominator; thresholds remain 92%, 84%, 93%, and 93%",
       "performanceTests": "2 passed; 250 representative simulations and five bounded solves remained within separate two-second measured budgets",
       "build": "passed; 4,886 web modules transformed and 25 offline assets prepared",
       "sitesDelivery": "7 tests passed",
@@ -27,13 +27,14 @@
       "independentAcceptance": "no surviving source-confirmed or browser-confirmed P0-P2 finding"
     },
     "hostedProduction": {
-      "status": "exact_sha_release_live_maskable_followup_pending",
-      "evidence": "Commit d55fb3eb99184aa29ea42836dd07465dacbbe17e passed protected CI run 31327099117 and exact-SHA deployment run 31327390155. The live shell, engine 0.7.0 assets, routes, application 404 state, crawl files, manifest, service worker, API readiness, strict CSP, no-transform boundary, shared-route noindex and warmed offline behavior are current. External Edge passed 17 route audits and nine interaction groups with zero unexpected console, network or acceptance defects. The current candidate adds dedicated 192px and 512px maskable icons and locally passes Chromium installability with a tenth interaction group.",
+      "status": "exact_sha_release_live_with_external_account_and_device_gates",
+      "evidence": "Commit 6f350b5cca5ddd6f44395d3911e27b648d0c25b4 passed protected CI run 31339309430 and exact-SHA deployment run 31339562358. The host release marker and checkout both match that SHA. The immutable-image, high-severity scan, PostgreSQL integration, overload, encrypted backup and restore gates passed. External Edge passed 17 route audits and ten interaction groups with zero unexpected console, network or acceptance defects. Scheduled production monitor run 31340517949 then passed on the same SHA. A bounded production AI compile completed with HTTP 200 in 2.2 seconds through Cloudflare Workers AI.",
       "requiredBeforeGo": [
-        "run protected CI and immutable-image gates for the maskable-icon follow-up",
-        "manually deploy only that exact successful maskable-icon SHA",
-        "repeat the live route, header, mobile, offline, installability and browser interaction audit",
-        "purge historical unused Cloudflare cache keys when account credentials are available"
+        "verify the account-side $4.50 blocking AI Gateway limit and no-fallback configuration",
+        "purge historical unused Cloudflare cache keys with a zone-scoped credential",
+        "either configure and prove a hostname-scoped HTML Cache Rule or keep the shell documented as dynamic",
+        "perform and record a controlled public incident-response or rollback exercise in an approved maintenance window",
+        "complete screen-reader, physical-device PWA and target-device performance validation"
       ]
     },
     "currentMitigations": [
@@ -42,13 +43,15 @@
       "Replay hashes are described as internal consistency checks and not author authentication.",
       "Known and unknown routes, shared-link noindex, crawl assets, manifest MIME, service-worker API bypass, and immutable 404 cache behavior have repository contracts.",
       "The local UI covers every main route and has evidence-linked sampled-trace path playback tied to real modeled spans.",
-      "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI llama-3.1-8b-instruct-fast behind 12 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit. The user explicitly approved the 12-call UTC allowance. A bounded production request reached the live AI endpoint but did not return structured output; the replacement model still requires a post-deploy transaction, and Gateway billing and retention settings require account-side review.",
+      "The optional AI provider boundary is disabled by default; the production profile pins Cloudflare Workers AI llama-3.1-8b-instruct-fast behind 12 daily reservations, a 400-cent application ceiling and a required 450-cent Gateway spend limit. The user explicitly approved the 12-call UTC allowance. The unchanged 80-call monthly admission maximum has a conservative $2.29808 inference envelope when every request byte is treated as a token at Cloudflare's higher standard Llama 3.1 8B rates. A bounded production request completed through the application with HTTP 200 and valid structured output; Gateway billing and retention settings still require account-side review.",
       "HTML responses emit Cache-Control no-transform; the promoted live documents contain no injected challenge-platform or analytics script and retain the strict self-only CSP."
     ],
     "knownLocalLimitations": [
       "The Edge offline gate used a warmed service worker; a first-install cold PWA and every lazy worker on a physical device were not exercised.",
       "No target-device Core Web Vitals profile or complete screen-reader certification was run.",
-      "The optional AI endpoint received one bounded live request without returning structured output; the replacement fast-model path, provider retention and Gateway billing controls still require account-side review."
+      "The replacement fast-model path passed one bounded live transaction; provider retention and Gateway billing controls still require account-side review.",
+      "Cloudflare still returns DYNAMIC for HTML shell routes and a removed legacy blueprint key remains a stale immutable HIT because the available token has no zone-cache permissions.",
+      "The scheduled monitor and release-bound backup/restore gates passed, but no deliberate public incident-response or rollback exercise has been run."
     ]
   },
   "baseline": {
@@ -726,7 +729,7 @@
         "status": "verified_local_pending_physical_install_gate",
         "summary": "Manifest parsing, asset integrity, service-worker packaging and Chromium installability pass; a physical-device launcher preview remains external."
       },
-      "changeIdentifier": "pending-release:maskable-pwa-icons-v1",
+      "changeIdentifier": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4:maskable-pwa-icons-v1",
       "disposition": "verified_local_pending_external_gate"
     },
     {
@@ -757,10 +760,10 @@
         "after": "A versioned optional layer now covers requirement compilation, scenario authoring, evidence-linked debrief and phase-aware interview facilitation without changing deterministic engine output or local availability."
       },
       "independentReview": {
-        "status": "verified_local_pending_real_provider_gate",
-        "summary": "Independent API privacy/security and web reviews drove closure of hidden-score leakage, cross-share binding, destructive replacement, grounding, cancellation, response bounds and stale-state defects; fake-provider and integrated tests passed, while no real provider transaction was attempted."
+        "status": "verified_live_pending_account_configuration_review",
+        "summary": "Independent API privacy/security and web reviews drove closure of hidden-score leakage, cross-share binding, destructive replacement, grounding, cancellation, response bounds and stale-state defects. Fake-provider and integrated tests passed, and one bounded production transaction returned valid structured output through Workers AI. The Gateway spend rule and retention controls remain account-side evidence."
       },
-      "changeIdentifier": "257ebee73123d4a86fcd6b46873c748ca406bc9b:optional-bounded-ai-assistance-v1",
+      "changeIdentifier": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4:optional-bounded-ai-assistance-v1",
       "disposition": "verified_local_pending_external_gate"
     },
     {
@@ -1070,6 +1073,56 @@
       "environment": "Microsoft Edge 151.0.4129.72, CDP 1.3, local preview",
       "result": "passed",
       "evidence": "From 18:09:39Z to 18:10:16Z, Edge passed 17 route audits and 10 interaction groups with zero unexpected console errors, network errors or acceptance defects. Page.getAppManifest returned the dedicated content-versioned 192px and 512px maskable PNGs, and Page.getInstallabilityErrors returned no errors."
+    },
+    {
+      "id": "protected-ci-6f350b5",
+      "recordedAt": "2026-08-09",
+      "revision": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4",
+      "runId": "31339309430",
+      "url": "https://github.com/mahmoudelfeelig/SystemForge/actions/runs/31339309430",
+      "result": "passed",
+      "evidence": "Repository, hardening, browser, quality, immutable container image and high-severity scan jobs passed. Coverage passed 53 files and 416 tests at 92.72% statements, 84.54% branches, 93.54% functions and 93.73% lines. The 250-simulation and five-search performance assertions passed in 1677 ms and 427 ms. PostgreSQL migrations, canonical smoke, overload, encrypted backup and disposable restore integration passed for the exact revision."
+    },
+    {
+      "id": "manual-production-deploy-6f350b5",
+      "recordedAt": "2026-08-09",
+      "revision": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4",
+      "runId": "31339562358",
+      "url": "https://github.com/mahmoudelfeelig/SystemForge/actions/runs/31339562358",
+      "result": "passed",
+      "evidence": "The manual workflow bound the release to protected CI, staged the exact immutable images, provisioned encrypted off-site backups, required backup evidence tagged to this release-gate run, passed restore and production smokes, and updated both the host checkout and .last-successful-sha to the exact revision."
+    },
+    {
+      "id": "live-ai-transaction-6f350b5",
+      "recordedAt": "2026-08-09",
+      "revision": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4",
+      "result": "passed_with_account_configuration_boundary",
+      "evidence": "One bounded synthetic compile request traversed the public application API, systemforge-production AI Gateway and Cloudflare Workers AI llama-3.1-8b-instruct-fast. It returned HTTP 200 in 2218 ms with schema-validated availability >= 99.9% output. The database then contained 11 UTC-day reservations totaling 55 nominal cents. The inference token received HTTP 403 from Gateway and account spending-limit read endpoints, so the $4.50 blocking rule, no fallback, logging/cache controls and provider retention settings remain unverified account-side configuration."
+    },
+    {
+      "id": "final-external-edge-6f350b5",
+      "recordedAt": "2026-08-09",
+      "revision": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4",
+      "command": "SYSTEMFORGE_BROWSER_ORIGIN=https://systemforge.elfeel.me SYSTEMFORGE_BROWSER_LIVE_CONFIRMATION=AUDIT_SYSTEMFORGE_PRODUCTION pnpm test:browser",
+      "environment": "Microsoft Edge 151.0.4129.72, CDP 1.3, isolated profile",
+      "result": "passed",
+      "evidence": "From 22:37:15Z to 22:37:38Z, Edge passed 17 desktop, mobile, completed and warmed-offline route audits plus 10 interaction groups. Unexpected console errors, network errors and acceptance defects were zero."
+    },
+    {
+      "id": "cloudflare-cache-boundary-6f350b5",
+      "recordedAt": "2026-08-09",
+      "revision": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4",
+      "result": "external_configuration_blocker",
+      "evidence": "Known HTML routes returned CF-Cache-Status DYNAMIC with no Age, so the intended edge shell cache is not active without a hostname-scoped Cache Rule. The removed /assets/blueprint-grid.png legacy key remained a 1,210,185-byte immutable HIT with Age above 92,000 seconds. The available production token cannot read or mutate zone cache configuration."
+    },
+    {
+      "id": "scheduled-production-monitor-6f350b5",
+      "recordedAt": "2026-08-09",
+      "revision": "6f350b5cca5ddd6f44395d3911e27b648d0c25b4",
+      "runId": "31340517949",
+      "url": "https://github.com/mahmoudelfeelig/SystemForge/actions/runs/31340517949",
+      "result": "passed",
+      "evidence": "The first scheduled production-monitor run after promotion completed successfully against the exact deployed revision. It verifies the public shell, readiness endpoint and configured external smoke checks; it does not substitute for a deliberate incident-response exercise."
     }
   ]
 }
