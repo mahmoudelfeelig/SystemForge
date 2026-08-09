@@ -58,6 +58,7 @@ const report = {
   interactions: [],
   screenshots: [],
   consoleErrors: [],
+  expectedNotFoundConsoleErrors: [],
   expectedOfflineConsoleErrors: [],
   networkErrors: [],
   expectedOfflineNetworkErrors: [],
@@ -780,13 +781,19 @@ try {
   });
 
   let offlineExpected = false;
+  let externalNotFoundExpected = false;
   client.on("Runtime.consoleAPICalled", (event) => {
     if (!["error", "assert"].includes(event.type)) return;
     const message =
       event.args
         ?.map((argument) => argument.value ?? argument.description)
         .join(" ") ?? event.type;
-    if (offlineExpected && message.includes("ERR_INTERNET_DISCONNECTED"))
+    if (
+      externalNotFoundExpected &&
+      message.includes("server responded with a status of 404")
+    )
+      report.expectedNotFoundConsoleErrors.push(message);
+    else if (offlineExpected && message.includes("ERR_INTERNET_DISCONNECTED"))
       report.expectedOfflineConsoleErrors.push(message);
     else report.consoleErrors.push(message);
   });
@@ -800,6 +807,11 @@ try {
   client.on("Log.entryAdded", (event) => {
     if (event.entry?.level !== "error") return;
     if (
+      externalNotFoundExpected &&
+      event.entry.text.includes("server responded with a status of 404")
+    )
+      report.expectedNotFoundConsoleErrors.push(event.entry.text);
+    else if (
       offlineExpected &&
       event.entry.text.includes("ERR_INTERNET_DISCONNECTED")
     )
@@ -845,8 +857,15 @@ try {
 
   await setViewport(client, 1440, 900, false);
   for (const [route, readyText] of routes) {
-    await navigate(client, `${origin}${route}`, readyText);
-    await auditPage(client, route, "desktop-1440x900");
+    externalNotFoundExpected =
+      externalOrigin !== null && route === "/acceptance-route-not-found";
+    try {
+      await navigate(client, `${origin}${route}`, readyText);
+      await auditPage(client, route, "desktop-1440x900");
+      if (externalNotFoundExpected) await delay(100);
+    } finally {
+      externalNotFoundExpected = false;
+    }
   }
   if (externalOrigin)
     assert.equal(
@@ -1327,8 +1346,15 @@ try {
     ["/acceptance-route-not-found", "WORKSPACES"],
   ];
   for (const [route, readyText] of mobileRoutes) {
-    await navigate(client, `${origin}${route}`, readyText);
-    await auditPage(client, route, "mobile-390x844");
+    externalNotFoundExpected =
+      externalOrigin !== null && route === "/acceptance-route-not-found";
+    try {
+      await navigate(client, `${origin}${route}`, readyText);
+      await auditPage(client, route, "mobile-390x844");
+      if (externalNotFoundExpected) await delay(100);
+    } finally {
+      externalNotFoundExpected = false;
+    }
   }
   await navigate(client, `${origin}/lab`, "SYSTEM TOPOLOGY");
   await evaluate(
