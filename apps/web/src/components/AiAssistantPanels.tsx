@@ -52,7 +52,7 @@ function useAiCapabilities(): CapabilityState {
         setState({
           status: "available",
           capabilities,
-          message: "Optional assistant connected",
+          message: "AI assistant available",
         });
       })
       .catch((error: unknown) => {
@@ -87,14 +87,14 @@ function CapabilityStatus({ state }: { state: CapabilityState }) {
   );
 }
 
-function AssistantBoundary({ provider }: { provider?: string }) {
+function AssistantBoundary() {
   return (
     <footer className="ai-assistant__boundary">
       <Lock size={14} />
       <span>
-        Proposals are not modeled evidence and never apply automatically. Text
-        is sent to the configured provider{provider ? ` (${provider})` : ""};
-        provider retention depends on the operator’s account and data controls.
+        Review every suggestion before applying it. Your text is sent to the
+        connected AI service and may be handled under that service’s data
+        policy.
       </span>
     </footer>
   );
@@ -159,7 +159,6 @@ export function ScenarioAiAssistant({
     [],
   );
 
-  const providerLabel = capabilities.capabilities?.provider?.id;
   const available = capabilities.status === "available";
   const requirementScope: AiRequirementScope =
     mode === "custom"
@@ -247,11 +246,11 @@ export function ScenarioAiAssistant({
       <header>
         <Sparkle size={18} />
         <div>
-          <span>Optional drafting assistant</span>
-          <strong>Turn a written brief into a validated proposal</strong>
+          <span>Draft with AI</span>
+          <strong>Turn a written brief into a scenario</strong>
           <p>
-            Numeric changes must quote the source brief. SystemForge validates
-            the proposal before you can apply it.
+            SystemForge checks every measurable change against your brief before
+            you can apply it.
           </p>
         </div>
         <CapabilityStatus state={capabilities} />
@@ -536,7 +535,7 @@ export function ScenarioAiAssistant({
           </section>
         </>
       ) : null}
-      <AssistantBoundary provider={providerLabel} />
+      <AssistantBoundary />
     </section>
   );
 }
@@ -597,7 +596,6 @@ export function RunAiDebriefPanel() {
     () => new Map(response?.evidence.map((item) => [item.id, item]) ?? []),
     [response],
   );
-  const providerLabel = capabilities.capabilities?.provider?.id;
   const eligible =
     capabilities.status === "available" &&
     canonicalRunStatus === "completed" &&
@@ -732,7 +730,7 @@ export function RunAiDebriefPanel() {
           ) : null}
         </section>
       ) : null}
-      <AssistantBoundary provider={providerLabel} />
+      <AssistantBoundary />
     </section>
   );
 }
@@ -792,7 +790,6 @@ export function InterviewAiFacilitator({
     [],
   );
 
-  const providerLabel = capabilities.capabilities?.provider?.id;
   const eligible =
     capabilities.status === "available" &&
     scenario.mode === "interview" &&
@@ -896,7 +893,7 @@ export function InterviewAiFacilitator({
           <small>Facilitation prompt only · no candidate score</small>
         </blockquote>
       ) : null}
-      <AssistantBoundary provider={providerLabel} />
+      <AssistantBoundary />
     </section>
   );
 }

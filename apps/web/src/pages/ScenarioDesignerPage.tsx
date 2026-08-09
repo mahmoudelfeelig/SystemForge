@@ -474,7 +474,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             <ArrowLeft size={15} /> Exit editor
           </Link>
           <span className="panel-index">
-            {mode === "interview" ? "INTERVIEW" : "SCENARIO"}
+            {mode === "interview" ? "Interview" : "Scenario"}
           </span>
           <h1>
             {mode === "interview" ? "Prepare the interview" : "Define the test"}
@@ -592,7 +592,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
             <header>
               <span className="section-number">01</span>
               <div>
-                <small>SCENARIO</small>
+                <small>Scenario</small>
                 <h2>
                   {mode === "interview" ? "Candidate brief" : "Scenario brief"}
                 </h2>
@@ -667,7 +667,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
               <header>
                 <span className="section-number">02</span>
                 <div>
-                  <small>INTERVIEWER ONLY</small>
+                  <small>Interviewer only</small>
                   <h2>Private rubric</h2>
                 </div>
                 <p>Only interviewer links can access this.</p>
@@ -771,7 +771,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "03" : "02"}
               </span>
               <div>
-                <small>WORKLOAD</small>
+                <small>Workload</small>
                 <h2>Traffic profile</h2>
               </div>
               <p>Traffic, concurrency, timeouts, and retries.</p>
@@ -970,7 +970,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "04" : "03"}
               </span>
               <div>
-                <small>WORKLOAD COMPOSITION</small>
+                <small>Request mix</small>
                 <h2>Request mix</h2>
               </div>
               <button
@@ -1127,7 +1127,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "05" : "04"}
               </span>
               <div>
-                <small>REGIONS</small>
+                <small>Regions</small>
                 <h2>Regions and latency</h2>
               </div>
               <button
@@ -1221,7 +1221,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "06" : "05"}
               </span>
               <div>
-                <small>DOMAIN SEMANTICS</small>
+                <small>System behavior</small>
                 <h2>Correctness constraints</h2>
               </div>
               <p>Rules that must hold during failure.</p>
@@ -1311,7 +1311,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "07" : "06"}
               </span>
               <div>
-                <small>INCIDENTS</small>
+                <small>Incidents</small>
                 <h2>Incident schedule</h2>
               </div>
               <button
@@ -1828,7 +1828,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "08" : "07"}
               </span>
               <div>
-                <small>EVALUATION</small>
+                <small>Evaluation</small>
                 <h2>
                   {mode === "interview"
                     ? "Evaluation criteria"
@@ -1961,7 +1961,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                 {mode === "interview" ? "09" : "08"}
               </span>
               <div>
-                <small>SHARE</small>
+                <small>Share</small>
                 <h2>Open or share</h2>
               </div>
               <ShieldCheck size={22} />
@@ -2081,7 +2081,7 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           aria-label="Scenario completion summary"
         >
           <header>
-            <span className="panel-index">SCENARIO SUMMARY</span>
+            <span className="panel-index">Scenario summary</span>
             <strong>
               {completedSections}/{sectionStates.length} sections ready
             </strong>

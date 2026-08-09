@@ -1211,7 +1211,7 @@ export function LabPage() {
           <strong>{scenario.title}</strong>
         </div>
         <nav className="workspace-modes" aria-label="Workspace mode">
-          {(["build", "run", "investigate"] as const).map((mode, index) => (
+          {(["build", "run", "investigate"] as const).map((mode) => (
             <button
               className={workspaceMode === mode ? "active" : ""}
               type="button"
@@ -1219,8 +1219,8 @@ export function LabPage() {
               onClick={() => setWorkspaceMode(mode)}
               aria-pressed={workspaceMode === mode}
             >
-              <small>0{index + 2}</small>
-              {modeIcon(mode)} {mode}
+              {modeIcon(mode)} {mode[0]?.toUpperCase()}
+              {mode.slice(1)}
             </button>
           ))}
         </nav>
@@ -1234,13 +1234,15 @@ export function LabPage() {
             {String(Math.floor(cursorSecond / 60)).padStart(2, "0")}:
             {String(cursorSecond % 60).padStart(2, "0")}
           </span>
-          <span className={`service-state service-state--${availability}`}>
-            {availability === "offline"
-              ? "server down"
-              : `server ${availability}`}
-          </span>
+          {availability !== "online" ? (
+            <span className={`service-state service-state--${availability}`}>
+              {availability === "offline"
+                ? "Server unavailable"
+                : "Server busy"}
+            </span>
+          ) : null}
           <span className={`global-health global-health--${globalHealthState}`}>
-            <small>Model state</small>
+            <small>Health</small>
             <strong>
               {globalHealthState === "not-run" ? "not run" : globalHealthState}
             </strong>
@@ -1250,7 +1252,6 @@ export function LabPage() {
               criteria {revealState}
             </span>
           ) : null}
-          <span className="seed">Seed {scenario.seed}</span>
           <button
             className="icon-button"
             type="button"
@@ -1499,7 +1500,7 @@ export function LabPage() {
             </span>
           </button>
           <span className="requirements-score">
-            OBJECTIVES{" "}
+            Targets{" "}
             <strong>
               {result?.score.passed ?? "—"}/
               {result?.score.total ?? scenario.requirements.length}

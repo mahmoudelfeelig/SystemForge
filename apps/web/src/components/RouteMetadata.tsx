@@ -3,25 +3,25 @@ import { useLocation } from "react-router-dom";
 
 const metadata = {
   "/": {
-    title: "SystemForge — Build and test distributed systems",
+    title: "SystemForge — Test distributed systems in your browser",
     description:
       "Model a topology, run workloads and failures, and trace bottlenecks in your browser.",
   },
   "/lab": {
-    title: "SystemForge Lab",
+    title: "Lab — SystemForge",
     description: "Build a topology and run repeatable failure tests.",
   },
   "/custom": {
-    title: "Scenario Editor — SystemForge",
+    title: "Create a scenario — SystemForge",
     description: "Define workload, incidents, and pass criteria.",
   },
   "/interview": {
-    title: "Interview Setup — SystemForge",
+    title: "Prepare an interview — SystemForge",
     description:
       "Prepare a candidate brief, private rubric, and repeatable scenario.",
   },
   "/replay": {
-    title: "Replay a Run — SystemForge",
+    title: "Replay a run — SystemForge",
     description:
       "Verify a replay bundle and recompute the captured run locally.",
   },
@@ -41,7 +41,7 @@ export function RouteMetadata() {
       metadata[location.pathname as keyof typeof metadata] ??
       (isShared
         ? {
-            title: "Shared Scenario — SystemForge",
+            title: "Shared scenario — SystemForge",
             description: "Open a shared scenario in the Lab.",
           }
         : {

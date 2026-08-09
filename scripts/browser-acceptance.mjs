@@ -1016,7 +1016,7 @@ try {
       const prepare = [...(panel?.querySelectorAll("button") || [])].find((button) => button.textContent?.includes("Prepare validated proposal"));
       return {
         available: Boolean(prepare && !prepare.disabled),
-        releaseLocked: Boolean(panel?.textContent?.includes("release-locked")),
+        manualFallback: Boolean(panel?.textContent?.includes("keep editing manually")),
         manualFieldsPresent: Boolean(document.querySelector("input") && document.querySelector("textarea")),
       };
     })()`,
@@ -1029,7 +1029,7 @@ try {
   if (!externalOrigin)
     assert.deepEqual(
       aiCapabilityState,
-      { available: false, releaseLocked: true, manualFieldsPresent: true },
+      { available: false, manualFallback: true, manualFieldsPresent: true },
       "The local capability-off AI boundary changed unexpectedly.",
     );
   report.aiCapabilityState = aiCapabilityState;
@@ -1390,7 +1390,7 @@ try {
   const mobileRoutes = [
     ["/", "RUNS IN THIS BROWSER"],
     ["/lab", "SYSTEM TOPOLOGY"],
-    ["/custom", "OPTIONAL DRAFTING ASSISTANT"],
+    ["/custom", "DRAFT WITH AI"],
     ["/interview", "PRIVATE RUBRIC"],
     ["/replay", "CHOOSE A REPLAY BUNDLE"],
     ["/acceptance-route-not-found", "WORKSPACES"],
@@ -1503,7 +1503,9 @@ try {
     await evaluate(
       client,
       `(async () => {
-        const runMode = [...document.querySelectorAll(".workspace-modes button")].find((button) => button.textContent?.trim().endsWith("run"));
+        const runMode = [...document.querySelectorAll(".workspace-modes button")].find(
+          (button) => button.textContent?.trim().toLowerCase().endsWith("run"),
+        );
         runMode?.click();
         const run = document.querySelector(".button--run");
         if (!runMode || !run) return false;
@@ -1544,7 +1546,7 @@ try {
 
   const offlineRoutes = [
     ["/lab", "SYSTEM TOPOLOGY"],
-    ["/custom", "OPTIONAL DRAFTING ASSISTANT"],
+    ["/custom", "DRAFT WITH AI"],
     ["/interview", "PRIVATE RUBRIC"],
     ["/replay", "CHOOSE A REPLAY BUNDLE"],
   ];

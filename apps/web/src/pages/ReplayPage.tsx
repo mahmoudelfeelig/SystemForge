@@ -306,7 +306,7 @@ export function ReplayPage() {
 
       <main className="replay-console__main">
         <aside className="replay-console__rail" aria-label="Replay steps">
-          <span className="panel-index">REPLAY STEPS</span>
+          <span className="panel-index">Replay steps</span>
           <ol>
             <li className={fileState === "idle" ? "active" : "complete"}>
               <span>01</span>
@@ -356,7 +356,7 @@ export function ReplayPage() {
           <section className="replay-intake" aria-labelledby="replay-title">
             <header>
               <div>
-                <span className="panel-index">COMPLETED RUN / REPLAY</span>
+                <span className="panel-index">Completed run</span>
                 <h1 id="replay-title">Verify and replay a run</h1>
                 <p>
                   Open a replay bundle. SystemForge verifies it, then reruns the
@@ -439,7 +439,7 @@ export function ReplayPage() {
                 <section>
                   <header>
                     <Fingerprint size={17} />
-                    <span>SOURCE IDENTITY</span>
+                    <span>Source</span>
                   </header>
                   <dl>
                     <div>
@@ -467,7 +467,7 @@ export function ReplayPage() {
                 <section>
                   <header>
                     <Cpu size={17} />
-                    <span>CAPTURED INPUTS</span>
+                    <span>Captured inputs</span>
                   </header>
                   <dl>
                     <div>
@@ -527,7 +527,7 @@ export function ReplayPage() {
           >
             <header>
               <div>
-                <span className="panel-index">RUN COMPARISON</span>
+                <span className="panel-index">Run comparison</span>
                 <h2 id="replay-comparison-title">Compare two runs</h2>
               </div>
               <GitBranch size={22} weight="duotone" />
@@ -697,7 +697,7 @@ export function ReplayPage() {
         </div>
 
         <aside className="replay-console__boundary">
-          <span className="panel-index">FILE CHECKS</span>
+          <span className="panel-index">File checks</span>
           <header>
             <ShieldCheck size={20} weight="duotone" />
             <div>

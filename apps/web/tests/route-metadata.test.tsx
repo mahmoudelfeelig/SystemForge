@@ -37,12 +37,12 @@ describe("route metadata", () => {
           ?.getAttribute("content"),
       ).toBe("index,follow"),
     );
-    expect(document.title).toContain("SystemForge Lab");
+    expect(document.title).toBe("Lab — SystemForge");
   });
 
   it("describes the completed-run replay workspace", async () => {
     renderPath("/replay");
-    await waitFor(() => expect(document.title).toContain("Replay a Run"));
+    await waitFor(() => expect(document.title).toContain("Replay a run"));
     expect(
       document.head
         .querySelector('meta[name="description"]')
@@ -64,7 +64,7 @@ describe("route metadata", () => {
           ?.getAttribute("content"),
       ).toBe("noindex,follow"),
     );
-    expect(document.title).toBe("Shared Scenario — SystemForge");
+    expect(document.title).toBe("Shared scenario — SystemForge");
   });
 
   it("does not mislabel nested unknown paths as shared scenarios", async () => {

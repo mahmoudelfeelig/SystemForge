@@ -96,7 +96,7 @@ describe("optional AI assistant panels", () => {
       />,
     );
 
-    await screen.findByText("Optional assistant connected");
+    await screen.findByText("AI assistant available");
     fireEvent.change(screen.getByLabelText(/Written brief/), {
       target: {
         value:
@@ -152,7 +152,7 @@ describe("optional AI assistant panels", () => {
       />,
     );
 
-    await screen.findByText("Optional assistant connected");
+    await screen.findByText("AI assistant available");
     fireEvent.change(screen.getByLabelText(/Written brief/), {
       target: { value: "Keep p95 below 300 ms during 10 minutes." },
     });
@@ -225,7 +225,7 @@ describe("optional AI assistant panels", () => {
     });
 
     render(<RunAiDebriefPanel />);
-    await screen.findByText("Optional assistant connected");
+    await screen.findByText("AI assistant available");
     fireEvent.click(
       screen.getByRole("button", { name: "Debrief canonical run" }),
     );
@@ -274,7 +274,7 @@ describe("optional AI assistant panels", () => {
         onQuestionGenerated={onQuestionGenerated}
       />,
     );
-    await screen.findByText("Optional assistant connected");
+    await screen.findByText("AI assistant available");
     fireEvent.click(
       screen.getByRole("button", { name: "Draft next question" }),
     );

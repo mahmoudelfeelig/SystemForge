@@ -20,7 +20,7 @@ const canonicalReleaseEnabled =
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   if (!canonicalReleaseEnabled)
     throw new Error(
-      "Optional AI assistance is unavailable while canonical services are release-locked.",
+      "AI is unavailable right now. You can keep editing manually.",
     );
   const response = await fetch(path, {
     ...init,

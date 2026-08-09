@@ -2,11 +2,13 @@ import {
   ArrowRight,
   Broadcast,
   CheckCircle,
-  CloudSlash,
   Compass,
   Database,
+  EnvelopeSimple,
+  GithubLogo,
   GitBranch,
   HardDrives,
+  LinkedinLogo,
   Pulse,
   TerminalWindow,
   Warning,
@@ -76,10 +78,7 @@ export function LandingPage() {
           <Link to="/interview">Interviews</Link>
           <Link to="/replay">Replays</Link>
         </nav>
-        <div className="site-header__runtime" aria-label="Service status">
-          <span>
-            <i /> Local engine ready
-          </span>
+        <div className="site-header__runtime">
           <Link className="button button--primary" to="/lab">
             Open the lab <ArrowRight size={16} />
           </Link>
@@ -90,7 +89,7 @@ export function LandingPage() {
         <section className="home-console" aria-labelledby="home-title">
           <aside className="home-console__rail">
             <header>
-              <span className="panel-index">01 / START HERE</span>
+              <span className="panel-index">Start here</span>
               <div className="home-console__status">
                 <Broadcast size={14} weight="fill" /> Runs in this browser
               </div>
@@ -154,7 +153,7 @@ export function LandingPage() {
           >
             <header className="home-workspace__bar">
               <div>
-                <span className="panel-index">02 / SCENARIO PREVIEW</span>
+                <span className="panel-index">Scenario preview</span>
                 <strong>Black Friday Checkout</strong>
               </div>
               <dl>
@@ -180,7 +179,7 @@ export function LandingPage() {
               >
                 <header>
                   <div>
-                    <span className="panel-index">SYSTEM TOPOLOGY</span>
+                    <span className="panel-index">System topology</span>
                     <h2 id="topology-title">Checkout request path</h2>
                   </div>
                   <span>
@@ -233,7 +232,7 @@ export function LandingPage() {
                 aria-labelledby="objectives-title"
               >
                 <header>
-                  <span className="panel-index">03 / RUN TARGETS</span>
+                  <span className="panel-index">Run targets</span>
                   <strong id="objectives-title">3 of 4 pass</strong>
                 </header>
                 {objectives.map(([label, target, actual, state], index) => (
@@ -269,7 +268,7 @@ export function LandingPage() {
             <div className="home-workspace__diagnostics">
               <section className="home-events" aria-labelledby="events-title">
                 <header>
-                  <span className="panel-index">04 / EVENTS</span>
+                  <span className="panel-index">Events</span>
                   <strong id="events-title">Preview event chain</strong>
                 </header>
                 <ol>
@@ -301,7 +300,7 @@ export function LandingPage() {
               </section>
               <section className="home-signals" aria-labelledby="signals-title">
                 <header>
-                  <span className="panel-index">05 / CURRENT SIGNALS</span>
+                  <span className="panel-index">Current signals</span>
                   <strong id="signals-title">Resource pressure</strong>
                 </header>
                 <dl>
@@ -355,7 +354,7 @@ export function LandingPage() {
                 className="home-root-cause"
                 aria-labelledby="cause-title"
               >
-                <span className="panel-index">06 / WHY IT FAILED</span>
+                <span className="panel-index">Why it failed</span>
                 <Database size={20} weight="duotone" />
                 <div>
                   <h2 id="cause-title">
@@ -373,18 +372,6 @@ export function LandingPage() {
             </div>
           </div>
         </section>
-
-        <section className="local-guarantee">
-          <CloudSlash size={20} weight="duotone" />
-          <div>
-            <strong>Local runs do not need an account</strong>
-            <span>
-              Build, run, pause, and replay locally. The online service is only
-              used for server runs, short links, and shared interviews.
-            </span>
-          </div>
-          <span>INPUTS + SEED + ENGINE VERSION = REPEATABLE RESULT</span>
-        </section>
       </main>
 
       <footer className="site-footer">
@@ -395,29 +382,39 @@ export function LandingPage() {
             <small>A Mahmoud Elfeel project</small>
           </span>
         </a>
-        <div className="site-footer__engine">
-          <span>ENGINE 0.7.0</span>
-          <strong>LOCAL-FIRST · DETERMINISTIC</strong>
-        </div>
-        <p className="site-footer__reachability">
-          <a href="mailto:mahmoudelfeelig@gmail.com">Email</a>
-          {" · "}
+        <p className="site-footer__note">
+          Test designs, failures, and tradeoffs before they reach production.
+        </p>
+        <nav className="site-footer__reachability" aria-label="Contact links">
+          <a
+            href="mailto:mahmoudelfeelig@gmail.com"
+            aria-label="Email Mahmoud Elfeel"
+            title="Email"
+          >
+            <EnvelopeSimple size={19} weight="duotone" />
+            <span className="visually-hidden">Email</span>
+          </a>
           <a
             href="https://www.linkedin.com/in/elephanto"
             target="_blank"
             rel="noreferrer"
+            aria-label="Mahmoud Elfeel on LinkedIn"
+            title="LinkedIn"
           >
-            LinkedIn
+            <LinkedinLogo size={19} weight="duotone" />
+            <span className="visually-hidden">LinkedIn</span>
           </a>
-          {" · "}
           <a
             href="https://github.com/mahmoudelfeelig/SystemForge"
             target="_blank"
             rel="noreferrer"
+            aria-label="SystemForge on GitHub"
+            title="GitHub"
           >
-            GitHub
+            <GithubLogo size={19} weight="duotone" />
+            <span className="visually-hidden">GitHub</span>
           </a>
-        </p>
+        </nav>
       </footer>
     </div>
   );

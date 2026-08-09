@@ -279,7 +279,7 @@ describe("scenario workload controls", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("Optional assistant connected");
+    await screen.findByText("AI assistant available");
     fireEvent.change(screen.getByLabelText("Proposal type"), {
       target: { value: "compile-requirements" },
     });

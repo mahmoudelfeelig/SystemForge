@@ -881,16 +881,14 @@ label {
   border-top: 1px solid var(--line-bright);
   border-inline: 1px solid var(--line);
   display: grid;
-  grid-template-columns: minmax(210px, 1fr) auto minmax(300px, 1fr);
+  grid-template-columns: minmax(210px, 1fr) minmax(260px, 1fr) auto;
   align-items: center;
   gap: 28px;
   padding: 14px clamp(24px, 4vw, 56px);
   background: #040b10;
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
 }
 
 .site-footer__brand {
@@ -931,39 +929,30 @@ label {
   text-transform: uppercase;
 }
 
-.site-footer__engine {
-  min-height: 38px;
-  border-inline: 1px solid var(--line);
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  padding: 0 26px;
+.site-footer__note {
+  margin: 0;
+  color: var(--muted);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
   text-align: center;
-}
-
-.site-footer__engine span {
-  color: var(--cyan);
-}
-
-.site-footer__engine strong {
-  color: var(--text);
-  font-size: 8px;
-  font-weight: 500;
-  letter-spacing: 0.09em;
 }
 
 .site-footer__reachability {
   justify-self: end;
   margin: 0;
-  text-align: right;
-  text-transform: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .site-footer__reachability a {
-  min-height: 22px;
-  padding: 2px 3px;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line-bright);
+  display: grid;
+  place-items: center;
   color: var(--text);
-  box-shadow: inset 0 -1px 0 var(--cyan);
 }
 
 .site-footer a:hover,
@@ -9483,6 +9472,202 @@ html[data-systemforge-density="comfortable"]
   }
 }
 
+/* Human-readable product copy and calmer hierarchy */
+
+.site-shell--console :where(.panel-index, .home-console__status),
+.designer-shell :where(.panel-index, .designer-rail > a, .contract-status span),
+.replay-console :where(.panel-index, .replay-console__rail strong),
+.lab-shell
+  :where(
+    .lab-brand strong,
+    .lab-brand small,
+    .scenario-title span,
+    .scenario-title strong,
+    .workspace-modes button,
+    .simulation-run-state,
+    .service-state,
+    .global-health,
+    .requirements-score
+  ) {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.site-shell--console .site-header nav a,
+.site-shell--console .site-header .button,
+.site-shell--console .wordmark,
+.home-console__rail h1,
+.home-console__mode-list strong,
+.home-workspace__bar > div:first-child strong,
+.home-topology > header h2,
+.objective-ledger > header strong,
+.home-root-cause h2,
+.designer-rail h1,
+.contract-section h2,
+.replay-intake h1,
+.replay-comparison h2,
+.ai-assistant > header strong,
+.ai-assistant__preview > header strong,
+.ai-assistant__debrief-output > header strong,
+.ai-assistant__question > strong,
+.lab-brand strong,
+.scenario-title strong,
+.workspace-modes button {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.site-shell--console .site-header nav a {
+  min-width: 96px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.site-header__runtime {
+  gap: 0;
+}
+
+.home-console__rail h1 {
+  max-width: 240px;
+  font-size: clamp(29px, 2.35vw, 38px);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  text-transform: none;
+}
+
+.home-console__status,
+.home-console__mode-list > a > span,
+.home-console__mode-list small,
+.home-console__facts dt,
+.home-workspace__bar :where(dt, dd),
+.home-topology > header > span {
+  text-transform: none;
+}
+
+.home-console__mode-list strong,
+.home-console__mode-list small,
+.home-console__facts :where(dt, dd) {
+  font-size: 11px;
+}
+
+.home-workspace__bar > div:first-child strong,
+.home-topology > header h2,
+.home-root-cause h2 {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.site-footer__brand strong,
+.site-footer__brand small {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.designer-rail h1,
+.contract-section h2,
+.replay-intake h1,
+.replay-comparison h2 {
+  letter-spacing: -0.015em;
+  line-height: 1.08;
+  text-transform: none;
+}
+
+.designer-rail > p,
+.contract-section > header p,
+.replay-intake header p,
+.replay-comparison > p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.contract-section > header small,
+.replay-source-grid header span,
+.replay-console__header-state > span,
+.ai-assistant > header span,
+.ai-assistant__preview > header span,
+.ai-assistant__debrief-output > header span,
+.ai-assistant__question > span,
+.ai-assistant__controls > label,
+.ai-assistant__inline-controls > label {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.replay-console__rail li strong,
+.replay-console__rail li small,
+.replay-console__rail > a {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 11px;
+  text-transform: none;
+}
+
+.ai-assistant > header strong,
+.ai-assistant__preview > header strong,
+.ai-assistant__debrief-output > header strong,
+.ai-assistant__question > strong {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.lab-brand strong,
+.scenario-title strong {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.workspace-modes button {
+  min-width: 60px;
+  font-size: 12px;
+}
+
+.global-health small {
+  font-size: 10px;
+}
+
+@media (min-width: 1160px) {
+  .simulation-actions .button--canonical {
+    width: 38px;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .simulation-actions .button--canonical .canonical-run-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 1451px) {
+  .lab-header {
+    grid-template-columns: 210px 220px 198px minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1301px) and (max-width: 1450px) {
+  .lab-header {
+    grid-template-columns: 200px 190px 174px minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1160px) and (max-width: 1300px) {
+  .lab-header {
+    grid-template-columns: 196px 180px 168px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .site-footer__note {
+    text-align: left;
+  }
+}
+
 /* Completed-run portability console */
 
 .replay-console {
@@ -11931,5 +12116,153 @@ html[data-systemforge-density]
 
   .decision-trigger kbd {
     display: none;
+  }
+}
+
+/* Final readable hierarchy override. */
+
+label {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.designer-header__title span,
+.designer-header__title strong,
+.designer-summary > header strong,
+.designer-summary__metrics > span,
+.designer-summary__metrics dt,
+.designer-summary__next,
+.designer-summary__next strong,
+.topology-preview--console .topology-node strong,
+.home-console .objective-row strong,
+.home-workspace__diagnostics section > header strong,
+.home-root-cause > a,
+.replay-console__boundary > header strong,
+.replay-console__boundary :where(dt, dd),
+.route-console__message h1,
+.route-console__boundary > strong,
+.route-console__state,
+.reveal-state {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.designer-header__title strong,
+.designer-summary > header strong,
+.designer-summary__next strong,
+.topology-preview--console .topology-node strong,
+.home-console .objective-row strong,
+.home-workspace__diagnostics section > header strong,
+.route-console__message h1,
+.route-console__boundary > strong {
+  line-height: 1.1;
+}
+
+.designer-header__title span,
+.designer-summary__metrics > span,
+.designer-summary__metrics dt,
+.replay-console__boundary :where(dt, dd),
+.route-console__state {
+  font-size: 11px;
+}
+
+.site-shell--console :where(.panel-index, .home-console__status),
+.designer-shell :where(.panel-index, .designer-rail > a, .contract-status span),
+.replay-console :where(.panel-index, .replay-console__rail strong),
+.lab-shell
+  :where(
+    .lab-brand strong,
+    .lab-brand small,
+    .scenario-title span,
+    .scenario-title strong,
+    .workspace-modes button,
+    .simulation-run-state,
+    .service-state,
+    .global-health,
+    .requirements-score
+  ) {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.site-shell--console .site-header nav a,
+.home-console__rail h1,
+.home-workspace__bar > div:first-child strong,
+.home-topology > header h2,
+.home-root-cause h2,
+.designer-rail h1,
+.contract-section h2,
+.replay-intake h1,
+.replay-comparison h2,
+.ai-assistant > header strong,
+.ai-assistant__preview > header strong,
+.ai-assistant__debrief-output > header strong,
+.ai-assistant__question > strong,
+.lab-brand strong,
+.scenario-title strong,
+.workspace-modes button,
+.replay-console__rail li strong,
+.replay-console__rail li small,
+.replay-console__rail > a {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  text-transform: none;
+}
+
+.site-shell--console .site-header nav a,
+.home-console__status,
+.home-console__mode-list > a > span,
+.home-console__mode-list small,
+.home-console__facts dt,
+.home-workspace__bar :where(dt, dd),
+.home-topology > header > span,
+.contract-section > header small,
+.replay-source-grid header span,
+.replay-console__header-state > span,
+.ai-assistant > header span,
+.ai-assistant__preview > header span,
+.ai-assistant__debrief-output > header span,
+.ai-assistant__question > span,
+.ai-assistant__controls > label,
+.ai-assistant__inline-controls > label {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.designer-rail h1,
+.contract-section h2,
+.replay-intake h1,
+.replay-comparison h2,
+.ai-assistant > header strong,
+.ai-assistant__preview > header strong,
+.ai-assistant__debrief-output > header strong,
+.ai-assistant__question > strong,
+.lab-brand strong,
+.scenario-title strong,
+.home-workspace__bar > div:first-child strong,
+.home-topology > header h2,
+.home-root-cause h2 {
+  letter-spacing: -0.015em;
+  line-height: 1.08;
+  text-transform: none;
+}
+
+@media (min-width: 1160px) {
+  .simulation-actions .button--canonical {
+    width: 38px;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .simulation-actions .button--canonical .canonical-run-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 }

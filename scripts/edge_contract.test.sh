@@ -29,6 +29,8 @@ if grep -Fq 's-maxage=' "$NGINX_CONFIG"; then
 fi
 
 grep -Fq 'handle_errors 5xx {' "$CADDY_OPEN_CONFIG"
+grep -Fq '@api_error path /api/*' "$CADDY_OPEN_CONFIG"
+grep -Fq '"code":"api_unavailable"' "$CADDY_OPEN_CONFIG"
 grep -Fq 'header Cache-Control "no-store, no-transform"' "$CADDY_OPEN_CONFIG"
 grep -Fq 'respond `<!doctype html>' "$CADDY_OPEN_CONFIG"
 grep -Fq '</html>` 503' "$CADDY_OPEN_CONFIG"
