@@ -868,7 +868,7 @@ describe("source-grounded AI compilation", () => {
     },
   );
 
-  it("rejects numeric claims in compilation assumptions", async () => {
+  it("drops ungrounded numeric claims from compilation assumptions", async () => {
     const sourceText = "Keep the objective qualitative until it is specified.";
     const provider = new FakeAiProvider({
       "compile-requirements": {
@@ -888,10 +888,10 @@ describe("source-grounded AI compilation", () => {
           architecture: DEFAULT_ARCHITECTURE,
         },
       }),
-    ).rejects.toMatchObject({ code: "ai_output_rejected" });
+    ).resolves.toMatchObject({ assumptions: [] });
   });
 
-  it("rejects invented numeric claims in generated compilation prose", async () => {
+  it("replaces provider labels with deterministic labels while preserving grounded targets", async () => {
     const sourceText = "Keep p95 latency below 400 ms during the modeled run.";
     const provider = new FakeAiProvider({
       "compile-requirements": {
@@ -920,7 +920,17 @@ describe("source-grounded AI compilation", () => {
           architecture: DEFAULT_ARCHITECTURE,
         },
       }),
-    ).rejects.toMatchObject({ code: "ai_output_rejected" });
+    ).resolves.toMatchObject({
+      requirements: [
+        {
+          label: "Tail latency",
+          metric: "p95LatencyMs",
+          operator: "lte",
+          target: 400,
+          unit: "ms",
+        },
+      ],
+    });
 
     for (const label of [
       "Half the requests must meet the latency objective",
@@ -963,7 +973,9 @@ describe("source-grounded AI compilation", () => {
             architecture: DEFAULT_ARCHITECTURE,
           },
         }),
-      ).rejects.toMatchObject({ code: "ai_output_rejected" });
+      ).resolves.toMatchObject({
+        requirements: [{ label: "Tail latency", target: 400 }],
+      });
     }
 
     const currencySourceText =
@@ -995,7 +1007,60 @@ describe("source-grounded AI compilation", () => {
           architecture: DEFAULT_ARCHITECTURE,
         },
       }),
-    ).rejects.toMatchObject({ code: "ai_output_rejected" });
+    ).resolves.toMatchObject({
+      requirements: [
+        {
+          label: "Monthly cost",
+          metric: "monthlyCostEur",
+          target: 100,
+          unit: "EUR/month",
+        },
+      ],
+    });
+  });
+
+  it("accepts ordinary qualitative provider wording without weakening numeric grounding", async () => {
+    const sourceText = "Availability must stay at or above 99.9%.";
+    const provider = new FakeAiProvider({
+      "compile-requirements": {
+        requirements: [
+          {
+            label: "Service availability threshold",
+            metric: "availability",
+            operator: "gte",
+            metricSource: sourceSpan(sourceText, "Availability"),
+            operatorSource: sourceSpan(sourceText, "at or above"),
+            targetSource: sourceSpan(sourceText, "99.9%"),
+          },
+        ],
+        unresolvedQuestions: ["Which region should carry the workload?"],
+        assumptions: ["The service topology remains unchanged."],
+      },
+    });
+
+    await expect(
+      compileAiRequirements(provider, {
+        contractVersion: 1,
+        sourceText,
+        scope: "custom-public",
+        context: {
+          scenario: DEFAULT_SCENARIO,
+          architecture: DEFAULT_ARCHITECTURE,
+        },
+      }),
+    ).resolves.toMatchObject({
+      requirements: [
+        {
+          label: "Availability",
+          metric: "availability",
+          operator: "gte",
+          target: 99.9,
+          unit: "%",
+        },
+      ],
+      unresolvedQuestions: ["Which region should carry the workload?"],
+      assumptions: ["The service topology remains unchanged."],
+    });
   });
 
   it("compiles a full scenario draft without replacing private interview fields or bypassing scenario validation", async () => {
@@ -1171,7 +1236,7 @@ describe("source-grounded AI compilation", () => {
     });
   });
 
-  it("does not let retained numeric prose move into another generated field", async () => {
+  it("drops retained numeric prose when the provider moves it into another field", async () => {
     const sourceText = "Rename the exercise without changing retained details.";
     const baseScenario = scenarioSchema.parse({
       ...structuredClone(DEFAULT_SCENARIO),
@@ -1200,7 +1265,7 @@ describe("source-grounded AI compilation", () => {
         baseScenario,
         architecture: DEFAULT_ARCHITECTURE,
       }),
-    ).rejects.toMatchObject({ code: "ai_output_rejected" });
+    ).resolves.toMatchObject({ assumptions: [] });
   });
 });
 
