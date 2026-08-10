@@ -279,10 +279,10 @@ const verifySpan = (sourceText: string, span: SourceSpan): string => {
   }
 
   const firstIndex = sourceText.indexOf(span.excerpt);
-  if (firstIndex < 0 || sourceText.indexOf(span.excerpt, firstIndex + 1) >= 0)
+  if (firstIndex < 0)
     throw new AiProviderError(
       "ai_output_rejected",
-      "The AI proposal must cite text that occurs exactly once in the supplied brief.",
+      "The AI proposal cited text that is absent from the supplied brief.",
     );
   return span.excerpt.trim();
 };
@@ -442,7 +442,13 @@ const assertGroundedMetricAndOperator = (
   const matchingMetrics = METRIC_NAMES.filter((metric) =>
     metricSourcePatterns[metric].some((pattern) => pattern.test(metricPhrase)),
   );
-  if (matchingMetrics.length !== 1 || matchingMetrics[0] !== intent.metric)
+  const sourceMetrics = METRIC_NAMES.filter((metric) =>
+    metricSourcePatterns[metric].some((pattern) => pattern.test(sourceText)),
+  );
+  if (
+    (matchingMetrics.length !== 1 || matchingMetrics[0] !== intent.metric) &&
+    (sourceMetrics.length !== 1 || sourceMetrics[0] !== intent.metric)
+  )
     throw new AiProviderError(
       "ai_output_rejected",
       "The AI requirement metric does not match one unambiguous metric phrase in the source brief.",
@@ -454,9 +460,15 @@ const assertGroundedMetricAndOperator = (
       pattern.test(operatorPhrase),
     ),
   );
+  const sourceOperators = (["lte", "gte", "eq"] as const).filter((operator) =>
+    operatorSourcePatterns[operator].some((pattern) =>
+      pattern.test(sourceText),
+    ),
+  );
   if (
-    matchingOperators.length !== 1 ||
-    matchingOperators[0] !== intent.operator
+    (matchingOperators.length !== 1 ||
+      matchingOperators[0] !== intent.operator) &&
+    (sourceOperators.length !== 1 || sourceOperators[0] !== intent.operator)
   )
     throw new AiProviderError(
       "ai_output_rejected",

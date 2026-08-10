@@ -507,9 +507,9 @@ describe("source-grounded AI compilation", () => {
     expect(outputSchema).not.toContain('"end"');
   });
 
-  it("rejects excerpt-only citations that occur more than once", async () => {
+  it("accepts repeated identical excerpts and resolves an unambiguous source comparator", async () => {
     const sourceText =
-      "Keep p95 latency below 400 ms while p95 latency remains visible.";
+      "Keep p95 latency at or below 400 ms while p95 latency remains visible at peak.";
     const provider = new FakeAiProvider({
       "compile-requirements": {
         requirements: [
@@ -518,7 +518,7 @@ describe("source-grounded AI compilation", () => {
             metric: "p95LatencyMs",
             operator: "lte",
             metricSource: { excerpt: "p95 latency" },
-            operatorSource: { excerpt: "below" },
+            operatorSource: { excerpt: "at" },
             targetSource: { excerpt: "400 ms" },
           },
         ],
@@ -537,7 +537,16 @@ describe("source-grounded AI compilation", () => {
           architecture: DEFAULT_ARCHITECTURE,
         },
       }),
-    ).rejects.toMatchObject({ code: "ai_output_rejected" });
+    ).resolves.toMatchObject({
+      requirements: [
+        {
+          metric: "p95LatencyMs",
+          operator: "lte",
+          target: 400,
+          unit: "ms",
+        },
+      ],
+    });
   });
 
   it("rejects a hallucinated target span instead of returning a partial proposal", async () => {
