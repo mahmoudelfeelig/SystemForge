@@ -11,11 +11,13 @@ export interface AiUsageReservation {
   model: string;
   reservedCostCents: number;
   maximumDailyRequests: number;
-  maximumMonthlyCostCents: number;
+  maximumMonthlyRequests: number;
+  maximumMonthlyCostCents?: number;
 }
 
 export interface AiUsageBudgetState {
   dailyRequests: number;
+  monthlyRequests: number;
   monthlyReservedCostCents: number;
 }
 

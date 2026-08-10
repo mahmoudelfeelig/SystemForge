@@ -29,10 +29,11 @@ by default; the local editor, simulator, solver, and replay workflow do not
 depend on it. Submitted text leaves SystemForge for the configured provider, and
 retention depends on that provider account's data controls.
 The production provider is Cloudflare Workers AI through a dedicated AI
-Gateway. Admission is globally limited to twelve calls per UTC day, every admitted
-call consumes a conservative five-cent reservation, and the application stops
-at four dollars of reservations per UTC month. The separate Gateway blocking
-limit is configured at $4.50 per month, leaving a buffer beneath the absolute
+Gateway. Admission is globally limited to 50 calls per UTC day and 500 calls per
+UTC month, with stricter per-client route limits and one provider request in
+flight at a time. Every admitted call also records a conservative five-cent
+audit reservation. The separate Gateway blocking limit is configured at $4.50
+per sliding month with no fallback, leaving a buffer beneath the absolute
 five-dollar release ceiling.
 
 ## Local development and deterministic demo

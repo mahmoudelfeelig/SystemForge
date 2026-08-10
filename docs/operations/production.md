@@ -116,28 +116,30 @@ still validates every provider response and does not claim that external
 processing is local.
 
 Create a dedicated `systemforge-production` AI Gateway and configure a blocking
-fixed monthly spend limit of **$4.50**, with no cheaper-model fallback. Do not
+sliding monthly spend limit of **$4.50**, with no cheaper-model fallback. Do not
 enable the feature until that dashboard rule is visibly active. The API adds a
-second persistent denial-of-wallet boundary: at most twelve admitted calls per UTC
-day, a five-cent reservation per admitted call, and at most four dollars of
-reservations per UTC month. The PostgreSQL reservation happens before provider
-I/O and is not refunded on failure or cancellation. The model, request-body
-limit, output-token limit, and reservation are deliberately pinned; changing
-any of them requires a new documented cost proof. Provider failure or budget
-exhaustion must not fail readiness or remove the local Lab.
+second persistent abuse boundary: at most 50 admitted calls per UTC day and 500
+per UTC month, stricter per-client route limits, and one provider request in
+flight at a time. A conservative five-cent audit reservation is written before
+provider I/O and is not refunded on failure or cancellation. For Cloudflare,
+that reservation is usage evidence rather than a dollar proxy; the Gateway's
+actual-cost rule is the financial fuse. Providers without that Gateway fuse
+remain subject to the application's separate four-dollar reserved-cost ceiling.
+Provider failure or budget exhaustion must not fail readiness or remove the
+local Lab.
 
-The twelve-call daily allowance does not increase the monthly admission total:
-the five-cent reservation and 400-cent ceiling still admit at most 80 calls per
-UTC month. The provider request is capped at 96,000 UTF-8 bytes and output at
-2,000 tokens. Treating every request byte as a token and conservatively applying
-Cloudflare's higher standard Llama 3.1 8B rates ($0.282 per million input tokens
-and $0.827 per million output tokens) gives at most $0.028726 per call and
-$2.29808 for all 80 admitted calls. Cloudflare's current same-family FP8-fast
-listing is below that standard rate, but the independent $4.50
-Gateway block remains mandatory because provider prices and billing behavior are
-external state. Recheck this proof against
+The provider request is capped at 96,000 UTF-8 bytes and output at 2,000 tokens.
+Treating every request byte as a token and conservatively applying Cloudflare's
+higher standard Llama 3.1 8B rates ($0.282 per million input tokens and $0.827
+per million output tokens) gives at most $0.028726 for one maximally sized call.
+The current same-family fast-model pricing is substantially lower. Because the
+500-request application allowance is an abuse boundary rather than a billing
+estimate, the independent $4.50 Gateway block and one-request concurrency limit
+remain mandatory to preserve the absolute five-dollar ceiling. Recheck this
+proof against
 `https://developers.cloudflare.com/workers-ai/platform/pricing/` before changing
-the model, byte cap, output cap, reservation, or monthly limit.
+the model, byte cap, output cap, reservation, request limits, concurrency, or
+Gateway limit.
 
 ## First host bootstrap
 

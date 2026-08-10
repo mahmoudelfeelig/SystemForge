@@ -60,10 +60,17 @@ export class MemoryControlStore implements ControlStore {
     const monthlyReservedCostCents = this.aiUsageReservations
       .filter((entry) => entry.createdAt.getTime() >= monthStart)
       .reduce((total, entry) => total + entry.reservedCostCents, 0);
+    const monthlyRequests = this.aiUsageReservations.filter(
+      (entry) => entry.createdAt.getTime() >= monthStart,
+    ).length;
+    const monthlyCostExceeded =
+      reservation.maximumMonthlyCostCents !== undefined &&
+      monthlyReservedCostCents + reservation.reservedCostCents >
+        reservation.maximumMonthlyCostCents;
     if (
       dailyRequests >= reservation.maximumDailyRequests ||
-      monthlyReservedCostCents + reservation.reservedCostCents >
-        reservation.maximumMonthlyCostCents
+      monthlyRequests >= reservation.maximumMonthlyRequests ||
+      monthlyCostExceeded
     ) {
       const nextDay = dayStart + 86_400_000;
       const nextMonth = Date.UTC(
@@ -90,6 +97,7 @@ export class MemoryControlStore implements ControlStore {
     });
     return {
       dailyRequests: dailyRequests + 1,
+      monthlyRequests: monthlyRequests + 1,
       monthlyReservedCostCents:
         monthlyReservedCostCents + reservation.reservedCostCents,
     };

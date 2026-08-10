@@ -25,6 +25,7 @@ import {
   CloudflareWorkersAiResponsesProvider,
   LEGACY_CLOUDFLARE_WORKERS_AI_MODEL,
   MAX_AI_DAILY_REQUESTS,
+  MAX_AI_MONTHLY_REQUESTS,
   MAX_AI_MONTHLY_RESERVED_COST_CENTS,
   MAX_AI_TIMEOUT_MS,
   MIN_CLOUDFLARE_AI_TIMEOUT_MS,
@@ -1916,7 +1917,8 @@ describe("AI HTTP surface", () => {
   });
 
   it("fails closed after the global daily AI request budget is reserved", async () => {
-    expect(MAX_AI_DAILY_REQUESTS).toBe(12);
+    expect(MAX_AI_DAILY_REQUESTS).toBe(50);
+    expect(MAX_AI_MONTHLY_REQUESTS).toBe(500);
     const sourceText = "Keep p95 latency below 400 ms.";
     const provider = new FakeAiProvider({
       "compile-requirements": {
@@ -1941,6 +1943,7 @@ describe("AI HTTP surface", () => {
         model: provider.evidence.model,
         reservedCostCents: CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
         maximumDailyRequests: MAX_AI_DAILY_REQUESTS,
+        maximumMonthlyRequests: MAX_AI_MONTHLY_REQUESTS,
         maximumMonthlyCostCents: MAX_AI_MONTHLY_RESERVED_COST_CENTS,
       });
     }
@@ -1967,19 +1970,44 @@ describe("AI HTTP surface", () => {
     expect(provider.requests).toHaveLength(0);
   });
 
-  it("reserves failed provider calls and blocks before the fixed monthly ceiling", async () => {
+  it("reserves failed provider calls and blocks at the monthly request ceiling", async () => {
     const store = new MemoryControlStore();
     const reservation = {
       providerId: "cloudflare-workers-ai-responses" as const,
       model: CLOUDFLARE_WORKERS_AI_MODEL,
       reservedCostCents: 5,
       maximumDailyRequests: 100,
-      maximumMonthlyCostCents: 10,
+      maximumMonthlyRequests: 2,
     };
     await expect(store.reserveAiUsage(reservation)).resolves.toMatchObject({
+      monthlyRequests: 1,
       monthlyReservedCostCents: 5,
     });
     await expect(store.reserveAiUsage(reservation)).resolves.toMatchObject({
+      monthlyRequests: 2,
+      monthlyReservedCostCents: 10,
+    });
+    await expect(store.reserveAiUsage(reservation)).rejects.toMatchObject({
+      name: "AiUsageBudgetExceededError",
+    });
+  });
+
+  it("keeps providers without a Gateway spend fuse behind a reserved-cost ceiling", async () => {
+    const store = new MemoryControlStore();
+    const reservation = {
+      providerId: "openai-responses" as const,
+      model: "operator-selected-model",
+      reservedCostCents: 5,
+      maximumDailyRequests: 100,
+      maximumMonthlyRequests: 100,
+      maximumMonthlyCostCents: 10,
+    };
+    await expect(store.reserveAiUsage(reservation)).resolves.toMatchObject({
+      monthlyRequests: 1,
+      monthlyReservedCostCents: 5,
+    });
+    await expect(store.reserveAiUsage(reservation)).resolves.toMatchObject({
+      monthlyRequests: 2,
       monthlyReservedCostCents: 10,
     });
     await expect(store.reserveAiUsage(reservation)).rejects.toMatchObject({

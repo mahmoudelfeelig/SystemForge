@@ -37,6 +37,7 @@ import {
   AiProviderError,
   CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
   MAX_AI_DAILY_REQUESTS,
+  MAX_AI_MONTHLY_REQUESTS,
   MAX_AI_MONTHLY_RESERVED_COST_CENTS,
   MAX_AI_TIMEOUT_MS,
   type AiProvider,
@@ -367,7 +368,11 @@ export async function buildApp(
             aiProvider.reservedCostCents ??
             CLOUDFLARE_AI_RESERVED_COST_CENTS_PER_REQUEST,
           maximumDailyRequests: MAX_AI_DAILY_REQUESTS,
-          maximumMonthlyCostCents: MAX_AI_MONTHLY_RESERVED_COST_CENTS,
+          maximumMonthlyRequests: MAX_AI_MONTHLY_REQUESTS,
+          maximumMonthlyCostCents:
+            aiProvider.evidence.id === "cloudflare-workers-ai-responses"
+              ? undefined
+              : MAX_AI_MONTHLY_RESERVED_COST_CENTS,
         });
         return aiProvider.generateStructured(providerRequest, signal);
       },

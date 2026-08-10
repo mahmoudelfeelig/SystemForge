@@ -103,25 +103,34 @@ export class PostgresControlStore implements ControlStore {
       );
       const usage = await client.query<{
         daily_requests: string;
+        monthly_requests: string;
         monthly_reserved_cost_cents: string;
       }>(
         `SELECT
            count(*) FILTER (
              WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
            )::text AS daily_requests,
+           count(*) FILTER (
+             WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+           )::text AS monthly_requests,
            COALESCE(sum(reserved_cost_cents) FILTER (
              WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
            ), 0)::text AS monthly_reserved_cost_cents
          FROM ai_usage_reservations`,
       );
       const dailyRequests = Number(usage.rows[0]?.daily_requests ?? 0);
+      const monthlyRequests = Number(usage.rows[0]?.monthly_requests ?? 0);
       const monthlyReservedCostCents = Number(
         usage.rows[0]?.monthly_reserved_cost_cents ?? 0,
       );
+      const monthlyCostExceeded =
+        reservation.maximumMonthlyCostCents !== undefined &&
+        monthlyReservedCostCents + reservation.reservedCostCents >
+          reservation.maximumMonthlyCostCents;
       if (
         dailyRequests >= reservation.maximumDailyRequests ||
-        monthlyReservedCostCents + reservation.reservedCostCents >
-          reservation.maximumMonthlyCostCents
+        monthlyRequests >= reservation.maximumMonthlyRequests ||
+        monthlyCostExceeded
       ) {
         const retry = await client.query<{ retry_after_seconds: string }>(
           `SELECT CEIL(EXTRACT(EPOCH FROM (
@@ -152,6 +161,7 @@ export class PostgresControlStore implements ControlStore {
       await client.query("COMMIT");
       return {
         dailyRequests: dailyRequests + 1,
+        monthlyRequests: monthlyRequests + 1,
         monthlyReservedCostCents:
           monthlyReservedCostCents + reservation.reservedCostCents,
       };
