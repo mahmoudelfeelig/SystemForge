@@ -117,7 +117,7 @@ function NodeSparkline({ values }: { values: number[] }) {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || values.length < 2) return;
+    if (!canvas) return;
     if (typeof CanvasRenderingContext2D === "undefined") return;
     const context = canvas.getContext("2d");
     if (!context) return;
@@ -128,6 +128,7 @@ function NodeSparkline({ values }: { values: number[] }) {
     canvas.height = height * ratio;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
+    if (values.length < 2) return;
     const minimum = Math.min(...values);
     const maximum = Math.max(...values, minimum + 0.01);
     context.strokeStyle = getComputedStyle(canvas).color;

@@ -25,6 +25,11 @@ const metadata = {
     description:
       "Verify a replay bundle and recompute the captured run locally.",
   },
+  "/decisions": {
+    title: "Decision workbench — SystemForge",
+    description:
+      "Compare architecture alternatives, run history, and captured evidence.",
+  },
 } as const;
 
 const setMeta = (selector: string, content: string) => {
@@ -36,6 +41,10 @@ export function RouteMetadata() {
   const location = useLocation();
 
   useEffect(() => {
+    document.documentElement.scrollTop = 0;
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollTop = 0;
+    document.body.scrollLeft = 0;
     const isShared = /^\/scenario\/[A-Za-z0-9-]+$/.test(location.pathname);
     const route =
       metadata[location.pathname as keyof typeof metadata] ??

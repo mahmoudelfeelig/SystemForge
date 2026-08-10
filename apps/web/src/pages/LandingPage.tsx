@@ -265,111 +265,125 @@ export function LandingPage() {
               </aside>
             </div>
 
-            <div className="home-workspace__diagnostics">
-              <section className="home-events" aria-labelledby="events-title">
-                <header>
-                  <span className="panel-index">Events</span>
-                  <strong id="events-title">Preview event chain</strong>
-                </header>
-                <ol>
-                  <li>
-                    <time>01:04.0</time>
-                    <i className="critical" aria-hidden="true" />
-                    <span className="visually-hidden">Critical: </span>
-                    Redis node unavailable
-                  </li>
-                  <li>
-                    <time>01:04.2</time>
-                    <i className="warning" aria-hidden="true" />
-                    <span className="visually-hidden">Warning: </span>
-                    Cache hit rate drops
-                  </li>
-                  <li>
-                    <time>01:04.8</time>
-                    <i className="critical" aria-hidden="true" />
-                    <span className="visually-hidden">Critical: </span>
-                    Database read load +281%
-                  </li>
-                  <li>
-                    <time>01:05.4</time>
-                    <i className="critical" aria-hidden="true" />
-                    <span className="visually-hidden">Critical: </span>
-                    Client retries increase
-                  </li>
-                </ol>
-              </section>
-              <section className="home-signals" aria-labelledby="signals-title">
-                <header>
-                  <span className="panel-index">Current signals</span>
-                  <strong id="signals-title">Resource pressure</strong>
-                </header>
-                <dl>
+            <details className="home-diagnostics-disclosure">
+              <summary>
+                <span>
+                  <strong>Explore the modeled failure</strong>
+                  <small>
+                    Events, live signals, and the causal explanation
+                  </small>
+                </span>
+                <ArrowRight size={16} />
+              </summary>
+              <div className="home-workspace__diagnostics">
+                <section className="home-events" aria-labelledby="events-title">
+                  <header>
+                    <span className="panel-index">Events</span>
+                    <strong id="events-title">Preview event chain</strong>
+                  </header>
+                  <ol>
+                    <li>
+                      <time>01:04.0</time>
+                      <i className="critical" aria-hidden="true" />
+                      <span className="visually-hidden">Critical: </span>
+                      Redis node unavailable
+                    </li>
+                    <li>
+                      <time>01:04.2</time>
+                      <i className="warning" aria-hidden="true" />
+                      <span className="visually-hidden">Warning: </span>
+                      Cache hit rate drops
+                    </li>
+                    <li>
+                      <time>01:04.8</time>
+                      <i className="critical" aria-hidden="true" />
+                      <span className="visually-hidden">Critical: </span>
+                      Database read load +281%
+                    </li>
+                    <li>
+                      <time>01:05.4</time>
+                      <i className="critical" aria-hidden="true" />
+                      <span className="visually-hidden">Critical: </span>
+                      Client retries increase
+                    </li>
+                  </ol>
+                </section>
+                <section
+                  className="home-signals"
+                  aria-labelledby="signals-title"
+                >
+                  <header>
+                    <span className="panel-index">Current signals</span>
+                    <strong id="signals-title">Resource pressure</strong>
+                  </header>
+                  <dl>
+                    <div>
+                      <dt>API CPU</dt>
+                      <dd>
+                        <progress
+                          max="100"
+                          value="81"
+                          aria-label="API CPU utilization: 81 percent"
+                        />
+                        81%
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Database IOPS</dt>
+                      <dd>
+                        <progress
+                          max="100"
+                          value="97"
+                          aria-label="Database IOPS utilization: 97 percent"
+                        />
+                        97%
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Queue utilization</dt>
+                      <dd>
+                        <progress
+                          max="100"
+                          value="76"
+                          aria-label="Queue utilization: 76 percent"
+                        />
+                        76%
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Availability</dt>
+                      <dd>
+                        <progress
+                          max="100"
+                          value="99.94"
+                          aria-label="Availability: 99.94 percent"
+                        />
+                        99.94%
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+                <section
+                  className="home-root-cause"
+                  aria-labelledby="cause-title"
+                >
+                  <span className="panel-index">Why it failed</span>
+                  <Database size={20} weight="duotone" />
                   <div>
-                    <dt>API CPU</dt>
-                    <dd>
-                      <progress
-                        max="100"
-                        value="81"
-                        aria-label="API CPU utilization: 81 percent"
-                      />
-                      81%
-                    </dd>
+                    <h2 id="cause-title">
+                      Cache loss shifted reads to PostgreSQL
+                    </h2>
+                    <p>
+                      In this preview, database saturation raises latency and
+                      drives more client retries.
+                    </p>
                   </div>
-                  <div>
-                    <dt>Database IOPS</dt>
-                    <dd>
-                      <progress
-                        max="100"
-                        value="97"
-                        aria-label="Database IOPS utilization: 97 percent"
-                      />
-                      97%
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Queue utilization</dt>
-                    <dd>
-                      <progress
-                        max="100"
-                        value="76"
-                        aria-label="Queue utilization: 76 percent"
-                      />
-                      76%
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Availability</dt>
-                    <dd>
-                      <progress
-                        max="100"
-                        value="99.94"
-                        aria-label="Availability: 99.94 percent"
-                      />
-                      99.94%
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-              <section
-                className="home-root-cause"
-                aria-labelledby="cause-title"
-              >
-                <span className="panel-index">Why it failed</span>
-                <Database size={20} weight="duotone" />
-                <div>
-                  <h2 id="cause-title">
-                    Cache loss shifted reads to PostgreSQL
-                  </h2>
-                  <p>
-                    In this preview, database saturation raises latency and
-                    drives more client retries.
-                  </p>
-                </div>
-                <Link to="/lab">
-                  Inspect the run <ArrowRight size={14} />
-                </Link>
-              </section>
-            </div>
+                  <Link to="/lab">
+                    Inspect the run <ArrowRight size={14} />
+                  </Link>
+                </section>
+              </div>
+            </details>
           </div>
         </section>
       </main>

@@ -635,12 +635,25 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
             </button>
           ))}
         </nav>
+        <label className="decision-tool-select">
+          Decision tool
+          <select
+            value={tab}
+            onChange={(event) => setTab(event.target.value as DecisionTab)}
+          >
+            {visibleTabs.map(({ id, label }) => (
+              <option value={id} key={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="decision-body">
           {tab === "solve" ? (
             <div
               id="decision-panel-solve"
-              className="decision-solve"
+              className={`decision-solve${selectedCandidate ? " decision-solve--inspecting" : ""}`}
               role="tabpanel"
               aria-labelledby="decision-tab-solve"
             >
@@ -675,68 +688,6 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                     <option value="2">Two changes</option>
                   </select>
                 </label>
-                <label>
-                  Monthly cost ceiling
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Unbounded"
-                    value={maximumCost}
-                    onChange={(event) => setMaximumCost(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Complexity ceiling
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Unbounded"
-                    value={maximumComplexity}
-                    onChange={(event) =>
-                      setMaximumComplexity(event.target.value)
-                    }
-                  />
-                </label>
-                <fieldset>
-                  <legend>Allowed strategies</legend>
-                  {SOLVER_STRATEGIES.map((strategy) => (
-                    <label key={strategy}>
-                      <input
-                        type="checkbox"
-                        checked={allowedStrategies.includes(strategy)}
-                        onChange={(event) =>
-                          setAllowedStrategies((current) =>
-                            event.target.checked
-                              ? [...current, strategy]
-                              : current.filter(
-                                  (candidate) => candidate !== strategy,
-                                ),
-                          )
-                        }
-                      />
-                      {strategyLabels[strategy]}
-                    </label>
-                  ))}
-                </fieldset>
-                <fieldset className="solver-locks">
-                  <legend>Locked components</legend>
-                  {architecture.nodes.map((node) => (
-                    <label key={node.id}>
-                      <input
-                        type="checkbox"
-                        checked={lockedNodeIds.includes(node.id)}
-                        onChange={(event) =>
-                          setLockedNodeIds((current) =>
-                            event.target.checked
-                              ? [...current, node.id]
-                              : current.filter((id) => id !== node.id),
-                          )
-                        }
-                      />
-                      <Lock size={11} /> {node.name}
-                    </label>
-                  ))}
-                </fieldset>
                 <button
                   type="button"
                   className="decision-primary"
@@ -750,6 +701,79 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                     ? "Searching alternatives…"
                     : "Compare candidates"}
                 </button>
+                <details className="solver-advanced">
+                  <summary>
+                    <span>
+                      <strong>Advanced constraints</strong>
+                      <small>
+                        {allowedStrategies.length} strategies ·{" "}
+                        {lockedNodeIds.length} locked components
+                      </small>
+                    </span>
+                  </summary>
+                  <label>
+                    Monthly cost ceiling
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Unbounded"
+                      value={maximumCost}
+                      onChange={(event) => setMaximumCost(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Complexity ceiling
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Unbounded"
+                      value={maximumComplexity}
+                      onChange={(event) =>
+                        setMaximumComplexity(event.target.value)
+                      }
+                    />
+                  </label>
+                  <fieldset>
+                    <legend>Allowed strategies</legend>
+                    {SOLVER_STRATEGIES.map((strategy) => (
+                      <label key={strategy}>
+                        <input
+                          type="checkbox"
+                          checked={allowedStrategies.includes(strategy)}
+                          onChange={(event) =>
+                            setAllowedStrategies((current) =>
+                              event.target.checked
+                                ? [...current, strategy]
+                                : current.filter(
+                                    (candidate) => candidate !== strategy,
+                                  ),
+                            )
+                          }
+                        />
+                        {strategyLabels[strategy]}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <fieldset className="solver-locks">
+                    <legend>Locked components</legend>
+                    {architecture.nodes.map((node) => (
+                      <label key={node.id}>
+                        <input
+                          type="checkbox"
+                          checked={lockedNodeIds.includes(node.id)}
+                          onChange={(event) =>
+                            setLockedNodeIds((current) =>
+                              event.target.checked
+                                ? [...current, node.id]
+                                : current.filter((id) => id !== node.id),
+                            )
+                          }
+                        />
+                        <Lock size={11} /> {node.name}
+                      </label>
+                    ))}
+                  </fieldset>
+                </details>
               </aside>
 
               <section
@@ -837,12 +861,21 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                 )}
               </section>
 
-              <aside className="candidate-inspector">
-                {selectedCandidate ? (
+              {selectedCandidate ? (
+                <aside className="candidate-inspector">
                   <>
                     <header>
-                      <span>Candidate {selectedCandidate.rank}</span>
-                      <strong>{selectedCandidate.label}</strong>
+                      <div>
+                        <span>Candidate {selectedCandidate.rank}</span>
+                        <strong>{selectedCandidate.label}</strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCandidateId(null)}
+                        aria-label="Close candidate details"
+                      >
+                        <X size={16} />
+                      </button>
                     </header>
                     <dl className="candidate-metrics">
                       <div>
@@ -1056,27 +1089,8 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                       <Sparkle size={16} /> Apply candidate
                     </button>
                   </>
-                ) : (
-                  <div className="candidate-empty candidate-empty--side">
-                    <GitBranch size={22} />
-                    <strong>{architecture.name}</strong>
-                    <p>
-                      {architecture.nodes.length} components and{" "}
-                      {architecture.edges.length} links are eligible for a
-                      bounded comparison. The baseline stays unchanged until you
-                      apply an eligible candidate.
-                    </p>
-                    <dl className="baseline-summary baseline-summary--stacked">
-                      {architecture.nodes.slice(0, 5).map((node) => (
-                        <div key={node.id}>
-                          <dt>{node.kind}</dt>
-                          <dd>{node.name}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                )}
-              </aside>
+                </aside>
+              ) : null}
 
               <section className="robustness-strip">
                 <div>

@@ -1084,8 +1084,9 @@ export function TelemetryPanel({
   const [visibleSeries, setVisibleSeries] = useState(defaultVisibleSeries);
   const [chartWindow, setChartWindow] = useState<"full" | "30" | "60">("full");
   const [hoverSecond, setHoverSecond] = useState<number | null>(null);
-  const [diagnosticView, setDiagnosticView] =
-    useState<DiagnosticView>("resources");
+  const [diagnosticView, setDiagnosticView] = useState<DiagnosticView>(() =>
+    result?.traces?.length ? "traces" : "resources",
+  );
   const frames = result?.frames ?? liveFrames;
   const events = result?.events ?? liveEvents;
   const traces = result?.traces;
@@ -1126,11 +1127,6 @@ export function TelemetryPanel({
   const visibleRequirements = scenario.requirements.filter(
     (requirement) => requirement.visibility !== "hidden",
   );
-
-  useEffect(() => {
-    if (!result) return;
-    setDiagnosticView(result.traces?.length ? "traces" : "resources");
-  }, [result]);
 
   if (!result && frames.length === 0) {
     return (

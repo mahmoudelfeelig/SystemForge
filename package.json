@@ -20,12 +20,14 @@
     "test:mutations": "node scripts/run-targeted-mutations.mjs",
     "test:stability": "node scripts/run-test-stability.mjs",
     "test:browser": "node scripts/browser-acceptance.mjs",
+    "test:ui": "playwright test",
     "test:performance": "vitest run --config vitest.performance.config.ts",
     "typecheck": "tsc -b --pretty false",
     "quality": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:performance && pnpm build && pnpm --filter @systemforge/web test:sites"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^26.1.2",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.8.0",

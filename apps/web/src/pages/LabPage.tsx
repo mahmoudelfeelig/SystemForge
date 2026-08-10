@@ -40,7 +40,7 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ComponentNode,
   type SystemFlowNode,
@@ -48,7 +48,6 @@ import {
 import { BrandIcon } from "../components/BrandIcon";
 import { COMPONENT_ICONS } from "../components/componentIcons";
 import { CommandPalette } from "../components/CommandPalette";
-import { DecisionWorkbenchBoundary } from "../components/DecisionWorkbenchBoundary";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ServiceBanner } from "../components/ServiceBanner";
 import {
@@ -513,6 +512,7 @@ const importedReplayIntentFromLocationState = (
 };
 
 export function LabPage() {
+  const navigate = useNavigate();
   const location = useLocation();
   const scenario = useLabStore((state) => state.scenario);
   const architecture = useLabStore((state) => state.architecture);
@@ -587,8 +587,8 @@ export function LabPage() {
   const [cursorSecond, setCursorSecond] = useState(0);
   const [tracePlaybackSelection, setTracePlaybackSelection] =
     useState<TracePlaybackSelection | null>(null);
-  const [decisionOpen, setDecisionOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [runtimeInspectorOpen, setRuntimeInspectorOpen] = useState(false);
   const [compactViewport, setCompactViewport] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -605,11 +605,9 @@ export function LabPage() {
   );
   const openDecisionWorkbench = useCallback(() => {
     setCommandOpen(false);
-    setDecisionOpen(true);
-  }, []);
-  const closeDecisionWorkbench = useCallback(() => setDecisionOpen(false), []);
+    void navigate("/decisions");
+  }, [navigate]);
   const openCommandPalette = useCallback(() => {
-    setDecisionOpen(false);
     setCommandOpen(true);
   }, []);
   const closeCommandPalette = useCallback(() => setCommandOpen(false), []);
@@ -1175,6 +1173,7 @@ export function LabPage() {
     const event = displayEvents.find((candidate) => candidate.id === id);
     selectEvent(id);
     setWorkspaceMode("investigate");
+    setRuntimeInspectorOpen(true);
     setSelectedEdgeId(null);
     if (event?.entityId) selectNode(event.entityId);
     if (event) setCursorSecond(event.second);
@@ -1190,11 +1189,17 @@ export function LabPage() {
     );
 
   return (
-    <div className="lab-shell">
-      <header
-        className="lab-header"
-        inert={decisionOpen || commandOpen ? true : undefined}
-      >
+    <div
+      className={`lab-shell lab-shell--${workspaceMode}${
+        workspaceMode !== "build" && runtimeInspectorOpen
+          ? " lab-shell--runtime-inspector"
+          : ""
+      }`}
+    >
+      <a className="skip-link" href="#lab-workspace">
+        Skip to workspace
+      </a>
+      <header className="lab-header" inert={commandOpen ? true : undefined}>
         <Link to="/" className="lab-brand">
           <ArrowLeft className="lab-brand__back" size={14} />
           <BrandIcon className="lab-brand__mark" />
@@ -1266,15 +1271,15 @@ export function LabPage() {
             }
           >
             <Copy size={16} />
-            <span aria-live="polite">
-              {shareStatus === "copied"
-                ? "Copied"
-                : shareStatus === "too-large"
-                  ? "Link too large"
-                  : shareStatus === "unavailable"
-                    ? "Copy unavailable"
-                    : ""}
-            </span>
+            {shareStatus !== "idle" ? (
+              <span aria-live="polite">
+                {shareStatus === "copied"
+                  ? "Copied"
+                  : shareStatus === "too-large"
+                    ? "Link too large"
+                    : "Copy unavailable"}
+              </span>
+            ) : null}
           </button>
           <button
             className="icon-button command-trigger"
@@ -1531,19 +1536,19 @@ export function LabPage() {
         notice={notice}
         onDismiss={dismissNotice}
       />
-      <DecisionWorkbenchBoundary
-        open={decisionOpen}
-        onClose={closeDecisionWorkbench}
-      />
       <CommandPalette
         open={commandOpen}
         onClose={closeCommandPalette}
         onOpenDecisionWorkbench={openDecisionWorkbench}
       />
       <main
+        id="lab-workspace"
         className="lab-grid"
-        inert={decisionOpen || commandOpen ? true : undefined}
+        inert={commandOpen ? true : undefined}
       >
+        <h1 className="visually-hidden">
+          {scenario.title} {workspaceMode} workspace
+        </h1>
         <aside className="component-palette">
           <header>
             <div>
@@ -1804,7 +1809,18 @@ export function LabPage() {
                   <Trash size={14} /> Blank
                 </button>
               </div>
-            ) : null}
+            ) : (
+              <div className="canvas-tools" aria-label="Runtime view tools">
+                <button
+                  type="button"
+                  aria-expanded={runtimeInspectorOpen}
+                  onClick={() => setRuntimeInspectorOpen((open) => !open)}
+                >
+                  <SlidersHorizontal size={14} />
+                  {runtimeInspectorOpen ? "Close inspector" : "Inspector"}
+                </button>
+              </div>
+            )}
             <div className="canvas-signal">
               <Pulse size={15} weight="bold" />
               <span>
@@ -1843,11 +1859,13 @@ export function LabPage() {
             onSelectionDragStop={commitArchitectureTransient}
             onNodeClick={(event) => {
               if (tracePlaybackSelection) return;
+              if (workspaceMode !== "build") setRuntimeInspectorOpen(true);
               if (!event.shiftKey) setSelectedEdgeId(null);
             }}
             onEdgeClick={(event, edge) => {
               if (tracePlaybackSelection) return;
               if (event.shiftKey) return;
+              if (workspaceMode !== "build") setRuntimeInspectorOpen(true);
               selectNode(null);
               setSelectedNodeIds([]);
               setSelectedEdgeId(edge.id);
@@ -2070,6 +2088,15 @@ export function LabPage() {
           </details>
         </section>
 
+        {workspaceMode !== "build" && runtimeInspectorOpen ? (
+          <button
+            className="runtime-inspector-close"
+            type="button"
+            onClick={() => setRuntimeInspectorOpen(false)}
+          >
+            Close inspector
+          </button>
+        ) : null}
         <InspectorPanel
           node={selectedNode}
           edge={selectedEdge}

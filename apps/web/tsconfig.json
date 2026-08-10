@@ -9,7 +9,13 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "tsBuildInfoFile": "../../node_modules/.cache/web.tsbuildinfo"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "e2e/**/*.ts"
+  ],
   "references": [
     { "path": "../../packages/contracts" },
     { "path": "../../packages/sim-core" }

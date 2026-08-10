@@ -55,6 +55,16 @@ describe("route metadata", () => {
     ).toBe("index,follow");
   });
 
+  it("keeps the decision workbench as an indexable workspace", async () => {
+    renderPath("/decisions");
+    await waitFor(() => expect(document.title).toContain("Decision workbench"));
+    expect(
+      document.head
+        .querySelector('meta[name="robots"]')
+        ?.getAttribute("content"),
+    ).toBe("index,follow");
+  });
+
   it("marks exact shared links noindex", async () => {
     renderPath("/scenario/abc-123");
     await waitFor(() =>

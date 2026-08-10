@@ -404,6 +404,14 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
     );
     void navigate("/lab");
   };
+  const reviewShareLinks = () => {
+    if (collapsedSections.has("share")) toggleSection("share");
+    window.requestAnimationFrame(() =>
+      document
+        .querySelector("#share")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
   const publish = async () => {
     if (!validation.success) {
       setPublishError(validationMessage);
@@ -458,11 +466,15 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           <button
             className="button button--primary"
             type="button"
-            onClick={openLab}
-            disabled={!validation.success}
+            onClick={mode === "interview" ? reviewShareLinks : openLab}
+            disabled={mode === "custom" && !validation.success}
           >
-            <span className="designer-cta-full">Open in Lab</span>
-            <span className="designer-cta-compact">Open Lab</span>
+            <span className="designer-cta-full">
+              {mode === "interview" ? "Review and create links" : "Open in Lab"}
+            </span>
+            <span className="designer-cta-compact">
+              {mode === "interview" ? "Share" : "Open Lab"}
+            </span>
             <ArrowRight size={16} />
           </button>
         </div>
@@ -486,33 +498,24 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           </p>
           <nav aria-label="Scenario contract sections">
             <a href="#brief">
-              <span>01</span> Brief
+              <span>01</span>{" "}
+              {mode === "interview" ? "Candidate brief" : "Brief"}
             </a>
             {mode === "interview" ? (
               <a href="#facilitation">
-                <span>02</span> Facilitation
+                <span>02</span> Rubric and facilitation
               </a>
             ) : null}
             <a href="#demand">
-              <span>{mode === "interview" ? "03" : "02"}</span> Workload
-            </a>
-            <a href="#requests">
-              <span>{mode === "interview" ? "04" : "03"}</span> Request mix
-            </a>
-            <a href="#regions">
-              <span>{mode === "interview" ? "05" : "04"}</span> Regions
-            </a>
-            <a href="#invariants">
-              <span>{mode === "interview" ? "06" : "05"}</span> Invariants
+              <span>{mode === "interview" ? "03" : "02"}</span> Traffic and
+              regions
             </a>
             <a href="#failures">
-              <span>{mode === "interview" ? "07" : "06"}</span> Incidents
-            </a>
-            <a href="#objectives">
-              <span>{mode === "interview" ? "08" : "07"}</span> Objectives
+              <span>{mode === "interview" ? "04" : "03"}</span> Failures and
+              objectives
             </a>
             <a href="#share">
-              <span>{mode === "interview" ? "09" : "08"}</span> Share
+              <span>{mode === "interview" ? "05" : "04"}</span> Review and share
             </a>
           </nav>
           <div className="contract-status">
@@ -549,41 +552,67 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
 
         <form
           className="contract-editor"
+          aria-describedby={
+            validationMessage ? "designer-form-error" : undefined
+          }
           onSubmit={(event) => event.preventDefault()}
         >
-          <ScenarioAiAssistant
-            scenario={scenario}
-            architecture={DEFAULT_ARCHITECTURE}
-            mode={mode}
-            onApplyScenario={setDraft}
-            onApplyRequirements={(requirements) => {
-              const incomingById = new Map(
-                requirements.map((requirement) => [
-                  requirement.id,
-                  requirement,
-                ]),
-              );
-              const merged = scenario.requirements.map(
-                (requirement) =>
-                  incomingById.get(requirement.id) ?? requirement,
-              );
-              for (const requirement of requirements)
-                if (
-                  !scenario.requirements.some(({ id }) => id === requirement.id)
-                )
-                  merged.push(requirement);
-              if (merged.length > 40)
-                return "Applying this proposal would exceed the 40-objective scenario limit. Remove an objective or discard the proposal.";
-              const proposal = scenarioSchema.safeParse({
-                ...scenario,
-                requirements: merged,
-              });
-              if (!proposal.success)
-                return `The combined objective set is invalid: ${proposal.error.issues[0]?.message ?? "review the proposal"}.`;
-              setDraft(proposal.data);
-              return null;
-            }}
-          />
+          {validationMessage ? (
+            <p
+              className="designer-form-error"
+              id="designer-form-error"
+              role="alert"
+            >
+              Review the highlighted contract issue before opening the Lab:{" "}
+              {validationMessage}
+            </p>
+          ) : null}
+          <details className="designer-assistant-drawer">
+            <summary>
+              <span>
+                <strong>Draft with the optional assistant</strong>
+                <small>
+                  Generate a starting point, then review every proposed change.
+                </small>
+              </span>
+              <CaretDown size={16} />
+            </summary>
+            <ScenarioAiAssistant
+              scenario={scenario}
+              architecture={DEFAULT_ARCHITECTURE}
+              mode={mode}
+              onApplyScenario={setDraft}
+              onApplyRequirements={(requirements) => {
+                const incomingById = new Map(
+                  requirements.map((requirement) => [
+                    requirement.id,
+                    requirement,
+                  ]),
+                );
+                const merged = scenario.requirements.map(
+                  (requirement) =>
+                    incomingById.get(requirement.id) ?? requirement,
+                );
+                for (const requirement of requirements)
+                  if (
+                    !scenario.requirements.some(
+                      ({ id }) => id === requirement.id,
+                    )
+                  )
+                    merged.push(requirement);
+                if (merged.length > 40)
+                  return "Applying this proposal would exceed the 40-objective scenario limit. Remove an objective or discard the proposal.";
+                const proposal = scenarioSchema.safeParse({
+                  ...scenario,
+                  requirements: merged,
+                });
+                if (!proposal.success)
+                  return `The combined objective set is invalid: ${proposal.error.issues[0]?.message ?? "review the proposal"}.`;
+                setDraft(proposal.data);
+                return null;
+              }}
+            />
+          </details>
           <section
             className="contract-section contract-section--brief"
             id="brief"
@@ -1007,72 +1036,90 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   className="table-editor__row"
                   key={`${request.name}-${index}`}
                 >
-                  <input
-                    aria-label="Request class name"
-                    value={request.name}
-                    onChange={(event) =>
-                      updateRequest(index, { name: event.target.value })
-                    }
-                  />
-                  <input
-                    aria-label="Traffic share"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={request.share}
-                    onChange={(event) =>
-                      updateRequest(index, {
-                        share: Number(event.target.value),
-                      })
-                    }
-                  />
-                  <input
-                    aria-label="Read ratio"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={request.readRatio}
-                    onChange={(event) =>
-                      updateRequest(index, {
-                        readRatio: Number(event.target.value),
-                      })
-                    }
-                  />
-                  <input
-                    aria-label="Payload kilobytes"
-                    type="number"
-                    min="0"
-                    value={request.payloadKb}
-                    onChange={(event) =>
-                      updateRequest(index, {
-                        payloadKb: Number(event.target.value),
-                      })
-                    }
-                  />
-                  <input
-                    aria-label="Compute milliseconds"
-                    type="number"
-                    min="0"
-                    value={request.computeMs}
-                    onChange={(event) =>
-                      updateRequest(index, {
-                        computeMs: Number(event.target.value),
-                      })
-                    }
-                  />
-                  <input
-                    aria-label="Database queries"
-                    type="number"
-                    min="0"
-                    value={request.databaseQueries}
-                    onChange={(event) =>
-                      updateRequest(index, {
-                        databaseQueries: Number(event.target.value),
-                      })
-                    }
-                  />
+                  <label className="table-editor__field">
+                    <span>Request class</span>
+                    <input
+                      aria-label="Request class name"
+                      value={request.name}
+                      onChange={(event) =>
+                        updateRequest(index, { name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="table-editor__field">
+                    <span>Traffic share</span>
+                    <input
+                      aria-label="Traffic share"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={request.share}
+                      onChange={(event) =>
+                        updateRequest(index, {
+                          share: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="table-editor__field">
+                    <span>Read ratio</span>
+                    <input
+                      aria-label="Read ratio"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={request.readRatio}
+                      onChange={(event) =>
+                        updateRequest(index, {
+                          readRatio: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="table-editor__field">
+                    <span>Payload KB</span>
+                    <input
+                      aria-label="Payload kilobytes"
+                      type="number"
+                      min="0"
+                      value={request.payloadKb}
+                      onChange={(event) =>
+                        updateRequest(index, {
+                          payloadKb: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="table-editor__field">
+                    <span>Compute ms</span>
+                    <input
+                      aria-label="Compute milliseconds"
+                      type="number"
+                      min="0"
+                      value={request.computeMs}
+                      onChange={(event) =>
+                        updateRequest(index, {
+                          computeMs: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="table-editor__field">
+                    <span>DB queries</span>
+                    <input
+                      aria-label="Database queries"
+                      type="number"
+                      min="0"
+                      value={request.databaseQueries}
+                      onChange={(event) =>
+                        updateRequest(index, {
+                          databaseQueries: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
                   <div className="inline-toggles">
                     <label>
                       <input
@@ -1158,40 +1205,49 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
                   className="table-editor__row"
                   key={`${region.name}-${index}`}
                 >
-                  <input
-                    aria-label="Region name"
-                    value={region.name}
-                    onChange={(event) =>
-                      updateRegion(index, { name: event.target.value })
-                    }
-                  />
-                  <input
-                    aria-label="Regional traffic share"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={region.trafficShare}
-                    onChange={(event) =>
-                      updateRegion(index, {
-                        trafficShare: Number(event.target.value),
-                      })
-                    }
-                  />
-                  <div className="unit-field">
+                  <label className="table-editor__field">
+                    <span>Region</span>
                     <input
-                      aria-label="Round-trip latency"
+                      aria-label="Region name"
+                      value={region.name}
+                      onChange={(event) =>
+                        updateRegion(index, { name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="table-editor__field">
+                    <span>Traffic share</span>
+                    <input
+                      aria-label="Regional traffic share"
                       type="number"
                       min="0"
-                      value={region.roundTripMs}
+                      max="1"
+                      step="0.01"
+                      value={region.trafficShare}
                       onChange={(event) =>
                         updateRegion(index, {
-                          roundTripMs: Number(event.target.value),
+                          trafficShare: Number(event.target.value),
                         })
                       }
                     />
-                    <span>ms</span>
-                  </div>
+                  </label>
+                  <label className="table-editor__field">
+                    <span>Round trip</span>
+                    <div className="unit-field">
+                      <input
+                        aria-label="Round-trip latency"
+                        type="number"
+                        min="0"
+                        value={region.roundTripMs}
+                        onChange={(event) =>
+                          updateRegion(index, {
+                            roundTripMs: Number(event.target.value),
+                          })
+                        }
+                      />
+                      <span>ms</span>
+                    </div>
+                  </label>
                   <button
                     type="button"
                     aria-label={`Remove ${region.name}`}
@@ -2083,8 +2139,12 @@ export function ScenarioDesignerPage({ mode }: ScenarioDesignerPageProps) {
           <header>
             <span className="panel-index">Scenario summary</span>
             <strong>
-              {completedSections}/{sectionStates.length} sections ready
+              {validation.success ? "Valid draft" : "Draft needs attention"}
             </strong>
+            <small>
+              {completedSections}/{sectionStates.length} sections structurally
+              complete
+            </small>
             <div
               className="designer-progress"
               role="progressbar"

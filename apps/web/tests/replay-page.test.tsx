@@ -166,6 +166,7 @@ describe("completed-run replay page", () => {
     mocks.assessCompatibility.mockReturnValueOnce(compatible);
 
     renderReplayPage();
+    expect(screen.queryByText("Compare two runs")).toBeNull();
     selectFile(
       screen.getByLabelText(/Choose a replay bundle/i),
       "source-replay.json",
@@ -175,6 +176,7 @@ describe("completed-run replay page", () => {
       await screen.findByText("Bundle checks passed for this model build"),
     ).toBeTruthy();
     expect(screen.getByText("source-run")).toBeTruthy();
+    expect(screen.getByText("Compare two runs")).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", {
         name: /Verify and replay/i,

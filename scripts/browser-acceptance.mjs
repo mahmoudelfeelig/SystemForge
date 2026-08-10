@@ -455,7 +455,7 @@ const openDecisionWorkbench = async (client) => {
   await clickControl(client, "Compare");
   await waitFor(
     client,
-    'document.querySelector("[role=dialog] #decision-tab-history") !== null',
+    'location.pathname === "/decisions" && document.querySelector("[role=dialog] #decision-tab-history") !== null',
     "the loaded decision workbench",
   );
 };
@@ -571,11 +571,34 @@ const auditPage = async (client, route, viewport) => {
       const unnamedControls = interactive
         .filter((element) => !accessibleName(element))
         .map((element) => element.outerHTML.slice(0, 180));
+      const canScrollToControl = (element) => {
+        let ancestor = element.parentElement;
+        while (ancestor && ancestor !== document.body) {
+          const style = getComputedStyle(ancestor);
+          if (
+            ["auto", "scroll"].includes(style.overflowX) &&
+            ancestor.scrollWidth > ancestor.clientWidth + 1
+          ) return true;
+          ancestor = ancestor.parentElement;
+        }
+        return false;
+      };
+      const clippedControls = interactive
+        .filter((element) => {
+          const bounds = element.getBoundingClientRect();
+          return (bounds.left < -1 || bounds.right > window.innerWidth + 1) && !canScrollToControl(element);
+        })
+        .map((element) => accessibleName(element).replace(/\\s+/g, " ").trim().slice(0, 100));
+      const emptyStatusPopovers = [...document.querySelectorAll(".icon-button > span")]
+        .filter((element) => visible(element) && !(element.textContent || "").trim())
+        .map((element) => element.parentElement?.getAttribute("aria-label") || "unnamed icon action");
       return {
         title: document.title,
         mains: document.querySelectorAll("main").length,
         duplicateIds,
         unnamedControls,
+        clippedControls,
+        emptyStatusPopovers,
         scrollWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth,
         horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
@@ -590,6 +613,12 @@ const auditPage = async (client, route, viewport) => {
     violations.push(`duplicate IDs: ${audit.duplicateIds.join(", ")}`);
   if (audit.unnamedControls.length)
     violations.push(`unnamed controls: ${audit.unnamedControls.join(" | ")}`);
+  if (audit.clippedControls.length)
+    violations.push(`clipped controls: ${audit.clippedControls.join(" | ")}`);
+  if (audit.emptyStatusPopovers.length)
+    violations.push(
+      `empty status popovers: ${audit.emptyStatusPopovers.join(" | ")}`,
+    );
   if (audit.horizontalOverflow)
     violations.push(
       `page overflow ${audit.scrollWidth}px at ${audit.viewportWidth}px`,
@@ -619,6 +648,9 @@ const captureScreenshot = async (client, filename) => {
   await writeFile(path, Buffer.from(screenshot.data, "base64"));
   report.screenshots.push(path);
 };
+
+const routeArtifactName = (route) =>
+  route === "/" ? "landing" : route.slice(1).replaceAll(/[^a-z0-9]+/gi, "-");
 
 const pressKey = async (client, key, code, modifiers = 0) => {
   const virtualKeyCodes = {
@@ -853,6 +885,7 @@ try {
     ["/custom", "Define the test"],
     ["/interview", "Prepare the interview"],
     ["/replay", "Verify and replay a run"],
+    ["/decisions", "Compare designs"],
     ["/acceptance-route-not-found", "No workspace at this address"],
   ];
 
@@ -863,6 +896,11 @@ try {
     try {
       await navigate(client, `${origin}${route}`, readyText);
       await auditPage(client, route, "desktop-1440x900");
+      if (route !== "/acceptance-route-not-found")
+        await captureScreenshot(
+          client,
+          `${routeArtifactName(route)}-desktop-1440.png`,
+        );
       if (externalNotFoundExpected) await delay(100);
     } finally {
       externalNotFoundExpected = false;
@@ -874,6 +912,24 @@ try {
       true,
       "The external unknown route did not preserve HTTP 404.",
     );
+
+  const intermediateViewports = [
+    { width: 1280, height: 720, label: "desktop-1280x720" },
+    { width: 1024, height: 768, label: "tablet-1024x768" },
+  ];
+  for (const viewport of intermediateViewports) {
+    await setViewport(client, viewport.width, viewport.height, false);
+    for (const [route, readyText] of routes.slice(0, -1)) {
+      await navigate(client, `${origin}${route}`, readyText);
+      await auditPage(client, route, viewport.label);
+      await captureScreenshot(
+        client,
+        `${routeArtifactName(route)}-${viewport.label}.png`,
+      );
+    }
+  }
+
+  await setViewport(client, 1440, 900, false);
 
   await navigate(client, `${origin}/lab`, "SYSTEM TOPOLOGY");
   assert.equal(
@@ -1001,6 +1057,10 @@ try {
   );
 
   await navigate(client, `${origin}/custom`, "Define the test");
+  await evaluate(
+    client,
+    'document.querySelector(".designer-assistant-drawer")?.setAttribute("open", "")',
+  );
   await waitFor(
     client,
     `(() => {
@@ -1075,6 +1135,14 @@ try {
     "the saved browser-local topology snapshot",
   );
   await pressKey(client, "Escape", "Escape");
+  await waitFor(
+    client,
+    `location.pathname === "/lab" && (() => {
+      const run = [...document.querySelectorAll("button")].find((button) => button.textContent?.includes("Run locally"));
+      return Boolean(run && !run.disabled);
+    })()`,
+    "the restored Lab run control",
+  );
   report.interactions.push(
     "AI capability-off, custom edit, local share restore and saved snapshot",
   );
@@ -1390,9 +1458,10 @@ try {
   const mobileRoutes = [
     ["/", "RUNS IN THIS BROWSER"],
     ["/lab", "SYSTEM TOPOLOGY"],
-    ["/custom", "DRAFT WITH AI"],
+    ["/custom", "DRAFT WITH THE OPTIONAL ASSISTANT"],
     ["/interview", "PRIVATE RUBRIC"],
     ["/replay", "CHOOSE A REPLAY BUNDLE"],
+    ["/decisions", "COMPARE DESIGNS"],
     ["/acceptance-route-not-found", "WORKSPACES"],
   ];
   for (const [route, readyText] of mobileRoutes) {
@@ -1401,10 +1470,84 @@ try {
     try {
       await navigate(client, `${origin}${route}`, readyText);
       await auditPage(client, route, "mobile-390x844");
+      if (route !== "/acceptance-route-not-found")
+        await captureScreenshot(
+          client,
+          `${routeArtifactName(route)}-mobile-390.png`,
+        );
       if (externalNotFoundExpected) await delay(100);
     } finally {
       externalNotFoundExpected = false;
     }
+  }
+  await navigate(
+    client,
+    `${origin}/custom`,
+    "DRAFT WITH THE OPTIONAL ASSISTANT",
+  );
+  for (const section of ["Request mix", "Incidents", "Objectives"]) {
+    await clickControl(client, `Expand ${section} section`);
+    const sectionSlug = section.toLowerCase().replaceAll(" ", "-");
+    const sectionId =
+      section === "Request mix"
+        ? "requests"
+        : section === "Incidents"
+          ? "incidents"
+          : "objectives";
+    await evaluate(
+      client,
+      `document.querySelector(${JSON.stringify(`#${sectionId}`)})?.scrollIntoView({ block: "start" })`,
+    );
+    await delay(150);
+    await auditPage(
+      client,
+      `/custom#${sectionSlug}`,
+      "mobile-390x844-expanded",
+    );
+    if (section === "Request mix") {
+      const requestCardAudit = await evaluate(
+        client,
+        `(() => [...document.querySelectorAll("#requests .table-editor__row")].map((row) => {
+          const sectionBounds = document.querySelector("#requests")?.getBoundingClientRect();
+          const rowBounds = row.getBoundingClientRect();
+          const controls = [...row.querySelectorAll("input, button")].map((control) => {
+            const bounds = control.getBoundingClientRect();
+            return {
+              name: control.getAttribute("aria-label") || control.closest("label")?.textContent?.trim() || control.tagName,
+              left: bounds.left,
+              right: bounds.right,
+            };
+          });
+          return {
+            columns: getComputedStyle(row).gridTemplateColumns.split(/\\s+/).filter(Boolean).length,
+            rowWidth: rowBounds.width,
+            sectionWidth: sectionBounds?.width || 0,
+            scrollWidth: row.scrollWidth,
+            clientWidth: row.clientWidth,
+            clipped: controls.filter(({ left, right }) => !sectionBounds || left < sectionBounds.left - 1 || right > sectionBounds.right + 1),
+          };
+        }))()`,
+      );
+      assert.equal(
+        requestCardAudit.every(
+          ({
+            clipped,
+            columns,
+            rowWidth,
+            sectionWidth,
+            scrollWidth,
+            clientWidth,
+          }) =>
+            clipped.length === 0 &&
+            columns === 2 &&
+            rowWidth <= sectionWidth + 1 &&
+            scrollWidth <= clientWidth + 1,
+        ),
+        true,
+        `Mobile request cards clipped fields: ${JSON.stringify(requestCardAudit)}`,
+      );
+    }
+    await captureScreenshot(client, `custom-${sectionSlug}-mobile-390.png`);
   }
   await navigate(client, `${origin}/lab`, "SYSTEM TOPOLOGY");
   await evaluate(
@@ -1538,6 +1681,20 @@ try {
     'document.querySelector(".button--run")?.textContent?.trim().endsWith("Resume") === true',
     "the paused mobile local run",
   );
+  const mobileSessionBounds = await evaluate(
+    client,
+    `(() => {
+      const bounds = document.querySelector(".local-run-controls__session")?.getBoundingClientRect();
+      return bounds ? { left: bounds.left, right: bounds.right, width: bounds.width } : null;
+    })()`,
+  );
+  assert.equal(
+    mobileSessionBounds !== null &&
+      mobileSessionBounds.left >= -1 &&
+      mobileSessionBounds.right <= 391,
+    true,
+    `Paused mobile run controls exceeded the viewport: ${JSON.stringify(mobileSessionBounds)}`,
+  );
   await clickControl(client, "Cancel local run");
   report.interactions.push(
     "390x844 topology fit, computed bounds/font/touch gates and primary run controls",
@@ -1546,7 +1703,7 @@ try {
 
   const offlineRoutes = [
     ["/lab", "SYSTEM TOPOLOGY"],
-    ["/custom", "DRAFT WITH AI"],
+    ["/custom", "DRAFT WITH THE OPTIONAL ASSISTANT"],
     ["/interview", "PRIVATE RUBRIC"],
     ["/replay", "CHOOSE A REPLAY BUNDLE"],
   ];

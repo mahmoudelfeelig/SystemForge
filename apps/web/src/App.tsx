@@ -26,6 +26,11 @@ const ReplayPage = lazy(() =>
     default: module.ReplayPage,
   })),
 );
+const DecisionPage = lazy(() =>
+  import("./pages/DecisionPage").then((module) => ({
+    default: module.DecisionPage,
+  })),
+);
 
 export function App() {
   return (
@@ -45,6 +50,7 @@ export function App() {
           />
           <Route path="/scenario/:id" element={<SharedScenarioPage />} />
           <Route path="/replay" element={<ReplayPage />} />
+          <Route path="/decisions" element={<DecisionPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>

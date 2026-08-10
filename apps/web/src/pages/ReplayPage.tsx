@@ -339,7 +339,19 @@ export function ReplayPage() {
                 <small>Start at second 0</small>
               </div>
             </li>
-            <li className="idle">
+            <li
+              className={
+                outputComparisonState === "running"
+                  ? "active"
+                  : outputComparisonState === "complete"
+                    ? outputComparison?.verified
+                      ? "complete"
+                      : "failed"
+                    : outputComparisonState === "error"
+                      ? "failed"
+                      : "idle"
+              }
+            >
               <span>04</span>
               <div>
                 <strong>Match result</strong>
@@ -519,181 +531,184 @@ export function ReplayPage() {
           >
             {outputComparisonAnnouncement}
           </div>
-          <section
-            className="replay-comparison"
-            aria-labelledby="replay-comparison-title"
-            aria-describedby="replay-comparison-status"
-            aria-busy={outputComparisonState === "running"}
-          >
-            <header>
-              <div>
-                <span className="panel-index">Run comparison</span>
-                <h2 id="replay-comparison-title">Compare two runs</h2>
-              </div>
-              <GitBranch size={22} weight="duotone" />
-            </header>
-            <p>
-              Load a second bundle to compare inputs and recomputed results at
-              the same modeled second.
-            </p>
-            <label
-              className={`replay-compare-input ${!loaded ? "disabled" : ""}`}
+          {loaded?.compatibility.compatible ? (
+            <section
+              className="replay-comparison"
+              aria-labelledby="replay-comparison-title"
+              aria-describedby="replay-comparison-status"
+              aria-busy={outputComparisonState === "running"}
             >
-              <input
-                type="file"
-                accept=".json,application/json"
-                disabled={!loaded}
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  event.currentTarget.value = "";
-                  if (file) void selectComparisonFile(file);
-                }}
-              />
-              <FileArrowUp size={18} />
-              <span>
-                {comparisonState === "reading"
-                  ? "Verifying comparison bundle"
-                  : (comparisonFileName ?? "Select comparison bundle")}
-              </span>
-            </label>
-            {comparisonError ? (
-              <div className="replay-comparison__error" role="alert">
-                <Warning size={17} /> {comparisonError}
-              </div>
-            ) : comparison ? (
-              <div className="replay-comparison__results">
-                <div
-                  className={comparison.inputDigestMatched ? "match" : "diff"}
-                >
-                  {comparison.inputDigestMatched ? (
-                    <CheckCircle size={17} weight="fill" />
-                  ) : (
-                    <XCircle size={17} weight="fill" />
-                  )}
-                  <span>Scenario + architecture digest</span>
-                  <strong>
-                    {comparison.inputDigestMatched ? "MATCH" : "DIFFER"}
-                  </strong>
+              <header>
+                <div>
+                  <span className="panel-index">Run comparison</span>
+                  <h2 id="replay-comparison-title">Compare two runs</h2>
                 </div>
-                <div
-                  className={
-                    comparison.actionScheduleMatched ? "match" : "diff"
-                  }
-                >
-                  {comparison.actionScheduleMatched ? (
-                    <CheckCircle size={17} weight="fill" />
-                  ) : (
-                    <XCircle size={17} weight="fill" />
-                  )}
-                  <span>Complete action schedule</span>
-                  <strong>
-                    {comparison.actionScheduleMatched ? "MATCH" : "DIFFER"}
-                  </strong>
-                </div>
-                <small>
-                  Source {comparison.sourceRunId} · comparison{" "}
-                  {comparison.comparisonRunId}. This preflight compares inputs
-                  and actions only.
-                </small>
-              </div>
-            ) : null}
-            {comparisonLoaded && !comparisonLoaded.compatibility.compatible ? (
-              <div className="replay-comparison__error" role="alert">
-                <Warning size={17} />
-                <span>
-                  Output comparison is blocked.{" "}
-                  {comparisonLoaded.compatibility.issues.join(" ")}
-                </span>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className="button replay-compare-run"
-              disabled={
-                !canCompareOutputs || outputComparisonState === "running"
-              }
-              onClick={startOutputComparison}
-            >
-              <GitBranch size={17} weight="duotone" />
-              {outputComparisonState === "running"
-                ? `Recomputing branches · ${Math.round(outputComparisonProgress * 100)}%`
-                : "Run comparison"}
-            </button>
-            {outputComparisonError ? (
-              <div className="replay-comparison__error" role="alert">
-                <Warning size={17} /> {outputComparisonError}
-              </div>
-            ) : outputComparison ? (
-              <section
-                className={`replay-output ${outputComparison.verified ? "verified" : "unverified"}`}
-                aria-label="Synchronized modeled-output comparison"
+                <GitBranch size={22} weight="duotone" />
+              </header>
+              <p>
+                Load a second bundle to compare inputs and recomputed results at
+                the same modeled second.
+              </p>
+              <label
+                className={`replay-compare-input ${!loaded ? "disabled" : ""}`}
               >
-                <header>
-                  {outputComparison.verified ? (
-                    <CheckCircle size={18} weight="fill" />
-                  ) : (
-                    <XCircle size={18} weight="fill" />
-                  )}
-                  <div>
-                    <strong>
-                      {outputComparison.verified
-                        ? "Both recomputations match their source digests"
-                        : "One or both source-result digests did not match"}
-                    </strong>
-                    <span>
-                      {outputComparison.timeline.alignedFrameCount} frames
-                      aligned from second{" "}
-                      {outputComparison.timeline.firstModeledSecond} through{" "}
-                      {outputComparison.timeline.lastModeledSecond}
-                    </span>
-                  </div>
-                </header>
-                <div className="replay-output__digests">
-                  <div>
-                    <span>Source replay</span>
-                    <strong>
-                      {outputComparison.source.resultDigestMatched
-                        ? "DIGEST MATCH"
-                        : "DIGEST MISMATCH"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span>Comparison replay</span>
-                    <strong>
-                      {outputComparison.comparison.resultDigestMatched
-                        ? "DIGEST MATCH"
-                        : "DIGEST MISMATCH"}
-                    </strong>
-                  </div>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  disabled={!loaded}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    if (file) void selectComparisonFile(file);
+                  }}
+                />
+                <FileArrowUp size={18} />
+                <span>
+                  {comparisonState === "reading"
+                    ? "Verifying comparison bundle"
+                    : (comparisonFileName ?? "Select comparison bundle")}
+                </span>
+              </label>
+              {comparisonError ? (
+                <div className="replay-comparison__error" role="alert">
+                  <Warning size={17} /> {comparisonError}
                 </div>
-                <div
-                  className="replay-output__metrics"
-                  role="table"
-                  aria-label="Aligned modeled metric deltas"
+              ) : comparison ? (
+                <div className="replay-comparison__results">
+                  <div
+                    className={comparison.inputDigestMatched ? "match" : "diff"}
+                  >
+                    {comparison.inputDigestMatched ? (
+                      <CheckCircle size={17} weight="fill" />
+                    ) : (
+                      <XCircle size={17} weight="fill" />
+                    )}
+                    <span>Scenario + architecture digest</span>
+                    <strong>
+                      {comparison.inputDigestMatched ? "MATCH" : "DIFFER"}
+                    </strong>
+                  </div>
+                  <div
+                    className={
+                      comparison.actionScheduleMatched ? "match" : "diff"
+                    }
+                  >
+                    {comparison.actionScheduleMatched ? (
+                      <CheckCircle size={17} weight="fill" />
+                    ) : (
+                      <XCircle size={17} weight="fill" />
+                    )}
+                    <span>Complete action schedule</span>
+                    <strong>
+                      {comparison.actionScheduleMatched ? "MATCH" : "DIFFER"}
+                    </strong>
+                  </div>
+                  <small>
+                    Source {comparison.sourceRunId} · comparison{" "}
+                    {comparison.comparisonRunId}. This preflight compares inputs
+                    and actions only.
+                  </small>
+                </div>
+              ) : null}
+              {comparisonLoaded &&
+              !comparisonLoaded.compatibility.compatible ? (
+                <div className="replay-comparison__error" role="alert">
+                  <Warning size={17} />
+                  <span>
+                    Output comparison is blocked.{" "}
+                    {comparisonLoaded.compatibility.issues.join(" ")}
+                  </span>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="button replay-compare-run"
+                disabled={
+                  !canCompareOutputs || outputComparisonState === "running"
+                }
+                onClick={startOutputComparison}
+              >
+                <GitBranch size={17} weight="duotone" />
+                {outputComparisonState === "running"
+                  ? `Recomputing branches · ${Math.round(outputComparisonProgress * 100)}%`
+                  : "Run comparison"}
+              </button>
+              {outputComparisonError ? (
+                <div className="replay-comparison__error" role="alert">
+                  <Warning size={17} /> {outputComparisonError}
+                </div>
+              ) : outputComparison ? (
+                <section
+                  className={`replay-output ${outputComparison.verified ? "verified" : "unverified"}`}
+                  aria-label="Synchronized modeled-output comparison"
                 >
-                  <div role="row" className="replay-output__metric-head">
-                    <span role="columnheader">Measure</span>
-                    <span role="columnheader">Source</span>
-                    <span role="columnheader">Comparison</span>
-                    <span role="columnheader">Delta</span>
-                  </div>
-                  {outputMetricRows.map((metric) => (
-                    <div role="row" key={metric.label}>
-                      <strong role="rowheader">{metric.label}</strong>
-                      <span role="cell">{metric.source}</span>
-                      <span role="cell">{metric.comparison}</span>
-                      <b role="cell">{metric.delta}</b>
+                  <header>
+                    {outputComparison.verified ? (
+                      <CheckCircle size={18} weight="fill" />
+                    ) : (
+                      <XCircle size={18} weight="fill" />
+                    )}
+                    <div>
+                      <strong>
+                        {outputComparison.verified
+                          ? "Both recomputations match their source digests"
+                          : "One or both source-result digests did not match"}
+                      </strong>
+                      <span>
+                        {outputComparison.timeline.alignedFrameCount} frames
+                        aligned from second{" "}
+                        {outputComparison.timeline.firstModeledSecond} through{" "}
+                        {outputComparison.timeline.lastModeledSecond}
+                      </span>
                     </div>
-                  ))}
-                </div>
-                <footer>
-                  Two fresh deterministic recomputations, aligned by modeled
-                  second. No queues, requests, memory, or other opaque runtime
-                  state were restored; no production telemetry was compared.
-                </footer>
-              </section>
-            ) : null}
-          </section>
+                  </header>
+                  <div className="replay-output__digests">
+                    <div>
+                      <span>Source replay</span>
+                      <strong>
+                        {outputComparison.source.resultDigestMatched
+                          ? "DIGEST MATCH"
+                          : "DIGEST MISMATCH"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Comparison replay</span>
+                      <strong>
+                        {outputComparison.comparison.resultDigestMatched
+                          ? "DIGEST MATCH"
+                          : "DIGEST MISMATCH"}
+                      </strong>
+                    </div>
+                  </div>
+                  <div
+                    className="replay-output__metrics"
+                    role="table"
+                    aria-label="Aligned modeled metric deltas"
+                  >
+                    <div role="row" className="replay-output__metric-head">
+                      <span role="columnheader">Measure</span>
+                      <span role="columnheader">Source</span>
+                      <span role="columnheader">Comparison</span>
+                      <span role="columnheader">Delta</span>
+                    </div>
+                    {outputMetricRows.map((metric) => (
+                      <div role="row" key={metric.label}>
+                        <strong role="rowheader">{metric.label}</strong>
+                        <span role="cell">{metric.source}</span>
+                        <span role="cell">{metric.comparison}</span>
+                        <b role="cell">{metric.delta}</b>
+                      </div>
+                    ))}
+                  </div>
+                  <footer>
+                    Two fresh deterministic recomputations, aligned by modeled
+                    second. No queues, requests, memory, or other opaque runtime
+                    state were restored; no production telemetry was compared.
+                  </footer>
+                </section>
+              ) : null}
+            </section>
+          ) : null}
         </div>
 
         <aside className="replay-console__boundary">
@@ -707,50 +722,51 @@ export function ReplayPage() {
               </span>
             </div>
           </header>
-          <dl>
-            <div>
-              <dt>Size</dt>
-              <dd>
-                {loaded
-                  ? `${displayBytes(loaded.fileSize)} MB`
-                  : `≤ ${displayBytes(MAX_COMPLETED_RUN_REPLAY_BUNDLE_BYTES)} MB`}
-              </dd>
-            </div>
-            <div>
-              <dt>Schema</dt>
-              <dd>{loaded ? "Valid" : "Waiting"}</dd>
-            </div>
-            <div>
-              <dt>Digest</dt>
-              <dd>
-                {loaded ? (canReplay ? "Match" : "Check failed") : "Waiting"}
-              </dd>
-            </div>
-            <div>
-              <dt>Engine</dt>
-              <dd>
-                {loaded
-                  ? canReplay
+          {loaded ? (
+            <dl>
+              <div>
+                <dt>Size</dt>
+                <dd>{displayBytes(loaded.fileSize)} MB</dd>
+              </div>
+              <div>
+                <dt>Schema</dt>
+                <dd>Valid</dd>
+              </div>
+              <div>
+                <dt>Digest</dt>
+                <dd>{canReplay ? "Match" : "Check failed"}</dd>
+              </div>
+              <div>
+                <dt>Engine</dt>
+                <dd>
+                  {canReplay
                     ? loaded.bundle.source.engineVersion
-                    : "Incompatible"
-                  : "Waiting"}
-              </dd>
+                    : "Incompatible"}
+                </dd>
+              </div>
+              <div>
+                <dt>Profiles</dt>
+                <dd>
+                  {profiles ? `${profiles.resolved} resolved` : "Unavailable"}
+                </dd>
+              </div>
+              <div>
+                <dt>Privacy</dt>
+                <dd>{canReplay ? "Candidate-safe" : "Rejected"}</dd>
+              </div>
+            </dl>
+          ) : (
+            <div className="replay-checks-idle">
+              <strong>Checks start after file selection</strong>
+              <p>
+                SystemForge will check the size, schema, digest, engine,
+                behavioral profiles, and privacy boundary locally.
+              </p>
+              <span>
+                Maximum {displayBytes(MAX_COMPLETED_RUN_REPLAY_BUNDLE_BYTES)} MB
+              </span>
             </div>
-            <div>
-              <dt>Profiles</dt>
-              <dd>{profiles ? `${profiles.resolved} resolved` : "Waiting"}</dd>
-            </div>
-            <div>
-              <dt>Privacy</dt>
-              <dd>
-                {loaded
-                  ? canReplay
-                    ? "Candidate-safe"
-                    : "Rejected"
-                  : "Waiting"}
-              </dd>
-            </div>
-          </dl>
+          )}
           <footer>
             <LockKey size={17} weight="duotone" />
             <p>
