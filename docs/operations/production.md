@@ -116,7 +116,7 @@ still validates every provider response and does not claim that external
 processing is local.
 
 Create a dedicated `systemforge-production` AI Gateway and configure a blocking
-sliding monthly spend limit of **$4.50**, with no cheaper-model fallback. Do not
+sliding monthly spend limit of **$5.00**, with no cheaper-model fallback. Do not
 enable the feature until that dashboard rule is visibly active. The API adds a
 second persistent abuse boundary: at most 50 admitted calls per UTC day and 500
 per UTC month, stricter per-client route limits, and one provider request in
@@ -134,9 +134,12 @@ higher standard Llama 3.1 8B rates ($0.282 per million input tokens and $0.827
 per million output tokens) gives at most $0.028726 for one maximally sized call.
 The current same-family fast-model pricing is substantially lower. Because the
 500-request application allowance is an abuse boundary rather than a billing
-estimate, the independent $4.50 Gateway block and one-request concurrency limit
-remain mandatory to preserve the absolute five-dollar ceiling. Recheck this
-proof against
+estimate, the independent $5.00 Gateway block and one-request concurrency limit
+remain mandatory as the operator-approved provider-spend budget. Cloudflare
+documents spend enforcement as eventually consistent because the current call's
+cost is recorded after completion. One-request concurrency therefore bounds any
+enforcement lag to one admitted call; do not describe the dashboard value as a
+mathematically exact billing ceiling. Recheck this proof against
 `https://developers.cloudflare.com/workers-ai/platform/pricing/` before changing
 the model, byte cap, output cap, reservation, request limits, concurrency, or
 Gateway limit.

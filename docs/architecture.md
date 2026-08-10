@@ -125,12 +125,15 @@ UTC day and 500 per UTC month remain fixed in application code. Failed and
 cancelled calls retain their reservation, and per-client route limits remain
 stricter. For the pinned Cloudflare provider, the five-cent reservation is an
 admission and audit unit rather than a claim about metered provider spend; the
-Gateway's blocking $4.50 sliding 30-day cost limit is the financial fuse. Any
+Gateway's blocking $5.00 sliding 30-day cost limit is the financial fuse. Any
 provider configured without that Gateway retains the separate four-dollar UTC
 monthly reservation ceiling. The Gateway must also disable request/response
-logging and cache and make no automatic retries. These independent controls
-preserve a buffer beneath the five-dollar maximum even if abusive clients rotate
-addresses.
+logging and cache and make no automatic retries. These independent controls keep
+provider spend bounded by the operator-approved five-dollar budget even if
+abusive clients rotate addresses. Cloudflare documents spend enforcement as
+eventually consistent; the one-request concurrency limit bounds any enforcement
+lag to a single admitted call rather than claiming a mathematically exact
+billing ceiling.
 
 ## Availability boundary
 
