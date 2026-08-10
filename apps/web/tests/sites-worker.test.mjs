@@ -91,7 +91,13 @@ test("serves the app shell with a real 404 for an unknown route", async () => {
 });
 
 test("falls back to index.html for known client routes", async () => {
-  for (const route of ["/lab", "/replay"]) {
+  for (const route of [
+    "/lab",
+    "/custom",
+    "/interview",
+    "/replay",
+    "/decisions",
+  ]) {
     const calls = [];
     const response = await worker.fetch(
       new Request(`https://example.test${route}`, {

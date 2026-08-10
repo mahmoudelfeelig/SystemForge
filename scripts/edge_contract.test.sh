@@ -10,7 +10,7 @@ grep -Fq \
 grep -Fq \
   'Cache-Control "public, max-age=0, must-revalidate, no-transform"' \
   "$NGINX_CONFIG"
-grep -Fq 'location ~ ^/(lab|custom|interview|replay)$ {' "$NGINX_CONFIG"
+grep -Fq 'location ~ ^/(lab|custom|interview|replay|decisions)$ {' "$NGINX_CONFIG"
 grep -Fq 'error_page 404 =404 /index.html;' "$NGINX_CONFIG"
 grep -Fq \
   'add_header Cache-Control "public, max-age=31536000, immutable";' \

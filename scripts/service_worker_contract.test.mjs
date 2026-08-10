@@ -10,7 +10,7 @@ const manifest = JSON.parse(
 );
 assert.match(
   registrationSource,
-  /serviceWorker\.register\("\/sw\.js\?v=8"\)/,
+  /serviceWorker\.register\("\/sw\.js\?v=9"\)/,
   "the browser must bypass stale service-worker cache keys",
 );
 assert.deepEqual(
@@ -133,6 +133,10 @@ assert.ok(installPromise, "install work was not lifetime-bound");
 await installPromise;
 assert.ok(precached.includes("/lab"), "Lab route was not precached");
 assert.ok(precached.includes("/replay"), "Replay route was not precached");
+assert.ok(
+  precached.includes("/decisions"),
+  "Decision workbench route was not precached",
+);
 assert.ok(
   precached.includes("/assets/mahmoud-elephant-192.png?v=8bb95beb"),
   "the content-versioned PWA icon was not precached",

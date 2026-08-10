@@ -1,4 +1,11 @@
-const APP_ROUTES = new Set(["/", "/lab", "/custom", "/interview", "/replay"]);
+const APP_ROUTES = new Set([
+  "/",
+  "/lab",
+  "/custom",
+  "/interview",
+  "/replay",
+  "/decisions",
+]);
 const SHARED_SCENARIO_ROUTE = /^\/scenario\/[A-Za-z0-9-]+$/;
 const HTML_SECURITY_HEADERS = {
   "Content-Security-Policy":

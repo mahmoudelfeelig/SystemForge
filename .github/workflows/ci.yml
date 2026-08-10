@@ -52,6 +52,7 @@ jobs:
       - run: sh scripts/stage_hetzner.test.sh
       - run: sh scripts/install_caddy_route.test.sh
       - run: sh scripts/deploy_workflow_contract.test.sh
+      - run: node scripts/web_route_contract.test.mjs
       - run: node scripts/service_worker_contract.test.mjs
       - run: node scripts/overload_smoke_contract.test.mjs
       - run: sh scripts/edge_contract.test.sh
