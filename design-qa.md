@@ -3,7 +3,7 @@
 ## Current acceptance snapshot
 
 - Review date: 2026-08-09
-- Approved reference: `/mnt/c/Users/mahmo/AppData/Local/Temp/codex-clipboard-ee1b35ff-9e78-466c-9316-9be45dcd670c.png`
+- Approved reference: the full-resolution Mission Control image retained with the design review.
 - Earlier 1672 by 941 reference-fidelity comparison: `design-qa.local/final-qa-2026-08-09-v2/reference-implementation-comparison.png`
 - Final desktop result: `test-results/browser/lab-completed-desktop.png`
 - Final mobile Lab: `test-results/browser/lab-mobile-390.png`

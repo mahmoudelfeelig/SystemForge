@@ -1,14 +1,11 @@
 #!/bin/sh
 set -eu
 
-BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
+BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:?SYSTEMFORGE_BACKUP_DIR is required}
 CONFIG_FILE=${SYSTEMFORGE_OFFSITE_CONFIG:-"$BACKUP_DIR/.offsite/offsite-backup.env"}
 RESTIC_BIN=${SYSTEMFORGE_RESTIC_BIN:-"$BACKUP_DIR/.offsite/restic"}
 BACKUP_HOST=${SYSTEMFORGE_RESTIC_HOST:-systemforge-production}
 BACKUP_TAG=${SYSTEMFORGE_RESTIC_TAG:-systemforge-postgres}
-KEEP_DAILY=${SYSTEMFORGE_RESTIC_KEEP_DAILY:-14}
-KEEP_WEEKLY=${SYSTEMFORGE_RESTIC_KEEP_WEEKLY:-8}
-KEEP_MONTHLY=${SYSTEMFORGE_RESTIC_KEEP_MONTHLY:-12}
 CHECK_SUBSET=${SYSTEMFORGE_RESTIC_CHECK_SUBSET:-5%}
 STATUS_FILE=${SYSTEMFORGE_OFFSITE_STATUS_FILE:-"$BACKUP_DIR/offsite-backup.status"}
 LOCK_FILE="$BACKUP_DIR/.offsite-backup.lock"
@@ -94,9 +91,6 @@ esac
 secure_file "$RESTIC_PASSWORD_FILE" "repository password"
 RESTIC_COMMAND=$(command -v "$RESTIC_BIN") || fail "restic binary was not found: $RESTIC_BIN"
 
-positive_integer "$KEEP_DAILY" "daily retention"
-positive_integer "$KEEP_WEEKLY" "weekly retention"
-positive_integer "$KEEP_MONTHLY" "monthly retention"
 test -n "$BACKUP_HOST" || fail "backup host label is empty."
 test -n "$BACKUP_TAG" || fail "backup tag is empty."
 test -n "$CHECK_SUBSET" || fail "integrity-check subset is empty."
@@ -118,13 +112,8 @@ BACKUP_FILENAME=$(basename "$BACKUP_FILE")
     --skip-if-unchanged \
     "$BACKUP_FILENAME"
 )
-"$RESTIC_COMMAND" forget \
-  --host "$BACKUP_HOST" \
-  --tag "$BACKUP_TAG" \
-  --keep-daily "$KEEP_DAILY" \
-  --keep-weekly "$KEEP_WEEKLY" \
-  --keep-monthly "$KEEP_MONTHLY" \
-  --prune
+# Backup creation must be append-only. Remote retention is intentionally not
+# reachable from an application checkout or an automatic deployment path.
 "$RESTIC_COMMAND" check --read-data-subset="$CHECK_SUBSET"
 
 SOURCE_SHA256=$(sha256sum "$BACKUP_FILE")
@@ -146,4 +135,4 @@ chmod 600 "$STATUS_TEMP"
 mv "$STATUS_TEMP" "$STATUS_FILE"
 trap - EXIT HUP INT TERM
 
-echo "Encrypted off-site backup and integrity check completed for: $BACKUP_FILE"
+echo "Encrypted off-site backup appended and integrity check completed for: $BACKUP_FILE"

@@ -5,10 +5,10 @@ SystemForge is deliberately split into a browser-local data plane and a bounded 
 ```mermaid
 flowchart LR
     Browser[Browser application] -->|local Web Worker| LocalSim[Deterministic simulation core]
-    Browser -->|optional canonical requests| CF[Cloudflare edge]
-    CF --> Caddy[Caddy shared reverse proxy]
-    Caddy --> Web[Static web container]
-    Caddy --> API[Fastify API]
+    Browser -->|optional canonical requests| Edge[Public edge]
+    Edge --> Gateway[Restricted application gateway]
+    Gateway --> Web[Static web service]
+    Gateway --> API[Fastify API]
     API --> DB[(Private PostgreSQL)]
     API -. optional structured proposal .-> AI[Configured AI provider]
     Worker[Bounded worker pool] --> DB
@@ -28,15 +28,15 @@ integration concern. See `docs/engine.md` for its contract and limitations.
 
 ## Failure and overload behavior
 
-Cloudflare absorbs the public volumetric edge and Caddy rejects direct-to-origin requests for the SystemForge hostname. The web and API are separate containers, so API or database degradation does not remove the static application shell. The installed service worker caches the application shell and immutable assets for returning browsers. It is network-first while the origin is healthy, but a network failure or origin `5xx` navigation serves the cached local lab instead of replacing it with an outage page. Ordinary client errors remain visible, and `/api/*` always bypasses the shell cache.
+The restricted edge configuration rejects traffic that bypasses the approved public path. The web and API are separate services, so API or database degradation does not remove the static application shell. The installed service worker caches the application shell and immutable assets for returning browsers. It is network-first while the origin is healthy, but a network failure or origin `5xx` navigation serves the cached local lab instead of replacing it with an outage page. Ordinary client errors remain visible, and `/api/*` always bypasses the shell cache.
 
-The browser shell uses separate browser and Cloudflare cache contracts. Browsers
-must revalidate while online, while Cloudflare may keep the shell fresh for five
+The browser shell uses separate browser and public-edge cache contracts. Browsers
+must revalidate while online, while the edge may keep the shell fresh for five
 minutes, serve it stale during revalidation, and retain an error fallback for a
 day. The policy deliberately avoids `s-maxage`, whose proxy-revalidation
-semantics would prevent the stale origin-error behavior. CI also compares the
-future open Caddy allowlist with Cloudflare's live published address ranges so a
-range change blocks deployment rather than creating a partial outage.
+semantics would prevent the stale origin-error behavior. Infrastructure-specific
+origin policy is validated by the restricted release controller rather than
+published in this repository.
 
 The API has a one-megabyte body limit, connection/request timeouts, per-client rate limits, and transactionally enforced maximums for queued runs, durable run records, and unexpired shared scenarios. The durable ceiling evicts the oldest terminal result before new work is accepted and fails closed when active work occupies the entire budget. Canonical simulation also has a configurable work-unit ceiling based on duration and topology size, while the worker enforces a separate serialized-result byte ceiling before persistence. Together with the 250-record production default, this prevents a small request or sustained canonical traffic from amplifying into unbounded PostgreSQL storage. Canonical submissions return structured `422`, `429`, or `503` responses with `localModeAvailable: true` and `Retry-After` where appropriate. The frontend converts those states into a non-blocking service banner and leaves local editing and simulation enabled. The browser applies its own larger pre-allocation work-unit budget so a pathological but schema-valid custom model fails with guidance before a Web Worker can exhaust the tab.
 
@@ -117,8 +117,7 @@ content leaves SystemForge and provider retention depends on the configured
 account and data controls.
 
 The production adapter is pinned to Cloudflare Workers AI
-`@cf/meta/llama-3.1-8b-instruct-fast` through the `systemforge-production` AI
-Gateway. The
+`@cf/meta/llama-3.1-8b-instruct-fast` through an operator-configured AI Gateway. The
 API admits one provider call at a time and reserves each admitted call in
 PostgreSQL before any network request. Global ceilings of 50 admitted calls per
 UTC day and 500 per UTC month remain fixed in application code. Failed and
@@ -137,4 +136,4 @@ billing ceiling.
 
 ## Availability boundary
 
-This is a single-VPS deployment, not an active-active platform. Cloudflare, cached browser assets, and the browser-local simulator protect the core learning workflow, while canonical storage has a single PostgreSQL primary. A VPS or volume loss can interrupt canonical features until restore. Nightly verified dumps reduce local recovery time. The repository includes mode-guarded restic SFTP/S3 transfer, retention, remote integrity checking, and a disposable off-site restore drill, but those controls do not establish disaster recovery until a real independently credentialed repository is configured and its first restore passes.
+This is a single-origin deployment, not an active-active platform. The public edge, cached browser assets, and the browser-local simulator protect the core learning workflow, while canonical storage has a single PostgreSQL primary. Origin or volume loss can interrupt canonical features until restore. The restricted platform owns the nightly verified dump cadence. The repository includes mode-guarded, append-only restic SFTP/S3 transfer, remote integrity checking, and a disposable off-site restore drill; remote deletion and retention are not reachable from application code or deployment paths. These controls do not establish disaster recovery until a real independently credentialed repository is configured and its first restore passes.

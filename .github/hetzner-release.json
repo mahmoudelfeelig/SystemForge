@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "systemforge",
+  "source": {
+    "repository": "mahmoudelfeelig/SystemForge",
+    "default_branch": "main",
+    "required_workflows": ["SystemForge CI"]
+  },
+  "registry": {
+    "host": "registry.elfeel.me",
+    "image_namespace": "apps/systemforge",
+    "release_repository": "releases/systemforge"
+  },
+  "release": {
+    "strategy": "artifact-images",
+    "artifact": {
+      "name": "systemforge-images-{sha}-{attempt}",
+      "archive": "systemforge-images.tar.gz",
+      "checksums": "systemforge-images.tar.gz.sha256"
+    },
+    "components": [
+      {
+        "name": "web",
+        "artifact_image": "systemforge-web:{sha}"
+      },
+      {
+        "name": "api",
+        "artifact_image": "systemforge-api:{sha}"
+      },
+      {
+        "name": "worker",
+        "artifact_image": "systemforge-worker:{sha}"
+      }
+    ]
+  }
+}

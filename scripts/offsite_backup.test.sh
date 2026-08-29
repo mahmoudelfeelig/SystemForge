@@ -42,9 +42,6 @@ case "$1" in
   backup)
     test "${FAKE_BACKUP_FAILURE:-false}" != true
     ;;
-  forget)
-    test "${FAKE_FORGET_FAILURE:-false}" != true
-    ;;
   check)
     test "${FAKE_CHECK_FAILURE:-false}" != true
     ;;
@@ -113,9 +110,11 @@ run_restore() {
 }
 
 run_backup
+test ! -e scripts/install_backup_cron.sh
+test "$(grep -Ec 'restic.*forget|--prune' scripts/backup_offsite.sh || true)" -eq 0
 grep -q '^snapshots --host systemforge-production --tag systemforge-postgres --json$' "$RESTIC_LOG"
 grep -q '^backup --host systemforge-production --tag systemforge-postgres --skip-if-unchanged systemforge.20260808T120000Z.dump$' "$RESTIC_LOG"
-grep -q '^forget --host systemforge-production --tag systemforge-postgres --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --prune$' "$RESTIC_LOG"
+test "$(grep -c '^forget ' "$RESTIC_LOG" || true)" -eq 0
 grep -q '^check --read-data-subset=5%$' "$RESTIC_LOG"
 test "$(stat -c '%a' "$STATUS_FILE")" = 600
 grep -q '^source_filename=systemforge.20260808T120000Z.dump$' "$STATUS_FILE"
@@ -196,8 +195,9 @@ FAKE_CHECK_FAILURE=false
 export FAKE_CHECK_FAILURE
 
 : > "$RESTIC_LOG"
-FAKE_REPOSITORY_READY=false \
+  FAKE_REPOSITORY_READY=false \
   FAKE_RESTIC_LOG="$RESTIC_LOG" \
+  SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
   SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_FILE" \
   SYSTEMFORGE_RESTIC_BIN="$TEST_BIN_DIR/restic" \
   sh scripts/init_offsite_backup.sh
@@ -206,8 +206,9 @@ grep -q '^init$' "$RESTIC_LOG"
 grep -q '^check$' "$RESTIC_LOG"
 
 : > "$RESTIC_LOG"
-FAKE_REPOSITORY_READY=true \
+  FAKE_REPOSITORY_READY=true \
   FAKE_RESTIC_LOG="$RESTIC_LOG" \
+  SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
   SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_FILE" \
   SYSTEMFORGE_RESTIC_BIN="$TEST_BIN_DIR/restic" \
   sh scripts/init_offsite_backup.sh
@@ -233,43 +234,6 @@ set -e
 test "$EMPTY_RESTORE_STATUS" -ne 0
 test ! -f "$RESTORE_STATUS_FILE"
 
-CRONTAB_OUTPUT="$TEST_ROOT/crontab.txt"
-CRON_BACKUP_DIR="$TEST_ROOT/cron-backups"
-cat > "$TEST_BIN_DIR/crontab" <<'EOF'
-#!/bin/sh
-set -eu
-if test "${1:-}" = "-l"; then
-  printf '%s\n' '5 1 * * * unrelated-command'
-  exit 0
-fi
-test "$#" -eq 1
-cp "$1" "$FAKE_CRONTAB_OUTPUT"
-EOF
-chmod 700 "$TEST_BIN_DIR/crontab"
-PATH="$TEST_BIN_DIR:$PATH" \
-  FAKE_CRONTAB_OUTPUT="$CRONTAB_OUTPUT" \
-  SYSTEMFORGE_APP_DIR=/opt/systemforge \
-  SYSTEMFORGE_BACKUP_DIR="$CRON_BACKUP_DIR" \
-  sh scripts/install_backup_cron.sh
-test -d "$CRON_BACKUP_DIR"
-test "$(stat -c '%a' "$CRON_BACKUP_DIR")" = 700
-grep -q '^5 1 \* \* \* unrelated-command$' "$CRONTAB_OUTPUT"
-grep -q '/opt/systemforge/scripts/run_backups.sh' "$CRONTAB_OUTPUT"
-grep -q "SYSTEMFORGE_OFFSITE_CONFIG=$CRON_BACKUP_DIR/.offsite/offsite-backup.env" "$CRONTAB_OUTPUT"
-grep -q "SYSTEMFORGE_RESTIC_BIN=$CRON_BACKUP_DIR/.offsite/restic" "$CRONTAB_OUTPUT"
-grep -q ">> $CRON_BACKUP_DIR/backup.log 2>&1" "$CRONTAB_OUTPUT"
-test "$(grep -c '# systemforge-postgres-backup' "$CRONTAB_OUTPUT")" -eq 1
-
-set +e
-PATH="$TEST_BIN_DIR:$PATH" \
-  FAKE_CRONTAB_OUTPUT="$CRONTAB_OUTPUT" \
-  SYSTEMFORGE_APP_DIR=/opt/systemforge \
-  SYSTEMFORGE_BACKUP_DIR="$TEST_ROOT/unsafe cron path" \
-  sh scripts/install_backup_cron.sh >/dev/null 2>&1
-UNSAFE_CRON_STATUS=$?
-set -e
-test "$UNSAFE_CRON_STATUS" -eq 64
-
 WRAPPER_APP="$TEST_ROOT/wrapper-app"
 WRAPPER_LOG="$TEST_ROOT/wrapper.log"
 WRAPPER_CONFIG="$TEST_ROOT/wrapper-offsite.env"
@@ -290,6 +254,7 @@ chmod 700 \
 : > "$WRAPPER_LOG"
 FAKE_WRAPPER_LOG="$WRAPPER_LOG" \
   SYSTEMFORGE_APP_DIR="$WRAPPER_APP" \
+  SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
   SYSTEMFORGE_OFFSITE_CONFIG="$WRAPPER_CONFIG" \
   sh scripts/run_backups.sh
 test "$(cat "$WRAPPER_LOG")" = local
@@ -297,6 +262,7 @@ test "$(cat "$WRAPPER_LOG")" = local
 chmod 600 "$WRAPPER_CONFIG"
 FAKE_WRAPPER_LOG="$WRAPPER_LOG" \
   SYSTEMFORGE_APP_DIR="$WRAPPER_APP" \
+  SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
   SYSTEMFORGE_OFFSITE_CONFIG="$WRAPPER_CONFIG" \
   sh scripts/run_backups.sh
 test "$(tail -2 "$WRAPPER_LOG" | tr '\n' ' ')" = "local offsite "

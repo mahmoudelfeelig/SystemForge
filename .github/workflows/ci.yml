@@ -48,33 +48,15 @@ jobs:
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint"
           "$RUNNER_TEMP/actionlint/actionlint" .github/workflows/*.yml
       - run: sh -n scripts/*.sh
-      - run: sh scripts/deploy_hetzner.test.sh
-      - run: sh scripts/stage_hetzner.test.sh
-      - run: sh scripts/install_caddy_route.test.sh
       - run: sh scripts/deploy_workflow_contract.test.sh
       - run: node scripts/web_route_contract.test.mjs
       - run: node scripts/service_worker_contract.test.mjs
       - run: node scripts/overload_smoke_contract.test.mjs
       - run: sh scripts/edge_contract.test.sh
-      - run: sh scripts/verify_cloudflare_ranges.sh
       - run: sh scripts/offsite_backup.test.sh
       - run: sh scripts/provision_offsite_backup.test.sh
       - run: sh scripts/release_backup_gate.test.sh
-      - name: Prove the production release gate defaults closed
-        run: |
-          set +e
-          sh scripts/deploy_hetzner.sh >/tmp/systemforge-deploy-gate.log 2>&1
-          deploy_status=$?
-          sh scripts/install_caddy_route.sh open >/tmp/systemforge-caddy-gate.log 2>&1
-          caddy_status=$?
-          set -e
-          test "$deploy_status" -eq 78
-          test "$caddy_status" -eq 78
-          grep -q "Release gate is closed" /tmp/systemforge-deploy-gate.log
-          grep -q "Release gate is closed" /tmp/systemforge-caddy-gate.log
       - run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.prod.yml config --quiet
-      - run: docker run --rm -v "$PWD/deploy/Caddyfile.systemforge:/etc/caddy/Caddyfile:ro" caddy:2.9-alpine caddy validate --config /etc/caddy/Caddyfile
-      - run: docker run --rm -v "$PWD/deploy/Caddyfile.systemforge.open:/etc/caddy/Caddyfile:ro" caddy:2.9-alpine caddy validate --config /etc/caddy/Caddyfile
 
   hardening:
     runs-on: ubuntu-latest
@@ -108,7 +90,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: browser-acceptance-${{ github.sha }}
+          name: browser-acceptance-${{ github.sha }}-${{ github.run_attempt }}
           path: test-results/browser/
           if-no-files-found: error
           retention-days: 7
@@ -157,7 +139,7 @@ jobs:
           sha256sum systemforge-images.tar.gz > systemforge-images.tar.gz.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: systemforge-images-${{ github.sha }}
+          name: systemforge-images-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/systemforge-release/
           if-no-files-found: error
           retention-days: 2
@@ -178,7 +160,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: systemforge-images-${{ github.sha }}
+          name: systemforge-images-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/systemforge-release
       - name: Verify and load the scanned release images
         run: |

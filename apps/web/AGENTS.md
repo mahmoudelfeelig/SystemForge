@@ -10,8 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## SystemForge product direction
 
-- The selected visual target is the user-provided Mission Control screenshot at `C:/Users/mahmo/AppData/Local/Temp/codex-clipboard-bd6d59a6-0999-4836-bd94-a39223a060e6.png`.
-- Use the full-resolution operational reference at `C:/Users/mahmo/AppData/Local/Temp/codex-clipboard-ee1b35ff-9e78-466c-9316-9be45dcd670c.png` for final fidelity checks. Its top command bar, live primitive telemetry, multi-panel diagnostics, and causal analysis are intentional targets, but do not invent simulator components merely to copy its labels.
+- The selected visual target is the user-provided Mission Control screenshot retained with the design review.
+- Use the full-resolution operational reference retained with the same review for final fidelity checks. Its top command bar, live primitive telemetry, multi-panel diagnostics, and causal analysis are intentional targets, but do not invent simulator components merely to copy its labels.
 - Preserve its compact dark operations-center composition, architecture-first hierarchy, contextual inspector, and bottom telemetry timeline.
 - Improve it with explicit Build, Run, and Investigate modes, non-color-only health states, readable control sizes, and graceful local-only operation when the API is unavailable.
 - Guided, custom, and interview scenarios must use the same modular workspace. Interview mode hides interviewer requirements and lets candidates record derived requirements.
@@ -22,4 +22,4 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Do not give every component the same card anatomy or accent. Component family colors, health borders, primary measurements, sparklines, ports, and dimensions should make role and state understandable before reading the label.
 - Events need severity-specific rows and functional timeline markers. The right inspector needs compact history charts and evidence density rather than a large empty overview.
 - The architecture and its evidence are the visual centerpiece. Scenario authoring and interview facilitation should feel like operational dossiers and test plans, not ordinary SaaS forms.
-- Production must remain explicitly release-gated. A green CI run may validate a review build, but the public Hetzner deployment must not become accessible until the user explicitly says the product is done and ready for production.
+- Production must remain release-gated through the restricted central controller. The public repository may request a release only after exact protected CI succeeds and must never receive direct machine access or long-lived deployment credentials.

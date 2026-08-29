@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-APP_DIR=${SYSTEMFORGE_APP_DIR:-/opt/systemforge}
-BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:-/opt/systemforge-backups}
+APP_DIR=${SYSTEMFORGE_APP_DIR:?SYSTEMFORGE_APP_DIR is required}
+BACKUP_DIR=${SYSTEMFORGE_BACKUP_DIR:?SYSTEMFORGE_BACKUP_DIR is required}
 CONFIG_SOURCE=${1:-}
 PASSWORD_SOURCE=${2:-}
 RESTIC_SOURCE=${3:-}
@@ -12,7 +12,6 @@ PASSWORD_TARGET=${SYSTEMFORGE_RESTIC_PASSWORD_FILE:-"$TARGET_DIR/restic-password
 RESTIC_BIN=${SYSTEMFORGE_RESTIC_BIN:-"$TARGET_DIR/restic"}
 RESTIC_SHA256=${SYSTEMFORGE_RESTIC_SHA256:-}
 INIT_OFFSITE=${SYSTEMFORGE_INIT_OFFSITE_BACKUP:-"$APP_DIR/scripts/init_offsite_backup.sh"}
-INSTALL_CRON=${SYSTEMFORGE_INSTALL_BACKUP_CRON:-"$APP_DIR/scripts/install_backup_cron.sh"}
 CONFIG_PREVIOUS=
 PASSWORD_PREVIOUS=
 RESTIC_PREVIOUS=
@@ -119,7 +118,6 @@ SOURCE_SHA256=$(sha256sum "$RESTIC_SOURCE")
 SOURCE_SHA256=${SOURCE_SHA256%% *}
 test "$SOURCE_SHA256" = "$RESTIC_SHA256" || fail "restic source checksum does not match the pinned release."
 test -x "$INIT_OFFSITE" || fail "repository initializer is not executable: $INIT_OFFSITE"
-test -x "$INSTALL_CRON" || fail "backup schedule installer is not executable: $INSTALL_CRON"
 
 umask 077
 mkdir -p "$BACKUP_DIR"
@@ -150,11 +148,5 @@ test "$INSTALLED_SHA256" = "$RESTIC_SHA256" || fail "installed restic checksum c
 SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_TARGET" \
   SYSTEMFORGE_RESTIC_BIN="$RESTIC_BIN" \
   "$INIT_OFFSITE"
-SYSTEMFORGE_APP_DIR="$APP_DIR" \
-  SYSTEMFORGE_BACKUP_DIR="$BACKUP_DIR" \
-  SYSTEMFORGE_OFFSITE_CONFIG="$CONFIG_TARGET" \
-  SYSTEMFORGE_RESTIC_BIN="$RESTIC_BIN" \
-  "$INSTALL_CRON"
-
 SUCCESS=true
-echo "Encrypted off-site backup repository and nightly schedule are provisioned."
+echo "Encrypted off-site backup repository is provisioned; scheduling remains platform-owned."

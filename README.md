@@ -96,17 +96,14 @@ location.replace("/lab");
 
 ## Production status
 
-A prior owner authorization from 2026-08-08 is historical evidence only; it does
-not authorize this working tree or a future revision. Pushing `main` does not
-stage or deploy SystemForge. Production mutation requires a manual deployment
-dispatch that identifies the exact successful `main` CI run and SHA, carries an
-exact typed confirmation, and passes protected-environment approval before any
-host secret is available. The release gate cannot bypass quality, backup,
-restore, in-network, or Cloudflare smoke checks. The current public state should
-be checked through `https://systemforge.elfeel.me/api/health/ready`, not inferred
-from a local checkout. The procedure is documented in
-`docs/operations/production.md`; current evidence and remaining gates are
-tracked in `docs/release-readiness.md`.
+An exact successful `main` CI run automatically invokes the minimal OIDC release
+caller. The public repository supplies only the application identifier, source
+SHA, and CI run identifier to an immutable reusable workflow. A restricted
+release controller owns machine access, routing, immutable image promotion,
+backup, restore, acceptance, and rollback. No host credential or direct-host
+procedure belongs in this repository. The boundary is documented in
+`docs/operations/production.md`, with current public evidence limits in
+`docs/release-readiness.md`.
 
 ## Workspace
 
@@ -116,7 +113,7 @@ tracked in `docs/release-readiness.md`.
 - `packages/contracts` — versioned architecture, scenario, run, and error contracts.
 - `packages/sim-core` — deterministic simulation, requirement evaluation, and
   bounded architecture alternative solving.
-- `deploy` — isolated Hetzner Docker Compose deployment.
+- `deploy` — application image, local integration, and production-profile files.
 
 The engine and solver contract, supported trade-offs, verification paths, and
 honest model limits are documented in [`docs/engine.md`](docs/engine.md).

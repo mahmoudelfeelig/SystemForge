@@ -14,21 +14,9 @@ concurrency:
 
 jobs:
   smoke:
-    environment: production
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Require the approved production target
-        env:
-          DEPLOY_ENABLED: ${{ vars.HETZNER_DEPLOY_ENABLED }}
-          EXTERNAL_SMOKE_URL: ${{ vars.SYSTEMFORGE_EXTERNAL_SMOKE_URL }}
-          RELEASE_APPROVAL: ${{ vars.SYSTEMFORGE_RELEASE_APPROVED }}
-        run: |
-          test "$DEPLOY_ENABLED" = true
-          test "$RELEASE_APPROVAL" = I_AM_READY_FOR_PRODUCTION
-          test "$EXTERNAL_SMOKE_URL" = https://systemforge.elfeel.me
-      - name: Verify Cloudflare origin ranges have not drifted
-        run: sh scripts/verify_cloudflare_ranges.sh
       - name: Check browser shell and canonical readiness
         run: |
           curl --fail --silent --show-error --retry 2 --retry-all-errors --max-time 15 https://systemforge.elfeel.me/ | grep -q SystemForge
