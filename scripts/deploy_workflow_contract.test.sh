@@ -4,7 +4,7 @@ set -eu
 WORKFLOW=.github/workflows/deploy-hetzner.yml
 CI_WORKFLOW=.github/workflows/ci.yml
 MONITOR=.github/workflows/production-monitor.yml
-EXPECTED_GATEWAY='uses: mahmoudelfeelig/HetznerReleaseGateway/.github/workflows/release.yml@c6079616813545bb0c0da1f649e04de6d89dc366'
+EXPECTED_GATEWAY='uses: mahmoudelfeelig/HetznerReleaseGateway/.github/workflows/release.yml@1d0be0bb3b6ac26ce749e382081d320855d5bcba'
 TEST_ROOT=$(mktemp -d)
 SANITIZED_WORKFLOW="$TEST_ROOT/deploy-workflow-public-boundary.yml"
 
