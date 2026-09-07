@@ -20,7 +20,7 @@ describe("bounded architecture solver", () => {
     expect(first).toEqual(second);
     expect(scenario).toEqual(scenarioBefore);
     expect(architecture).toEqual(architectureBefore);
-    expect(first.engineVersion).toBe("0.7.0");
+    expect(first.engineVersion).toBe("0.8.0");
     expect(first.solverVersion).toBe("0.1.0");
     expect(first.exploredCandidates).toBeLessThanOrEqual(12);
     expect(first.candidates.map((candidate) => candidate.rank)).toEqual(

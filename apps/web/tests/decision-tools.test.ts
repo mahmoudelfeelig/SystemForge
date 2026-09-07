@@ -109,12 +109,26 @@ describe("decision workbench tools", () => {
       architecture,
       service.id,
       catalog.services[0]!,
+      catalog,
     );
     const changed = calibrated.nodes.find((node) => node.id === service.id)!;
 
     expect(changed.config.monthlyCostEur).toBe(72.5);
     expect(changed.config.behavior?.compute?.cpuCores).toBe(4);
     expect(changed.config.behavior?.topology?.region).toBe("eu-central");
+    expect(changed.config.inputEvidence).toContainEqual({
+      kind: "provider-catalog",
+      source: "Example Cloud",
+      reference: "compute-m",
+      observedAt: "2026-08-08T00:00:00Z",
+      fields: [
+        "config.monthlyCostEur",
+        "config.behavior.compute.cpuCores",
+        "config.behavior.compute.memoryGb",
+        "config.behavior.network.egressCostPerGb",
+        "config.behavior.topology.region",
+      ],
+    });
     expect(service.config.monthlyCostEur).not.toBe(72.5);
     expect(architectureSchema.safeParse(calibrated).success).toBe(true);
   });

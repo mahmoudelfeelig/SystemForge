@@ -23,3 +23,6 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Events need severity-specific rows and functional timeline markers. The right inspector needs compact history charts and evidence density rather than a large empty overview.
 - The architecture and its evidence are the visual centerpiece. Scenario authoring and interview facilitation should feel like operational dossiers and test plans, not ordinary SaaS forms.
 - Production must remain release-gated through the restricted central controller. The public repository may request a release only after exact protected CI succeeds and must never receive direct machine access or long-lived deployment credentials.
+- Simulation behavior must be tied to named, documented models with exposed assumptions. Do not hide arbitrary utilization, latency, queue-age, retry, or shedding multipliers behind realistic-looking charts.
+- Production references must distinguish disclosed facts from SystemForge synthesis, identify whether an architecture snapshot is current, evolved, or historical, and link directly to primary evidence.
+- Imported production observations must remain inspectable model inputs with provenance. Never replace them with an invented synthetic curve, silently discard their samples, or show hand-authored values as live engine output.

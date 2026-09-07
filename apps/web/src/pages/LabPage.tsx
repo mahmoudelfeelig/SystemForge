@@ -38,8 +38,9 @@ import {
   type Edge,
   type EdgeChange,
   type NodeChange,
+  type ReactFlowInstance,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ComponentNode,
@@ -589,6 +590,13 @@ export function LabPage() {
     useState<TracePlaybackSelection | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [runtimeInspectorOpen, setRuntimeInspectorOpen] = useState(false);
+  const architectureWorkspaceRef = useRef<HTMLElement | null>(null);
+  const flowInstanceRef = useRef<ReactFlowInstance<
+    SystemFlowNode,
+    Edge
+  > | null>(null);
+  const [investigationTopologyFocus, setInvestigationTopologyFocus] =
+    useState(false);
   const [compactViewport, setCompactViewport] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -597,6 +605,59 @@ export function LabPage() {
   const [draftRequirement, setDraftRequirement] = useState<Requirement | null>(
     null,
   );
+
+  useEffect(() => {
+    if (workspaceMode !== "investigate") setInvestigationTopologyFocus(false);
+  }, [workspaceMode]);
+
+  useEffect(() => {
+    const fitVisibleTopology = (duration: number) => {
+      void flowInstanceRef.current?.fitView({
+        padding: compactViewport ? 0.08 : 0.22,
+        maxZoom: compactViewport ? 0.85 : 1.15,
+        duration,
+      });
+    };
+    const animationFrame = window.requestAnimationFrame(() =>
+      fitVisibleTopology(0),
+    );
+    const settledLayout = window.setTimeout(() => fitVisibleTopology(180), 240);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(settledLayout);
+    };
+  }, [
+    compactViewport,
+    investigationTopologyFocus,
+    runtimeInspectorOpen,
+    workspaceMode,
+  ]);
+
+  useEffect(() => {
+    const workspace = architectureWorkspaceRef.current;
+    if (!workspace || typeof ResizeObserver === "undefined") return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      firstFrame = window.requestAnimationFrame(() => {
+        secondFrame = window.requestAnimationFrame(() => {
+          void flowInstanceRef.current?.fitView({
+            padding: compactViewport ? 0.08 : 0.22,
+            maxZoom: compactViewport ? 0.85 : 1.15,
+            duration: 0,
+          });
+        });
+      });
+    });
+    observer.observe(workspace);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [compactViewport]);
   const consumeQueuedImportedReplay = useLabStore(
     (state) => state.consumeQueuedImportedReplay,
   );
@@ -1194,6 +1255,10 @@ export function LabPage() {
         workspaceMode !== "build" && runtimeInspectorOpen
           ? " lab-shell--runtime-inspector"
           : ""
+      }${
+        workspaceMode === "investigate" && investigationTopologyFocus
+          ? " lab-shell--topology-focus"
+          : ""
       }`}
     >
       <a className="skip-link" href="#lab-workspace">
@@ -1754,6 +1819,7 @@ export function LabPage() {
         </aside>
 
         <section
+          ref={architectureWorkspaceRef}
           className="architecture-workspace"
           aria-label="Architecture canvas"
         >
@@ -1811,6 +1877,20 @@ export function LabPage() {
               </div>
             ) : (
               <div className="canvas-tools" aria-label="Runtime view tools">
+                {workspaceMode === "investigate" ? (
+                  <button
+                    type="button"
+                    aria-pressed={investigationTopologyFocus}
+                    onClick={() =>
+                      setInvestigationTopologyFocus((focused) => !focused)
+                    }
+                  >
+                    <Crosshair size={14} />
+                    {investigationTopologyFocus
+                      ? "Restore split"
+                      : "Expand topology"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   aria-expanded={runtimeInspectorOpen}
@@ -1849,6 +1929,9 @@ export function LabPage() {
             </dl>
           </header>
           <ReactFlow<SystemFlowNode, Edge>
+            onInit={(instance) => {
+              flowInstanceRef.current = instance;
+            }}
             nodes={flowNodes}
             edges={flowEdges}
             nodeTypes={nodeTypes}

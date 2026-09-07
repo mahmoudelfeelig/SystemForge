@@ -129,6 +129,42 @@ describe("completed-run decision workbench", () => {
     ).toBeTruthy();
   });
 
+  it("labels authored demand honestly and exposes retained observation replay", () => {
+    render(<DecisionWorkbench open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Calibrate" }));
+    const calibrate = screen.getByRole("tabpanel", { name: "Calibrate" });
+
+    expect(
+      within(calibrate).getByText("Authored workload curve only"),
+    ).toBeTruthy();
+    expect(
+      within(calibrate).getByText(/not production calibrated/),
+    ).toBeTruthy();
+    expect(
+      within(calibrate).getByText(/does not invent a synthetic spike/),
+    ).toBeTruthy();
+
+    fireEvent.change(
+      within(calibrate).getByRole("textbox", { name: "Traffic profile data" }),
+      { target: { value: "second,rps\n0,1000\n10,3000\n20,1000" } },
+    );
+    fireEvent.click(
+      within(calibrate).getByRole("button", {
+        name: /Retain and replay observations/,
+      }),
+    );
+
+    expect(
+      within(calibrate).getByText("Observed demand replay active"),
+    ).toBeTruthy();
+    expect(within(calibrate).getByText("3")).toBeTruthy();
+    expect(within(calibrate).getByText("20s")).toBeTruthy();
+    expect(within(calibrate).getByText("1,000–3,000 RPS")).toBeTruthy();
+    expect(
+      useLabStore.getState().scenario.workload.observedTraffic?.samples,
+    ).toHaveLength(3);
+  });
+
   it("disables replay-bundle export for private interviewer runs", async () => {
     const scenario = structuredClone(DEFAULT_SCENARIO);
     scenario.mode = "interview";

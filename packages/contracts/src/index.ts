@@ -81,77 +81,114 @@ export const requirementSchema = z.object({
 
 export type Requirement = z.infer<typeof requirementSchema>;
 
-export const workloadSchema = z.object({
-  baseRps: z.number().int().min(1).max(5_000_000),
-  peakRps: z.number().int().min(1).max(10_000_000),
-  readRatio: z.number().min(0).max(1),
-  durationSeconds: z.number().int().min(15).max(86_400),
-  regions: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(80),
-        trafficShare: z.number().min(0).max(1),
-        roundTripMs: z.number().min(0).max(2_000),
-      }),
-    )
-    .min(1)
-    .max(12),
-  concurrentUsers: z.number().int().min(1).max(1_000_000_000).optional(),
-  arrivalPattern: z.enum(["steady", "poisson", "bursty"]).optional(),
-  clientTimeoutMs: z.number().int().min(50).max(120_000).optional(),
-  retryPolicy: z
-    .object({
-      maxRetries: z.number().int().min(0).max(12),
-      backoffBaseMs: z.number().int().min(0).max(60_000),
-      jitter: z.boolean(),
-      retryOnTimeout: z.boolean(),
-    })
-    .optional(),
-  requestMix: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(120),
-        share: z.number().min(0).max(1),
-        readRatio: z.number().min(0).max(1),
-        payloadKb: z.number().min(0).max(1_000_000),
-        computeMs: z.number().min(0).max(60_000),
-        databaseQueries: z.number().min(0).max(1_000),
-        cacheable: z.boolean(),
-        critical: z.boolean(),
-        entryNodeId: z.string().min(1).max(80).optional(),
-        route: z
-          .object({
-            edgeIds: z
-              .array(z.string().min(1).max(80))
-              .min(1)
-              .max(128)
-              .optional(),
-            terminalNodeId: z.string().min(1).max(80).optional(),
-          })
-          .superRefine((route, context) => {
-            if (!route.edgeIds && !route.terminalNodeId)
-              context.addIssue({
-                code: "custom",
-                message:
-                  "A request-class route must constrain edges, a terminal node, or both.",
-              });
-            if (
-              route.edgeIds &&
-              new Set(route.edgeIds).size !== route.edgeIds.length
-            )
-              context.addIssue({
-                code: "custom",
-                path: ["edgeIds"],
-                message:
-                  "A request-class route cannot traverse the same edge more than once.",
-              });
-          })
-          .optional(),
-      }),
-    )
-    .max(40)
-    .optional(),
+export const observedTrafficSampleSchema = z.object({
+  second: z.number().int().min(0).max(86_400),
+  rps: z.number().int().min(1).max(10_000_000),
 });
+
+export const observedTrafficSchema = z.object({
+  source: z.enum(["csv", "otel-json"]),
+  interpolation: z.literal("linear"),
+  samples: z.array(observedTrafficSampleSchema).min(2).max(2_000),
+});
+
+export const workloadSchema = z
+  .object({
+    baseRps: z.number().int().min(1).max(5_000_000),
+    peakRps: z.number().int().min(1).max(10_000_000),
+    readRatio: z.number().min(0).max(1),
+    durationSeconds: z.number().int().min(15).max(86_400),
+    regions: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(80),
+          trafficShare: z.number().min(0).max(1),
+          roundTripMs: z.number().min(0).max(2_000),
+        }),
+      )
+      .min(1)
+      .max(12),
+    concurrentUsers: z.number().int().min(1).max(1_000_000_000).optional(),
+    arrivalPattern: z.enum(["steady", "poisson", "bursty"]).optional(),
+    observedTraffic: observedTrafficSchema.optional(),
+    clientTimeoutMs: z.number().int().min(50).max(120_000).optional(),
+    retryPolicy: z
+      .object({
+        maxRetries: z.number().int().min(0).max(12),
+        backoffBaseMs: z.number().int().min(0).max(60_000),
+        jitter: z.boolean(),
+        retryOnTimeout: z.boolean(),
+      })
+      .optional(),
+    requestMix: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(120),
+          share: z.number().min(0).max(1),
+          readRatio: z.number().min(0).max(1),
+          payloadKb: z.number().min(0).max(1_000_000),
+          computeMs: z.number().min(0).max(60_000),
+          databaseQueries: z.number().min(0).max(1_000),
+          cacheable: z.boolean(),
+          critical: z.boolean(),
+          entryNodeId: z.string().min(1).max(80).optional(),
+          route: z
+            .object({
+              edgeIds: z
+                .array(z.string().min(1).max(80))
+                .min(1)
+                .max(128)
+                .optional(),
+              terminalNodeId: z.string().min(1).max(80).optional(),
+            })
+            .superRefine((route, context) => {
+              if (!route.edgeIds && !route.terminalNodeId)
+                context.addIssue({
+                  code: "custom",
+                  message:
+                    "A request-class route must constrain edges, a terminal node, or both.",
+                });
+              if (
+                route.edgeIds &&
+                new Set(route.edgeIds).size !== route.edgeIds.length
+              )
+                context.addIssue({
+                  code: "custom",
+                  path: ["edgeIds"],
+                  message:
+                    "A request-class route cannot traverse the same edge more than once.",
+                });
+            })
+            .optional(),
+        }),
+      )
+      .max(40)
+      .optional(),
+  })
+  .superRefine((workload, context) => {
+    const samples = workload.observedTraffic?.samples;
+    if (!samples) return;
+    if (samples[0]?.second !== 0)
+      context.addIssue({
+        code: "custom",
+        path: ["observedTraffic", "samples", 0, "second"],
+        message: "Observed traffic must start at second 0.",
+      });
+    for (let index = 1; index < samples.length; index += 1) {
+      if (samples[index]!.second <= samples[index - 1]!.second)
+        context.addIssue({
+          code: "custom",
+          path: ["observedTraffic", "samples", index, "second"],
+          message: "Observed traffic seconds must be strictly increasing.",
+        });
+    }
+    if ((samples.at(-1)?.second ?? 0) > workload.durationSeconds)
+      context.addIssue({
+        code: "custom",
+        path: ["observedTraffic", "samples"],
+        message: "Observed traffic cannot extend beyond workload duration.",
+      });
+  });
 
 export const INCIDENT_KINDS = [
   "traffic-spike",
@@ -720,6 +757,16 @@ export type BehavioralProfileReference = z.infer<
   typeof behavioralProfileReferenceSchema
 >;
 
+export const configurationEvidenceSchema = z.object({
+  kind: z.enum(["provider-catalog", "telemetry-calibration"]),
+  source: z.string().min(1).max(160),
+  reference: z.string().min(1).max(240),
+  observedAt: z.iso.datetime({ offset: true }),
+  fields: z.array(z.string().min(1).max(240)).min(1).max(32),
+});
+
+export type ConfigurationEvidence = z.infer<typeof configurationEvidenceSchema>;
+
 export const nodeBehaviorSchema = z.object({
   compute: z
     .object({
@@ -836,6 +883,7 @@ export const architectureNodeSchema = z
       consistency: z.enum(["strong", "eventual"]).default("strong"),
       behavior: nodeBehaviorSchema.optional(),
       behavioralProfile: behavioralProfileReferenceSchema.optional(),
+      inputEvidence: z.array(configurationEvidenceSchema).max(8).optional(),
     }),
   })
   .superRefine((node, context) => {
@@ -1140,6 +1188,14 @@ export interface NodeMetricSnapshot {
   iopsUtilization: number;
   networkUtilization: number;
   queueDepth: number;
+  /** Resource wait from the engine's documented aggregate queueing approximation. */
+  queueWaitMs?: number;
+  /** Total modeled work offered to this node during the aggregate second. */
+  offeredRps?: number;
+  /** Work admitted after incident, failover, and load-shedding gates. */
+  admittedRps?: number;
+  /** Admitted share of offered work, expressed from 0 to 100. */
+  admissionPercent?: number;
   replicaLagMs: number;
   activeInstances: number;
   latencyMs: number;

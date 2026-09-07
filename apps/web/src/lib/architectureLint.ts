@@ -6,6 +6,7 @@ import {
   type Architecture,
   type Scenario,
 } from "@systemforge/contracts";
+import { architectureNodeDimensions } from "./architecturePlacement";
 
 export interface GraphLintIssue {
   id: string;
@@ -33,6 +34,37 @@ export function lintArchitecture(
   const issues: GraphLintIssue[] = [];
   const nodeIds = new Set(architecture.nodes.map((node) => node.id));
   const outgoing = new Map<string, Architecture["edges"]>();
+
+  for (
+    let leftIndex = 0;
+    leftIndex < architecture.nodes.length;
+    leftIndex += 1
+  ) {
+    const left = architecture.nodes[leftIndex]!;
+    const leftSize = architectureNodeDimensions(left.kind);
+    for (
+      let rightIndex = leftIndex + 1;
+      rightIndex < architecture.nodes.length;
+      rightIndex += 1
+    ) {
+      const right = architecture.nodes[rightIndex]!;
+      const rightSize = architectureNodeDimensions(right.kind);
+      const overlaps =
+        left.position.x < right.position.x + rightSize.width &&
+        left.position.x + leftSize.width > right.position.x &&
+        left.position.y < right.position.y + rightSize.height &&
+        left.position.y + leftSize.height > right.position.y;
+      if (overlaps)
+        issues.push({
+          id: `visual-overlap:${left.id}:${right.id}`,
+          severity: "warning",
+          title: `${left.name} overlaps ${right.name}`,
+          detail:
+            "Move either component or run Layout so ports, telemetry, and dependency paths remain readable.",
+          entityId: left.id,
+        });
+    }
+  }
 
   if (architecture.nodes.length === 0)
     issues.push({

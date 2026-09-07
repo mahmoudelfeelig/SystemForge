@@ -68,6 +68,20 @@ The same validated inputs, engine version, seed, and action schedule reproduce
 the same modeled result. This is deterministic model evidence, not a production
 benchmark or captured service telemetry.
 
+The Decision Workbench's **Field guide** keeps 21 disclosed production-system
+snapshots and 52 primary-source incident records searchable beside the modeled
+work. Architecture diagrams show only disclosed component paths and label their
+time scope; incident views keep cited historical facts separate from
+SystemForge's prevention deductions.
+
+The **Calibrate** workbench can retain and replay bounded CSV or JSON traffic
+observations, attach versioned provider-catalog inputs, and fit one component's
+capacity and base latency against timestamped CPU and latency telemetry. Node
+fits use a deterministic holdout gate and remain rejected unless held-out error
+improves without a material regression. Accepted inputs retain their provenance
+on the architecture; they remain model calibration evidence, not a production
+benchmark or automatic infrastructure recommendation.
+
 Run the repository gate with:
 
 ```sh

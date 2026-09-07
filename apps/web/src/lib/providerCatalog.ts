@@ -135,6 +135,7 @@ export function applyProviderSku(
   architecture: Architecture,
   nodeId: string,
   sku: ProviderSku,
+  catalog: ProviderCatalog,
 ): Architecture {
   const node = architecture.nodes.find((candidate) => candidate.id === nodeId);
   if (!node)
@@ -143,6 +144,21 @@ export function applyProviderSku(
     throw new Error(
       `${sku.name} cannot be applied to a ${node.kind} component.`,
     );
+  const fields = ["config.monthlyCostEur"];
+  if (sku.cpuCores !== undefined)
+    fields.push("config.behavior.compute.cpuCores");
+  if (sku.memoryGb !== undefined)
+    fields.push("config.behavior.compute.memoryGb");
+  if (sku.egressPerGbEur !== undefined)
+    fields.push("config.behavior.network.egressCostPerGb");
+  fields.push("config.behavior.topology.region");
+  const evidence = {
+    kind: "provider-catalog" as const,
+    source: catalog.provider,
+    reference: sku.sku,
+    observedAt: catalog.retrievedAt,
+    fields,
+  };
   return {
     ...architecture,
     nodes: architecture.nodes.map((candidate) =>
@@ -175,6 +191,12 @@ export function applyProviderSku(
                   region: sku.region,
                 },
               },
+              inputEvidence: [
+                ...(candidate.config.inputEvidence ?? []).filter(
+                  (item) => item.kind !== "provider-catalog",
+                ),
+                evidence,
+              ].slice(-8),
             },
           },
     ),

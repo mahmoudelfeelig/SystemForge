@@ -36,8 +36,15 @@ import {
 import { DeterministicRandom } from "./prng";
 import { resolveBehavioralProfileEvidence } from "./behavioralProfiles";
 import { simulationInputFingerprintFromParsedInputs } from "./inputFingerprint";
+import {
+  advanceFifoQueue,
+  arrivalSquaredCoefficientOfVariation,
+  estimateQueueingDelay,
+  sampleArrivalCount,
+  type QueueCohort,
+} from "./queueing";
 
-export const ENGINE_VERSION = "0.7.0";
+export const ENGINE_VERSION = "0.8.0";
 
 export interface SimulationOptions {
   actions?: readonly SimulationAction[];
@@ -213,6 +220,8 @@ interface RuntimeNodeState {
   pendingReadyAt: number;
   lastScaleSecond: number;
   queueDepth: number;
+  queueCohorts: QueueCohort[];
+  admissionFactor: number;
   memoryLeakMb: number;
 }
 
@@ -2327,6 +2336,8 @@ export function simulate(
     pendingReadyAt: Number.POSITIVE_INFINITY,
     lastScaleSecond: Number.NEGATIVE_INFINITY,
     queueDepth: 0,
+    queueCohorts: [],
+    admissionFactor: 1,
     memoryLeakMb: 0,
   }));
   const runtime = new Map<string, RuntimeNodeState>(
@@ -2569,6 +2580,12 @@ export function simulate(
       ),
     );
 
+  const observedTraffic = scenario.workload.observedTraffic?.samples;
+  const arrivalPattern = observedTraffic
+    ? "steady"
+    : (scenario.workload.arrivalPattern ?? "bursty");
+  let observedTrafficCursor = 0;
+
   for (
     let second = 0;
     second <= scenario.workload.durationSeconds;
@@ -2794,10 +2811,10 @@ export function simulate(
             effectiveFailoverSeconds(incident, node, 8);
         factor *= failoverComplete ? 1 : 0;
       }
+      factor *= state.admissionFactor;
       nodeForwardingFactors[nodeIndex] = clamp(factor, 0, 1);
     }
 
-    const arrivalPattern = scenario.workload.arrivalPattern ?? "bursty";
     const phase = second / scenario.workload.durationSeconds;
     const peakIntensity =
       arrivalPattern === "steady"
@@ -2805,15 +2822,25 @@ export function simulate(
         : arrivalPattern === "poisson"
           ? 0.12 + 0.08 * Math.sin(phase * Math.PI) ** 2
           : Math.sin(phase * Math.PI) ** 6;
+    while (
+      observedTraffic?.[observedTrafficCursor + 1] &&
+      observedTraffic[observedTrafficCursor + 1]!.second <= second
+    )
+      observedTrafficCursor += 1;
+    const observedLeft = observedTraffic?.[observedTrafficCursor];
+    const observedRight = observedTraffic?.[observedTrafficCursor + 1];
+    const observedRps = observedLeft
+      ? observedRight
+        ? observedLeft.rps +
+          ((observedRight.rps - observedLeft.rps) *
+            (second - observedLeft.second)) /
+            Math.max(1, observedRight.second - observedLeft.second)
+        : observedLeft.rps
+      : undefined;
     const scheduledRps =
+      observedRps ??
       scenario.workload.baseRps +
-      (scenario.workload.peakRps - scenario.workload.baseRps) * peakIntensity;
-    const arrivalNoise =
-      arrivalPattern === "steady"
-        ? random.between(0.995, 1.005)
-        : arrivalPattern === "poisson"
-          ? average(Array.from({ length: 5 }, () => random.between(0.82, 1.18)))
-          : random.between(0.94, 1.08) * (1 + 0.08 * Math.sin(second / 4));
+        (scenario.workload.peakRps - scenario.workload.baseRps) * peakIntensity;
     let trafficMultiplier = 1;
     let maliciousTrafficShare = 0;
     let payloadMultiplier = 1;
@@ -2834,11 +2861,11 @@ export function simulate(
       if (incident.kind === "large-payload")
         payloadMultiplier *= incident.magnitude;
     }
-    const requestedRps =
-      scheduledRps *
-      arrivalNoise *
-      trafficMultiplier *
-      clientRetryAmplification;
+    const requestedRps = sampleArrivalCount(
+      scheduledRps * trafficMultiplier * clientRetryAmplification,
+      arrivalPattern,
+      random,
+    );
     const cacheNodes = nodesOfKind("cache");
     for (
       let nodeIndex = 0;
@@ -3278,7 +3305,6 @@ export function simulate(
         iopsUtilization = Math.max(operationUtilization, diskUtilization);
       }
       let componentQueueDepth = 0;
-      let componentQueueAge = 0;
       if (node.kind === "queue" || node.kind === "stream") {
         const delivery = behavior?.messaging?.delivery ?? "at-least-once";
         const deliveredEnqueueDemand = nodeExecution.deliveredTransportDemand;
@@ -3339,7 +3365,7 @@ export function simulate(
               factor / Math.max(1, incident.magnitude * 0.65),
             1,
           );
-        const processed = Math.max(
+        const serviceCapacity = Math.max(
           0,
           consumerCapacity *
             forwardingFactor *
@@ -3349,13 +3375,15 @@ export function simulate(
             partitionAvailability *
             (1 - poisonRate),
         );
-        state.queueDepth = Math.max(0, state.queueDepth + demand - processed);
-        componentQueueDepth = state.queueDepth;
-        componentQueueAge =
-          (state.queueDepth / Math.max(1, processed || demand)) * 1_000 +
-          (batchSize > 1
-            ? Math.min(1_000, batchSize / Math.max(1, demand)) * 1_000
-            : 0);
+        const queueAdvance = advanceFifoQueue(
+          state.queueCohorts,
+          second,
+          demand,
+          serviceCapacity,
+        );
+        state.queueDepth = queueAdvance.depth;
+        componentQueueDepth = queueAdvance.depth;
+        const componentQueueAge = queueAdvance.oldestAgeMs;
         queueDepth += componentQueueDepth;
         maxQueueAgeMs = Math.max(maxQueueAgeMs, componentQueueAge);
         const retentionMs =
@@ -3387,14 +3415,29 @@ export function simulate(
       const bulkhead = behavior?.resilience?.bulkhead ?? false;
       const loadSheddingThreshold =
         behavior?.resilience?.loadSheddingThreshold ?? 1.35;
+      const timeoutMs =
+        behavior?.resilience?.timeoutMs ??
+        scenario.workload.clientTimeoutMs ??
+        120_000;
+      const queueing = estimateQueueingDelay({
+        arrivalRateRps: demand,
+        capacityRps: Math.max(1, baseCapacity),
+        parallelServers: Math.max(
+          state.activeInstances,
+          Math.ceil((baseCapacity * serviceTimeMs) / 1_000),
+        ),
+        serviceTimeMs,
+        arrivalScv: arrivalSquaredCoefficientOfVariation(arrivalPattern),
+        timeoutMs,
+      });
+      const queueWaitMs = queueing.waitMs;
       const latencyMs =
         (node.config.baseLatencyMs +
           edgeLatencyMs +
           (behavior?.network?.rttMs ?? 0) +
           (behavior?.network?.jitterMs ?? 0) * random.between(0.2, 1)) *
-          latencyMultiplier *
-          (1 + utilization ** 2.5) +
-        componentQueueAge * 0.15 +
+          latencyMultiplier +
+        queueWaitMs +
         (gcPauseActive ? gcPauseMs : 0);
       let nodeErrorRate = offline
         ? 1
@@ -3406,14 +3449,8 @@ export function simulate(
             0,
             0.98,
           );
-      if (!offline && utilization > loadSheddingThreshold)
-        nodeErrorRate = Math.min(0.98, nodeErrorRate + 0.04);
       if (!offline && circuitBreaker && node.kind === "third-party")
         nodeErrorRate *= 0.45;
-      const timeoutMs =
-        behavior?.resilience?.timeoutMs ??
-        scenario.workload.clientTimeoutMs ??
-        120_000;
       if (!offline && latencyMs > timeoutMs)
         nodeErrorRate = clamp(
           nodeErrorRate + (latencyMs - timeoutMs) / Math.max(1, latencyMs),
@@ -3421,6 +3458,45 @@ export function simulate(
           0.98,
         );
       if (!offline && bulkhead && nodeErrorRate > 0) nodeErrorRate *= 0.72;
+
+      const nextAdmissionFactor =
+        !offline && behavior?.resilience?.loadSheddingThreshold !== undefined
+          ? utilization > loadSheddingThreshold
+            ? clamp(
+                loadSheddingThreshold / Math.max(utilization, 0.000_001),
+                0.05,
+                1,
+              )
+            : Math.min(1, state.admissionFactor + 0.15)
+          : 1;
+      if (
+        nextAdmissionFactor < 0.999 &&
+        !emitted.has(`load-shedding-${node.id}`)
+      )
+        emit({
+          id: `load-shedding-${node.id}`,
+          second,
+          kind: "load-shedding",
+          severity: "warning",
+          title: `${node.name} is shedding excess work`,
+          detail: `Admission is reduced to ${rounded(nextAdmissionFactor * 100)}% on the next modeled frame because ${Math.round(utilization * 100)}% utilization crossed the configured ${Math.round(loadSheddingThreshold * 100)}% threshold.`,
+          entityId: node.id,
+          parentIds: emitted.has(`saturation-${node.id}`)
+            ? [`saturation-${node.id}`]
+            : [],
+          effects: [
+            {
+              metric: "admissionFactor",
+              delta: rounded(nextAdmissionFactor - 1, 3),
+              label: `${rounded(nextAdmissionFactor * 100)}% admitted`,
+            },
+          ],
+          recommendations: [
+            "Protect critical request classes with explicit admission budgets.",
+            "Scale or reduce dependency amplification before relaxing shedding.",
+          ],
+        });
+      state.admissionFactor = nextAdmissionFactor;
 
       const scaling = behavior?.scaling;
       const targetUtilization = scaling?.targetUtilization ?? 0.7;
@@ -3559,6 +3635,10 @@ export function simulate(
         iopsUtilization: rounded(clamp(iopsUtilization, 0, 1.99), 4),
         networkUtilization: rounded(clamp(networkUtilization, 0, 1.99), 4),
         queueDepth: rounded(componentQueueDepth),
+        queueWaitMs: rounded(queueWaitMs),
+        offeredRps: rounded(demand),
+        admittedRps: rounded(demand * forwardingFactor),
+        admissionPercent: rounded(forwardingFactor * 100, 3),
         replicaLagMs: rounded(nodeReplicaLagMs),
         activeInstances: state.activeInstances,
         latencyMs: rounded(latencyMs),

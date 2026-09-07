@@ -8,7 +8,7 @@ then ranks the eligible alternatives without hiding their trade-offs.
 Neither surface deploys infrastructure or executes application code. Results
 are modeled evidence for design work, not production benchmark guarantees.
 
-## Simulation engine 0.7.0
+## Simulation engine 0.8.0
 
 `packages/sim-core/src/simulate.ts` advances the model in deterministic
 one-second frames. The same package runs inside the browser Web Worker and the
@@ -40,6 +40,23 @@ The current contract models:
   reachable entry path, capped at 64 spans each, with executed edges, bounded retry chains,
   cache decisions, async message lineage, query class, modeled connection-pool
   wait, failure classification, terminal state, and parent-span evidence.
+
+Arrival counts follow the configured process instead of a visual noise
+multiplier. `steady` is exact per frame, `poisson` samples an actual Poisson
+count, and `bursty` samples Poisson counts from a mean-preserving log-normal
+intensity process. The latter is deliberately overdispersed, so its variance is
+greater than its mean while its long-run rate remains the authored rate.
+
+Each node reports offered and admitted throughput separately. Resource wait is
+estimated with an Allen-Cunneen-style G/G/c queueing approximation using the
+arrival-process variability, service-time variability, utilization, and
+capacity-implied concurrency. Load shedding takes effect as a deterministic next-frame
+admission factor once the configured utilization threshold is crossed, produces
+a causal event, and recovers gradually after pressure falls. Async queues retain
+aggregate FIFO arrival cohorts, so oldest-message age advances from the actual
+oldest surviving cohort rather than being inferred from queue depth divided by
+throughput. The Inspector exposes resource wait and admission percentage beside
+node latency.
 
 The browser session can pause playback and schedule up to 64 future actions:
 node scaling, circuit-breaker or load-shedding policy changes, and injected
@@ -215,6 +232,14 @@ seeded rule applies those same coarse effects to matching modeled nodes; it does
 not simulate host-level dependency graphs, quorum protocols, provider-specific
 correlation, or control-plane recovery.
 
+The G/G/c resource-wait calculation is a documented aggregate approximation,
+not a request scheduler or proof of a component's tail distribution. It is
+capped by the authored timeout when a station is unstable. FIFO cohorts are
+aggregate per-frame message groups rather than individual broker records, and
+dynamic admission is applied at one-second boundaries. These choices preserve
+deterministic replay while avoiding claims of packet-, thread-, or
+vendor-runtime fidelity.
+
 The solver changes parameters and operating policies inside the authored
 topology and does not prove a global optimum. A separate assistive layer can
 propose three explicit, inspectable topology changes when their preconditions
@@ -231,13 +256,33 @@ analysis over modeled seeds, not a Monte Carlo confidence interval or evidence
 about every production workload.
 
 CSV and OpenTelemetry-like JSON traffic profiles can be imported with strict
-sample, duration, and rate limits. The importer distills the observations into
-the scenario's base rate, peak rate, duration, and an explicit peak incident;
-it does not reproduce an exact trace or calibrate component behavior. Versioned
-EUR provider-catalog snapshots can update a compatible component's modeled
-monthly price, compute shape, egress price, and region. Catalogues are bounded,
-validated user inputs rather than live vendor pricing or purchasing advice.
-`examples/provider-catalog.example.json` documents the accepted snapshot shape.
+sample, duration, and rate limits. SystemForge retains the bounded observations,
+normalizes their first timestamp to second zero, and linearly interpolates the
+observed offered-demand curve at each modeled second. Existing scheduled
+incidents remain explicit multipliers over that curve; importing observations
+does not invent a synthetic peak. This is a replay of aggregate sampled demand,
+not individual requests, traces, or a claim that the traffic export is complete.
+
+Node telemetry calibration accepts 10 to 2,000 timestamped latency and CPU
+observations for one component only after an observed demand profile is present.
+It deterministically trains on four of every five samples, holds out every fifth
+sample, and searches bounded `capacityRps` and `baseLatencyMs` values. The fit is
+applied only when aggregate holdout error improves by at least 2% and neither
+held-out metric regresses by more than 10%. Accepted changes retain source,
+reference, observation time, and changed-field evidence on the component. This
+two-parameter fitter does not infer unobserved topology, queueing disciplines,
+dependency behavior, hardware, or provider semantics, and a passing holdout is
+not production certification. Because the current bounded search executes on
+the UI thread, calibration jobs are rejected above 400,000 aggregate simulation
+work units with guidance to trim the observation window or topology.
+
+Versioned EUR provider-catalog snapshots can update a compatible component's
+modeled monthly price, compute shape, egress price, and region. Applied values
+retain their provider, SKU, retrieval time, and changed-field evidence. Catalogs
+are bounded, validated user inputs rather than live vendor pricing or purchasing
+advice. `examples/traffic-profile.example.csv`,
+`examples/node-telemetry.example.csv`, and
+`examples/provider-catalog.example.json` document the accepted input shapes.
 
 These boundaries stay visible beside the output. SystemForge does not emulate
 vendor implementations, infer arbitrary service boundaries, generate
@@ -250,12 +295,17 @@ The focused checks are:
 
 ```sh
 pnpm exec vitest run packages/sim-core/tests/simulate.test.ts
+pnpm exec vitest run packages/sim-core/tests/queueing.test.ts
 pnpm exec vitest run packages/sim-core/tests/stochastic-incidents.test.ts
 pnpm exec vitest run packages/sim-core/tests/behavioral-profiles.test.ts
 pnpm exec vitest run packages/sim-core/tests/solve.test.ts
 pnpm test:performance
 pnpm --filter @systemforge/sim-core typecheck
 ```
+
+The performance gate keeps 250 queue-aware, two-minute representative runs
+below 3.5 seconds on the canonical Windows runner (under 14 ms per run) and
+keeps five bounded architecture searches below two seconds.
 
 The repository-wide `pnpm quality` command adds formatting, linting, all
 behavioral tests, all workspace builds, and the static-site packaging contract.

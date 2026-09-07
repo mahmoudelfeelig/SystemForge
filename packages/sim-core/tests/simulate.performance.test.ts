@@ -7,7 +7,7 @@ import {
 } from "../src";
 
 describe("simulation performance budget", () => {
-  it("completes 250 representative simulations within two seconds", () => {
+  it("completes 250 queue-aware simulations within 3.5 seconds", () => {
     // Keep this throughput budget independent from one-time V8 compilation.
     // Browser build and smoke checks cover cold application startup separately.
     for (let iteration = 0; iteration < 100; iteration += 1) {
@@ -23,7 +23,10 @@ describe("simulation performance budget", () => {
     }
     const elapsedMs = performance.now() - startedAt;
 
-    expect(elapsedMs).toBeLessThan(2_000);
+    // The queue-aware engine evaluates G/G/c wait, FIFO cohorts, and dynamic
+    // admission for every modeled node and second. Keep the batch below 14 ms
+    // per complete two-minute simulation on the canonical Windows runner.
+    expect(elapsedMs).toBeLessThan(3_500);
   });
 
   it("evaluates five bounded architecture searches within two seconds", () => {

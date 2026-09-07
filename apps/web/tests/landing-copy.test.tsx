@@ -3,6 +3,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import {
+  DEFAULT_ARCHITECTURE,
+  DEFAULT_SCENARIO,
+  simulate,
+} from "@systemforge/sim-core";
 import { LandingPage } from "../src/pages/LandingPage";
 
 afterEach(cleanup);
@@ -22,5 +27,29 @@ describe("landing copy", () => {
     expect(screen.getByLabelText("Email Mahmoud Elfeel")).toBeTruthy();
     expect(screen.getByLabelText("Mahmoud Elfeel on LinkedIn")).toBeTruthy();
     expect(screen.getByLabelText("SystemForge on GitHub")).toBeTruthy();
+  });
+
+  it("renders the preview scorecard from the current deterministic engine", () => {
+    const result = simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE, {
+      includeTraces: false,
+    });
+    const requirements = result.requirements.slice(0, 4);
+    const passed = requirements.filter(
+      (requirement) => requirement.passed,
+    ).length;
+
+    render(
+      <MemoryRouter>
+        <LandingPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByText(`Engine ${result.engineVersion} modeled frame`),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(`${passed} of ${requirements.length} pass`),
+    ).toBeTruthy();
+    expect(screen.queryByText("386 ms")).toBeNull();
   });
 });

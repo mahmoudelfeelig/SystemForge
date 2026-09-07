@@ -630,9 +630,25 @@ export function InspectorPanel({
           </section>
           <section className="signal-ledger">
             <div>
-              <span>p95 latency</span>
+              <span>Node latency</span>
               <strong>
                 {metrics ? `${Math.round(metrics.latencyMs)} ms` : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>Resource wait</span>
+              <strong>
+                {metrics?.queueWaitMs === undefined
+                  ? "—"
+                  : `${Math.round(metrics.queueWaitMs)} ms`}
+              </strong>
+            </div>
+            <div>
+              <span>Admission</span>
+              <strong>
+                {metrics?.admissionPercent === undefined
+                  ? "—"
+                  : `${metrics.admissionPercent.toFixed(1)}%`}
               </strong>
             </div>
             <div>
@@ -843,6 +859,49 @@ export function InspectorPanel({
                 Profiles write validated compute, storage, cache, messaging,
                 resilience, and operations primitives. They are modeling
                 assumptions, not benchmarks or provider guarantees.
+              </p>
+            )}
+          </section>
+          <section
+            className="edge-telemetry input-evidence-control"
+            aria-label="Configuration evidence"
+          >
+            <header>
+              <span>Configuration evidence</span>
+              <small>
+                {node.config.inputEvidence?.length
+                  ? String(node.config.inputEvidence.length) + " attached"
+                  : "assumptions only"}
+              </small>
+            </header>
+            {node.config.inputEvidence?.length ? (
+              <ul>
+                {node.config.inputEvidence.map((evidence) => (
+                  <li
+                    key={[
+                      evidence.kind,
+                      evidence.source,
+                      evidence.reference,
+                    ].join("-")}
+                  >
+                    <strong>{evidence.source}</strong>
+                    <span>
+                      {evidence.reference} ·{" "}
+                      {new Date(evidence.observedAt).toLocaleDateString()}
+                    </span>
+                    <small>
+                      {evidence.fields
+                        .map((field) => field.replace(/^config\./, ""))
+                        .join(", ")}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>
+                No imported evidence is attached to these values. Treat them as
+                authored assumptions until a catalog or telemetry calibration
+                records its source.
               </p>
             )}
           </section>

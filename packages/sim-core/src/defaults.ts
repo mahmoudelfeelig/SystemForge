@@ -218,14 +218,14 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
       id: "users",
       kind: "users",
       name: "Users",
-      position: { x: 24, y: 202 },
+      position: { x: 20, y: 220 },
       config: config({ capacityRps: 10_000_000 }),
     },
     {
       id: "cdn",
       kind: "cdn",
       name: "CDN",
-      position: { x: 168, y: 202 },
+      position: { x: 182, y: 220 },
       config: config({
         capacityRps: 500_000,
         baseLatencyMs: 12,
@@ -252,7 +252,7 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
       id: "lb",
       kind: "load-balancer",
       name: "Load Balancer",
-      position: { x: 318, y: 202 },
+      position: { x: 360, y: 220 },
       config: config({
         instances: 2,
         maxInstances: 2,
@@ -285,7 +285,7 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
       id: "api",
       kind: "api",
       name: "API Gateway",
-      position: { x: 486, y: 202 },
+      position: { x: 556, y: 220 },
       config: config({
         instances: 24,
         maxInstances: 48,
@@ -326,7 +326,7 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
       id: "cache",
       kind: "cache",
       name: "Redis Cluster",
-      position: { x: 392, y: 28 },
+      position: { x: 380, y: 30 },
       config: config({
         instances: 6,
         maxInstances: 6,
@@ -363,7 +363,7 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
       id: "db",
       kind: "database",
       name: "PostgreSQL Primary",
-      position: { x: 672, y: 72 },
+      position: { x: 752, y: 50 },
       config: config({
         capacityRps: 75_000,
         baseLatencyMs: 24,
@@ -412,7 +412,7 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
       id: "queue",
       kind: "queue",
       name: "Kafka Orders",
-      position: { x: 482, y: 315 },
+      position: { x: 556, y: 370 },
       config: config({
         instances: 3,
         maxInstances: 3,
@@ -448,7 +448,7 @@ export const DEFAULT_ARCHITECTURE: Architecture = {
       id: "worker",
       kind: "worker",
       name: "Worker Pool",
-      position: { x: 674, y: 315 },
+      position: { x: 752, y: 370 },
       config: config({
         instances: 18,
         maxInstances: 36,

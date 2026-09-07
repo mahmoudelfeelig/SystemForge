@@ -10,6 +10,18 @@ export {
   type BehavioralProfileConfig,
 } from "./behavioralProfiles";
 export { DeterministicRandom } from "./prng";
+export {
+  advanceFifoQueue,
+  arrivalSquaredCoefficientOfVariation,
+  estimateQueueingDelay,
+  sampleArrivalCount,
+  samplePoissonCount,
+  type ArrivalPattern,
+  type QueueAdvanceResult,
+  type QueueCohort,
+  type QueueingDelayEstimate,
+  type QueueingDelayInput,
+} from "./queueing";
 export { simulationInputFingerprint } from "./inputFingerprint";
 export {
   DEFAULT_SOLVER_WORK_UNIT_BUDGET,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SCENARIO } from "@systemforge/sim-core";
+import {
+  DEFAULT_ARCHITECTURE,
+  DEFAULT_SCENARIO,
+  simulate,
+} from "@systemforge/sim-core";
 import {
   applyTrafficProfile,
   parseTrafficProfile,
@@ -15,12 +19,53 @@ describe("traffic profile calibration", () => {
     expect(calibrated.workload.baseRps).toBe(1800);
     expect(calibrated.workload.peakRps).toBe(7200);
     expect(calibrated.workload.durationSeconds).toBe(120);
+    expect(calibrated.workload.arrivalPattern).toBe("steady");
+    expect(calibrated.workload.observedTraffic).toEqual({
+      source: "csv",
+      interpolation: "linear",
+      samples: [
+        { second: 0, rps: 1200 },
+        { second: 30, rps: 1800 },
+        { second: 60, rps: 7200 },
+        { second: 90, rps: 2100 },
+        { second: 120, rps: 1500 },
+      ],
+    });
     expect(
       calibrated.incidents.some(
-        (incident) => incident.kind === "traffic-spike",
+        (incident) => incident.id === "imported-traffic-peak",
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(calibrated.summary).toContain("Imported traffic profile");
+  });
+
+  it("replays retained observations instead of reducing them to one synthetic peak", () => {
+    const scenario = structuredClone(DEFAULT_SCENARIO);
+    scenario.incidents = [];
+    const calibrated = applyTrafficProfile(
+      scenario,
+      parseTrafficProfile("second,rps\n0,1000\n10,3000\n20,1000"),
+    );
+    const result = simulate(calibrated, DEFAULT_ARCHITECTURE, {
+      includeTraces: false,
+    });
+
+    expect(result.frames[0]!.rps).toBe(1000);
+    expect(result.frames[5]!.rps).toBe(2000);
+    expect(result.frames[10]!.rps).toBe(3000);
+    expect(result.frames[15]!.rps).toBe(2000);
+    expect(result.frames[20]!.rps).toBe(1000);
+  });
+
+  it("keeps the derived base rate inside the scenario contract for very large observations", () => {
+    const calibrated = applyTrafficProfile(
+      DEFAULT_SCENARIO,
+      parseTrafficProfile("second,rps\n0,6000000\n10,7000000\n20,8000000"),
+    );
+
+    expect(calibrated.workload.baseRps).toBe(5_000_000);
+    expect(calibrated.workload.peakRps).toBe(8_000_000);
+    expect(calibrated.workload.observedTraffic?.samples).toHaveLength(3);
   });
 
   it("accepts OpenTelemetry-like JSON observations", () => {

@@ -1,8 +1,4 @@
-import {
-  scenarioSchema,
-  type Incident,
-  type Scenario,
-} from "@systemforge/contracts";
+import { scenarioSchema, type Scenario } from "@systemforge/contracts";
 
 export interface TrafficSample {
   second: number;
@@ -122,21 +118,15 @@ export function applyTrafficProfile(
   inputScenario: Scenario,
   profile: TrafficProfile,
 ): Scenario {
-  const values = profile.samples.map((sample) => Math.round(sample.rps));
-  const baseRps = Math.max(1, median(values));
+  const firstSecond = profile.samples[0]!.second;
+  const samples = profile.samples.map((sample) => ({
+    second: sample.second - firstSecond,
+    rps: Math.round(sample.rps),
+  }));
+  const values = samples.map((sample) => sample.rps);
+  const baseRps = Math.min(5_000_000, Math.max(1, median(values)));
   const peakRps = Math.max(baseRps, ...values);
-  const durationSeconds = Math.max(15, profile.samples.at(-1)!.second);
-  const peakSample = profile.samples.reduce((current, sample) =>
-    sample.rps > current.rps ? sample : current,
-  );
-  const importedIncident: Incident = {
-    id: "imported-traffic-peak",
-    atSecond: Math.min(durationSeconds, peakSample.second),
-    kind: "traffic-spike",
-    magnitude: Math.max(1, Math.min(100, peakRps / baseRps)),
-    durationSeconds: Math.max(1, Math.round(durationSeconds * 0.12)),
-    label: `Imported peak ${peakRps.toLocaleString("en-US")} RPS`,
-  };
+  const durationSeconds = Math.max(15, samples.at(-1)!.second);
   const summaryPrefix = `Imported traffic profile (${profile.source}, ${profile.samples.length} samples). `;
   return scenarioSchema.parse({
     ...structuredClone(inputScenario),
@@ -146,12 +136,17 @@ export function applyTrafficProfile(
       baseRps,
       peakRps,
       durationSeconds,
+      arrivalPattern: "steady",
+      observedTraffic: {
+        source: profile.source,
+        interpolation: "linear",
+        samples,
+      },
     },
     incidents: [
       ...inputScenario.incidents.filter(
-        (incident) => incident.id !== importedIncident.id,
+        (incident) => incident.id !== "imported-traffic-peak",
       ),
-      importedIncident,
     ].map((incident) => ({
       ...incident,
       atSecond: Math.min(incident.atSecond, durationSeconds),

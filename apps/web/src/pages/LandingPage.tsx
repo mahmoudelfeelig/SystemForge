@@ -11,18 +11,49 @@ import {
   LinkedinLogo,
   Pulse,
   TerminalWindow,
-  Warning,
   WarningOctagon,
 } from "@phosphor-icons/react";
+import {
+  DEFAULT_ARCHITECTURE,
+  DEFAULT_SCENARIO,
+  simulate,
+} from "@systemforge/sim-core";
 import { Link } from "react-router-dom";
 import { BrandIcon } from "../components/BrandIcon";
 
-const objectives = [
-  ["p95 latency", "at most 400 ms", "386 ms", "warning"],
-  ["Availability", "at least 99.99%", "99.94%", "critical"],
-  ["Confirmed order loss", "exactly 0", "0", "healthy"],
-  ["Monthly cost", "at most EUR 140k", "EUR 128k", "healthy"],
-] as const;
+const previewResult = simulate(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE, {
+  includeTraces: false,
+});
+const previewFrame = previewResult.frames.find((frame) => frame.second === 64)!;
+const previewObjectives = previewResult.requirements.slice(0, 4);
+const previewPassed = previewObjectives.filter(
+  (result) => result.passed,
+).length;
+
+const compact = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+const formatRequirementValue = (value: number, unit: string): string => {
+  const rendered = value.toLocaleString("en-US", {
+    maximumFractionDigits: unit === "%" ? 3 : 1,
+  });
+  return unit === "EUR"
+    ? "EUR " + rendered
+    : rendered + (unit ? " " + unit : "");
+};
+
+const requirementTarget = (
+  operator: "lte" | "gte" | "eq",
+  target: number,
+  unit: string,
+): string =>
+  (operator === "lte"
+    ? "at most "
+    : operator === "gte"
+      ? "at least "
+      : "exactly ") + formatRequirementValue(target, unit);
 
 const operatingModes = [
   {
@@ -153,7 +184,9 @@ export function LandingPage() {
           >
             <header className="home-workspace__bar">
               <div>
-                <span className="panel-index">Scenario preview</span>
+                <span className="panel-index">
+                  Engine {previewResult.engineVersion} modeled frame
+                </span>
                 <strong>Black Friday Checkout</strong>
               </div>
               <dl>
@@ -167,7 +200,7 @@ export function LandingPage() {
                 </div>
                 <div>
                   <dt>Seed</dt>
-                  <dd>819521</dd>
+                  <dd>{previewResult.seed}</dd>
                 </div>
               </dl>
             </header>
@@ -192,19 +225,41 @@ export function LandingPage() {
                     <article className="topology-node topology-node--healthy">
                       <span>EDGE</span>
                       <strong>Global CDN</strong>
-                      <small>112k req/s · 18% cache hit</small>
+                      <small>
+                        {compact.format(
+                          previewFrame.nodeMetrics.cdn?.admittedRps ?? 0,
+                        )}{" "}
+                        admitted ·{" "}
+                        {Math.round(
+                          previewFrame.nodeMetrics.cdn?.admissionPercent ?? 0,
+                        )}
+                        % admission
+                      </small>
                     </article>
                     <ArrowRight size={18} aria-hidden="true" />
                     <article className="topology-node topology-node--warning">
                       <span>COMPUTE</span>
                       <strong>API Gateway</strong>
-                      <small>81% CPU · scaling to 32</small>
+                      <small>
+                        {Math.round(
+                          (previewFrame.nodeMetrics.api?.cpuUtilization ?? 0) *
+                            100,
+                        )}
+                        % CPU · {previewFrame.nodeMetrics.api?.activeInstances}{" "}
+                        instances
+                      </small>
                     </article>
                     <ArrowRight size={18} aria-hidden="true" />
                     <article className="topology-node topology-node--critical">
                       <span>STATE</span>
                       <strong>Redis Cluster</strong>
-                      <small>Offline · failover pending</small>
+                      <small>
+                        {previewFrame.nodeMetrics.cache?.state ?? "unknown"} ·{" "}
+                        {Math.round(
+                          previewFrame.nodeMetrics.cache?.errorRate ?? 0,
+                        )}
+                        % error
+                      </small>
                     </article>
                   </div>
                   <div className="topology-branch">
@@ -213,14 +268,29 @@ export function LandingPage() {
                       <Database size={18} weight="duotone" />
                       <div>
                         <strong>PostgreSQL Primary</strong>
-                        <small>97% IOPS · 2.8s replica lag</small>
+                        <small>
+                          {Math.round(
+                            (previewFrame.nodeMetrics.db?.iopsUtilization ??
+                              0) * 100,
+                          )}
+                          % IOPS ·{" "}
+                          {Math.round(
+                            previewFrame.nodeMetrics.db?.replicaLagMs ?? 0,
+                          )}
+                          ms replica lag
+                        </small>
                       </div>
                     </article>
                     <article className="topology-node topology-node--warning">
                       <HardDrives size={18} weight="duotone" />
                       <div>
                         <strong>Order Queue</strong>
-                        <small>28,416 queued · oldest 9.2s</small>
+                        <small>
+                          {Math.round(
+                            previewFrame.nodeMetrics.queue?.queueDepth ?? 0,
+                          ).toLocaleString("en-US")}{" "}
+                          queued · oldest {previewFrame.maxQueueAgeMs / 1_000}s
+                        </small>
                       </div>
                     </article>
                   </div>
@@ -233,32 +303,39 @@ export function LandingPage() {
               >
                 <header>
                   <span className="panel-index">Run targets</span>
-                  <strong id="objectives-title">3 of 4 pass</strong>
+                  <strong id="objectives-title">
+                    {previewPassed} of {previewObjectives.length} pass
+                  </strong>
                 </header>
-                {objectives.map(([label, target, actual, state], index) => (
+                {previewObjectives.map((result, index) => (
                   <div
-                    className={`objective-row objective-row--${state}`}
-                    key={label}
+                    className={`objective-row objective-row--${result.passed ? "healthy" : "critical"}`}
+                    key={result.requirement.id}
                   >
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div>
-                      <strong>{label}</strong>
-                      <small>{target}</small>
+                      <strong>{result.requirement.label}</strong>
+                      <small>
+                        {requirementTarget(
+                          result.requirement.operator,
+                          result.requirement.target,
+                          result.requirement.unit,
+                        )}
+                      </small>
                     </div>
-                    <b>{actual}</b>
-                    {state === "critical" ? (
+                    <b>
+                      {formatRequirementValue(
+                        result.actual,
+                        result.requirement.unit,
+                      )}
+                    </b>
+                    {!result.passed ? (
                       <WarningOctagon size={15} weight="fill" />
-                    ) : state === "warning" ? (
-                      <Warning size={15} weight="fill" />
                     ) : (
                       <CheckCircle size={15} weight="fill" />
                     )}
                     <span className="visually-hidden">
-                      {state === "critical"
-                        ? "Failed"
-                        : state === "warning"
-                          ? "Passing with low headroom"
-                          : "Passing"}
+                      {result.passed ? "Passing" : "Failed"}
                     </span>
                   </div>
                 ))}

@@ -6,6 +6,23 @@ describe("architecture graph lint", () => {
   it("accepts the seeded topology without blocking errors", () => {
     const issues = lintArchitecture(DEFAULT_SCENARIO, DEFAULT_ARCHITECTURE);
     expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(
+      issues.filter((issue) => issue.id.startsWith("visual-overlap:")),
+    ).toEqual([]);
+  });
+
+  it("reports component collisions that make the topology unreadable", () => {
+    const architecture = structuredClone(DEFAULT_ARCHITECTURE);
+    architecture.nodes[1]!.position = architecture.nodes[0]!.position;
+
+    expect(lintArchitecture(DEFAULT_SCENARIO, architecture)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: `visual-overlap:${architecture.nodes[0]!.id}:${architecture.nodes[1]!.id}`,
+          severity: "warning",
+        }),
+      ]),
+    );
   });
 
   it("reports blank and unreachable drafts before a run", () => {

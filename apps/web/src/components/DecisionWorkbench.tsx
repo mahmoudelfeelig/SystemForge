@@ -31,6 +31,7 @@ import {
   downloadCompletedRunManifest,
   downloadEvidenceReport,
 } from "../lib/evidenceReport";
+import { lintArchitecture } from "../lib/architectureLint";
 import {
   completedRunReplayExportAvailability,
   downloadCompletedRunReplayBundle,
@@ -53,11 +54,17 @@ import {
   parseTrafficProfile,
 } from "../lib/trafficProfile";
 import {
+  calibrateNodeFromTelemetry,
+  parseNodeTelemetry,
+  type TelemetryCalibrationReport,
+} from "../lib/telemetryCalibration";
+import {
   applyTopologyProposal,
   proposeTopologyChanges,
 } from "../lib/topologySynthesis";
 import { useLabStore } from "../store/useLabStore";
 import { InterviewAiFacilitator, RunAiDebriefPanel } from "./AiAssistantPanels";
+import { ReferenceLibrary } from "./ReferenceLibrary";
 import { RunHistoryPanel } from "./RunHistoryPanel";
 
 type DecisionTab =
@@ -65,6 +72,7 @@ type DecisionTab =
   | "runs"
   | "history"
   | "missions"
+  | "references"
   | "calibrate"
   | "session"
   | "report";
@@ -82,8 +90,9 @@ const tabs: Array<{
   { id: "solve", label: "Compare", icon: Scales },
   { id: "runs", label: "Runs", icon: Timer },
   { id: "history", label: "Versions", icon: GitBranch },
-  { id: "missions", label: "Scenarios", icon: Books },
-  { id: "calibrate", label: "Imports", icon: Flask },
+  { id: "missions", label: "Missions", icon: Books },
+  { id: "references", label: "Field guide", icon: Books },
+  { id: "calibrate", label: "Calibrate", icon: Flask },
   { id: "session", label: "Session", icon: UsersThree },
   { id: "report", label: "Report", icon: FileText },
 ];
@@ -215,6 +224,18 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   const [snapshotLabel, setSnapshotLabel] = useState("");
   const [profileText, setProfileText] = useState("");
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [telemetryText, setTelemetryText] = useState("");
+  const [telemetrySource, setTelemetrySource] = useState("");
+  const [telemetryReference, setTelemetryReference] = useState("");
+  const [telemetryObservedAt, setTelemetryObservedAt] = useState("");
+  const [telemetryNodeId, setTelemetryNodeId] = useState(
+    architecture.nodes.find((node) => node.kind === "api")?.id ??
+      architecture.nodes[0]?.id ??
+      "",
+  );
+  const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const [telemetryReport, setTelemetryReport] =
+    useState<TelemetryCalibrationReport | null>(null);
   const [catalogText, setCatalogText] = useState("");
   const [catalog, setCatalog] = useState<ProviderCatalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -305,6 +326,9 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
   useEffect(() => {
     const knownNodeIds = new Set(architecture.nodes.map((node) => node.id));
     setLockedNodeIds((current) => current.filter((id) => knownNodeIds.has(id)));
+    setTelemetryNodeId((current) =>
+      knownNodeIds.has(current) ? current : (architecture.nodes[0]?.id ?? ""),
+    );
   }, [architecture.nodes]);
 
   useEffect(() => {
@@ -361,6 +385,16 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
     () => proposeTopologyChanges(scenario, architecture),
     [architecture, scenario],
   );
+  const baselineGraphIssues = useMemo(
+    () => lintArchitecture(scenario, architecture),
+    [architecture, scenario],
+  );
+  const profiledNodeCount = architecture.nodes.filter(
+    (node) => node.config.behavioralProfile,
+  ).length;
+  const evidencedNodeCount = architecture.nodes.filter(
+    (node) => node.config.inputEvidence?.length,
+  ).length;
   const baselineMonthlyCost = architecture.nodes.reduce(
     (total, node) =>
       total +
@@ -370,6 +404,9 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
           : node.config.instances),
     0,
   );
+  const observedTraffic = scenario.workload.observedTraffic;
+  const observedTrafficRates =
+    observedTraffic?.samples.map((sample) => sample.rps) ?? [];
   const replayExportAvailability = completedRunArtifact
     ? completedRunReplayExportAvailability(completedRunArtifact)
     : {
@@ -516,6 +553,37 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
     }
   };
 
+  const calibrateTelemetry = () => {
+    try {
+      const report = calibrateNodeFromTelemetry(
+        scenario,
+        architecture,
+        telemetryNodeId,
+        parseNodeTelemetry(telemetryText),
+        {
+          source: telemetrySource.trim(),
+          reference: telemetryReference.trim(),
+          observedAt: telemetryObservedAt.trim(),
+        },
+      );
+      setTelemetryReport(report);
+      setTelemetryError(null);
+      if (report.accepted) {
+        saveSnapshot(
+          `Before telemetry calibration of ${architecture.nodes.find((node) => node.id === telemetryNodeId)?.name ?? telemetryNodeId}`,
+        );
+        setArchitecture(report.architecture);
+      }
+    } catch (error) {
+      setTelemetryReport(null);
+      setTelemetryError(
+        error instanceof Error
+          ? error.message
+          : "Node telemetry could not be calibrated.",
+      );
+    }
+  };
+
   const selectedSku = catalog?.services.find((sku) => sku.sku === catalogSku);
 
   const calibrateNodeCost = () => {
@@ -523,7 +591,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
     try {
       saveSnapshot(`Before ${catalog?.provider ?? "provider"} calibration`);
       setArchitecture(
-        applyProviderSku(architecture, catalogNodeId, selectedSku),
+        applyProviderSku(architecture, catalogNodeId, selectedSku, catalog!),
       );
       setCatalogError(null);
     } catch (error) {
@@ -583,7 +651,13 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
         <header className="decision-header">
           <div>
             <span className="panel-index">DECISION WORKBENCH</span>
-            <h2 id="decision-workbench-title">Compare designs</h2>
+            <h2 id="decision-workbench-title">
+              {tab === "references"
+                ? "Production field guide"
+                : tab === "calibrate"
+                  ? "Calibrate modeled inputs"
+                  : "Compare designs"}
+            </h2>
           </div>
           <dl aria-label="Current decision state">
             <div>
@@ -832,13 +906,19 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                     ) : null}
                   </div>
                 ) : (
-                  <div className="candidate-empty">
-                    <Scales size={24} />
-                    <strong>Current design</strong>
-                    <p>
-                      Run the search to compare explicit changes. It does not
-                      claim a global optimum.
-                    </p>
+                  <div className="candidate-baseline">
+                    <header>
+                      <Scales size={24} />
+                      <div>
+                        <span>Baseline dossier</span>
+                        <strong>Current design</strong>
+                        <p>
+                          Review the evidence boundary before comparing bounded
+                          mutations. Search results are alternatives, not a
+                          claim of global optimality.
+                        </p>
+                      </div>
+                    </header>
                     <dl className="baseline-summary">
                       <div>
                         <dt>Components</dt>
@@ -857,6 +937,91 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                         <dd>{formatMetric(baselineMonthlyCost, " EUR/mo")}</dd>
                       </div>
                     </dl>
+                    <section className="baseline-readiness">
+                      <article>
+                        <span>Demand input</span>
+                        <strong>
+                          {scenario.workload.observedTraffic
+                            ? "Observed replay"
+                            : "Authored curve"}
+                        </strong>
+                        <p>
+                          {scenario.workload.observedTraffic
+                            ? `${scenario.workload.observedTraffic.samples.length} retained samples with linear interpolation.`
+                            : "No production traffic observations are retained in this scenario."}
+                        </p>
+                      </article>
+                      <article>
+                        <span>Component evidence</span>
+                        <strong>
+                          {profiledNodeCount} profiled · {evidencedNodeCount}{" "}
+                          calibrated
+                        </strong>
+                        <p>
+                          {architecture.nodes.length - profiledNodeCount}{" "}
+                          components still use authored or default behavioral
+                          assumptions.
+                        </p>
+                      </article>
+                      <article>
+                        <span>Graph execution gate</span>
+                        <strong>
+                          {baselineGraphIssues.length
+                            ? `${baselineGraphIssues.filter((issue) => issue.severity === "error").length} errors · ${baselineGraphIssues.filter((issue) => issue.severity === "warning").length} warnings`
+                            : "Topology ready"}
+                        </strong>
+                        <p>
+                          {baselineGraphIssues[0]?.detail ??
+                            "Entry paths, link shares, placement, and incident scopes pass graph lint."}
+                        </p>
+                      </article>
+                    </section>
+                    <section className="baseline-objectives">
+                      <header>
+                        <span>Objective baseline</span>
+                        <strong>
+                          {result
+                            ? `${result.score.passed}/${result.score.total} pass`
+                            : "Run required for actuals"}
+                        </strong>
+                      </header>
+                      <div>
+                        {scenario.requirements
+                          .slice(0, 6)
+                          .map((requirement) => {
+                            const evaluation = result?.requirements.find(
+                              (item) => item.requirement.id === requirement.id,
+                            );
+                            return (
+                              <article key={requirement.id}>
+                                <span>{requirement.label}</span>
+                                <small>
+                                  target {requirement.operator}{" "}
+                                  {requirement.target}
+                                  {requirement.unit}
+                                </small>
+                                <b
+                                  className={
+                                    evaluation
+                                      ? evaluation.passed
+                                        ? "positive"
+                                        : "negative"
+                                      : "neutral"
+                                  }
+                                >
+                                  {evaluation
+                                    ? `${formatMetric(evaluation.actual, requirement.unit)} · ${evaluation.passed ? "pass" : "fail"}`
+                                    : "not evaluated"}
+                                </b>
+                              </article>
+                            );
+                          })}
+                      </div>
+                    </section>
+                    <footer>
+                      Compare candidates to see exact input changes, objective
+                      deltas, cost, and Pareto status against this baseline.
+                    </footer>
                   </div>
                 )}
               </section>
@@ -1319,7 +1484,7 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
             >
               <header>
                 <span>Scenario library</span>
-                <strong>Five distributed-systems scenarios</strong>
+                <strong>{SCENARIO_LIBRARY.length} executable scenarios</strong>
                 <p>Loading a scenario saves the current architecture first.</p>
               </header>
               <div>
@@ -1372,6 +1537,16 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
             </div>
           ) : null}
 
+          {tab === "references" ? (
+            <div
+              id="decision-panel-references"
+              role="tabpanel"
+              aria-labelledby="decision-tab-references"
+            >
+              <ReferenceLibrary />
+            </div>
+          ) : null}
+
           {tab === "calibrate" ? (
             <div
               id="decision-panel-calibrate"
@@ -1379,6 +1554,50 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
               role="tabpanel"
               aria-labelledby="decision-tab-calibrate"
             >
+              <section
+                className={`calibration-gate ${observedTraffic ? "calibration-gate--active" : ""}`}
+                aria-label="Demand calibration status"
+              >
+                <div>
+                  <span>Demand evidence gate</span>
+                  <strong>
+                    {observedTraffic
+                      ? "Observed demand replay active"
+                      : "Authored workload curve only"}
+                  </strong>
+                  <p>
+                    {observedTraffic
+                      ? "The engine linearly interpolates the retained observations at every modeled second. Scheduled incidents still overlay the observed offered demand."
+                      : "This scenario has no retained traffic observations. Results are based on authored workload assumptions and are not production calibrated."}
+                  </p>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Source</dt>
+                    <dd>{observedTraffic?.source ?? "authored"}</dd>
+                  </div>
+                  <div>
+                    <dt>Samples</dt>
+                    <dd>{observedTraffic?.samples.length ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>Coverage</dt>
+                    <dd>
+                      {observedTraffic
+                        ? `${observedTraffic.samples.at(-1)?.second ?? 0}s`
+                        : "none"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Observed range</dt>
+                    <dd>
+                      {observedTrafficRates.length
+                        ? `${Math.min(...observedTrafficRates).toLocaleString("en-US")}–${Math.max(...observedTrafficRates).toLocaleString("en-US")} RPS`
+                        : "not available"}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
               <section className="profile-import">
                 <header>
                   <UploadSimple size={18} />
@@ -1388,9 +1607,10 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                   </div>
                 </header>
                 <p>
-                  Sets duration from the last timestamp, base RPS to the median,
-                  peak RPS to the maximum, and adds one scheduled traffic-spike
-                  incident. Raw samples are not replayed or retained.
+                  Retains every bounded observation, normalizes the first sample
+                  to second zero, and replays the curve with linear
+                  interpolation. Existing scheduled incidents remain explicit
+                  overlays; the importer does not invent a synthetic spike.
                 </p>
                 <textarea
                   value={profileText}
@@ -1409,8 +1629,157 @@ export function DecisionWorkbench({ open, onClose }: DecisionWorkbenchProps) {
                   disabled={!profileText.trim()}
                   onClick={importProfile}
                 >
-                  <UploadSimple size={16} /> Apply workload summary
+                  <UploadSimple size={16} /> Retain and replay observations
                 </button>
+                <div className="telemetry-import">
+                  <header>
+                    <Flask size={18} />
+                    <div>
+                      <span>Fit node behavior</span>
+                      <strong>Calibrate against held-out telemetry</strong>
+                    </div>
+                  </header>
+                  <p>
+                    Fits capacity and base latency on four of every five
+                    observations. A change is applied only when the untouched
+                    holdout improves by at least 2% and neither metric regresses
+                    materially.
+                  </p>
+                  <label>
+                    Architecture component
+                    <select
+                      value={telemetryNodeId}
+                      onChange={(event) =>
+                        setTelemetryNodeId(event.target.value)
+                      }
+                    >
+                      {architecture.nodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {node.name} · {node.kind}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Evidence source
+                    <input
+                      value={telemetrySource}
+                      onChange={(event) =>
+                        setTelemetrySource(event.target.value)
+                      }
+                      placeholder="Prometheus production export"
+                    />
+                  </label>
+                  <label>
+                    Evidence reference
+                    <input
+                      value={telemetryReference}
+                      onChange={(event) =>
+                        setTelemetryReference(event.target.value)
+                      }
+                      placeholder="api-canary-2026-09-07"
+                    />
+                  </label>
+                  <label>
+                    Observed at
+                    <input
+                      value={telemetryObservedAt}
+                      onChange={(event) =>
+                        setTelemetryObservedAt(event.target.value)
+                      }
+                      placeholder="2026-09-07T12:00:00Z"
+                    />
+                  </label>
+                  <textarea
+                    value={telemetryText}
+                    onChange={(event) => setTelemetryText(event.target.value)}
+                    placeholder={
+                      "second,latencyMs,cpuPercent\n0,24.2,42\n1,25.1,44\n2,26.7,47\n..."
+                    }
+                    aria-label="Node telemetry data"
+                  />
+                  {!observedTraffic ? (
+                    <p className="decision-warning">
+                      <Warning size={14} /> Retain observed demand first so each
+                      telemetry second is compared against the same offered
+                      load.
+                    </p>
+                  ) : null}
+                  {telemetryError ? (
+                    <p className="decision-error" role="alert">
+                      <Warning size={14} /> {telemetryError}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="decision-primary"
+                    disabled={
+                      !observedTraffic ||
+                      !telemetryText.trim() ||
+                      !telemetrySource.trim() ||
+                      !telemetryReference.trim() ||
+                      !telemetryObservedAt.trim()
+                    }
+                    onClick={calibrateTelemetry}
+                  >
+                    <Flask size={16} /> Fit and validate node
+                  </button>
+                  {telemetryReport ? (
+                    <section
+                      className={`telemetry-fit-report ${telemetryReport.accepted ? "telemetry-fit-report--accepted" : "telemetry-fit-report--rejected"}`}
+                      aria-label="Telemetry calibration report"
+                    >
+                      <header>
+                        <strong>
+                          {telemetryReport.accepted
+                            ? "Calibration accepted"
+                            : "Calibration rejected"}
+                        </strong>
+                        <span>
+                          {telemetryReport.trainSamples} train ·{" "}
+                          {telemetryReport.holdoutSamples} holdout
+                        </span>
+                      </header>
+                      <p>{telemetryReport.reason}</p>
+                      <dl>
+                        <div>
+                          <dt>Holdout error</dt>
+                          <dd>
+                            {(
+                              telemetryReport.holdoutError.before.aggregate *
+                              100
+                            ).toFixed(1)}
+                            % →{" "}
+                            {(
+                              telemetryReport.holdoutError.after.aggregate * 100
+                            ).toFixed(1)}
+                            %
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Capacity</dt>
+                          <dd>
+                            {telemetryReport.previous.capacityRps.toLocaleString(
+                              "en-US",
+                            )}
+                            {" → "}
+                            {telemetryReport.fitted.capacityRps.toLocaleString(
+                              "en-US",
+                            )}{" "}
+                            RPS
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Base latency</dt>
+                          <dd>
+                            {telemetryReport.previous.baseLatencyMs} →{" "}
+                            {telemetryReport.fitted.baseLatencyMs} ms
+                          </dd>
+                        </div>
+                      </dl>
+                    </section>
+                  ) : null}
+                </div>
               </section>
               <section className="topology-assistant">
                 <div className="provider-catalog">

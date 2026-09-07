@@ -104,7 +104,7 @@ describe("scheduled simulation actions", () => {
       id: "lower-api-shedding-threshold",
       atSecond: 7,
       nodeId: "api",
-      intervention: { kind: "load-shedding", threshold: 0.4 },
+      intervention: { kind: "load-shedding", threshold: 0.1 },
     };
 
     const intervened = simulate(scenario, architecture, {
@@ -112,8 +112,17 @@ describe("scheduled simulation actions", () => {
     });
 
     expect(intervened.frames.slice(0, 5)).toEqual(baseline.frames.slice(0, 5));
-    expect(intervened.frames[5]).not.toEqual(baseline.frames[5]);
-    expect(intervened.frames[7]).not.toEqual(baseline.frames[7]);
+    // A breaker policy change does not perturb a healthy frame. Admission
+    // changes are intentionally applied at the next one-second boundary.
+    expect(intervened.frames[5]).toEqual(baseline.frames[5]);
+    expect(intervened.frames[7]).toEqual(baseline.frames[7]);
+    expect(intervened.frames[7]!.nodeMetrics.api!.admissionPercent).toBe(100);
+    expect(intervened.frames[8]).not.toEqual(baseline.frames[8]);
+    expect(
+      intervened.frames[8]!.nodeMetrics.api!.admissionPercent,
+    ).toBeLessThan(
+      baseline.frames[8]!.nodeMetrics.api!.admissionPercent ?? 100,
+    );
     expect(intervened.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
