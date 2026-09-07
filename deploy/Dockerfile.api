@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS toolchain
+FROM node:24-trixie-slim AS toolchain
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable && corepack prepare pnpm@11.16.0 --activate
@@ -22,7 +22,7 @@ COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/sim-core/package.json packages/sim-core/package.json
 RUN pnpm install --prod --frozen-lockfile --filter @systemforge/api...
 
-FROM node:24-bookworm-slim
+FROM node:24-trixie-slim
 ENV NODE_ENV=production
 WORKDIR /app
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
