@@ -3,7 +3,7 @@ import { Pool } from "pg";
 
 const apiOrigin = process.env.SMOKE_API_ORIGIN ?? "http://127.0.0.1:8080";
 const webOrigin = process.env.SMOKE_WEB_ORIGIN ?? "http://systemforge-web:8080";
-const expectedEngineVersion = "0.7.0";
+const expectedEngineVersion = "0.8.0";
 const requestedLeaseRecoveryTimeout = Number.parseInt(
   process.env.SMOKE_LEASE_RECOVERY_TIMEOUT_MS ?? "75000",
   10,

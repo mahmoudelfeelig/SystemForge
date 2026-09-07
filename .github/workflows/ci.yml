@@ -52,6 +52,7 @@ jobs:
       - run: node scripts/web_route_contract.test.mjs
       - run: node scripts/service_worker_contract.test.mjs
       - run: node scripts/overload_smoke_contract.test.mjs
+      - run: node scripts/production_smoke_contract.test.mjs
       - run: sh scripts/edge_contract.test.sh
       - run: sh scripts/offsite_backup.test.sh
       - run: sh scripts/provision_offsite_backup.test.sh
