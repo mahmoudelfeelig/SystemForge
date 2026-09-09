@@ -11,6 +11,6 @@
     "test": "vitest run --root ../.. packages/contracts"
   },
   "dependencies": {
-    "zod": "^4.1.11"
+    "zod": "^4.5.4"
   }
 }
