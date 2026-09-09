@@ -20,5 +20,7 @@ RUN apk upgrade --no-cache
 COPY deploy/nginx.conf /etc/nginx/nginx.conf
 COPY deploy/offline.html /usr/share/nginx/html/offline.html
 COPY --from=build /workspace/apps/web/dist/client /usr/share/nginx/html
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx
 EXPOSE 8080
+USER nginx
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 CMD wget -qO- http://127.0.0.1:8080/health || exit 1

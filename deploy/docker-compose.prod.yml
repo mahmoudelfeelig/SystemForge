@@ -18,17 +18,13 @@ services:
     init: true
     read_only: true
     tmpfs:
-      - /var/cache/nginx:size=32m,mode=0755
+      - /var/cache/nginx:size=32m,mode=0750,uid=101,gid=101
       - /var/run:size=4m,mode=0755
       - /tmp:size=16m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
     expose:
       - "8080"
     networks:
