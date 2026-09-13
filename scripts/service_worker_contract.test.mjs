@@ -17,13 +17,13 @@ assert.deepEqual(
   manifest.icons.filter((icon) => icon.purpose === "maskable"),
   [
     {
-      src: "/assets/mahmoud-elephant-maskable-192.png?v=c55dc0c7",
+      src: "/assets/mahmoud-elephant-maskable-192.png?v=d7d6da9b",
       sizes: "192x192",
       type: "image/png",
       purpose: "maskable",
     },
     {
-      src: "/assets/mahmoud-elephant-maskable.png?v=b915c02a",
+      src: "/assets/mahmoud-elephant-maskable.png?v=14813153",
       sizes: "512x512",
       type: "image/png",
       purpose: "maskable",
@@ -49,12 +49,12 @@ const assertPngAsset = async (path, expectedSize, expectedVersion) => {
 await assertPngAsset(
   "apps/web/public/assets/mahmoud-elephant-maskable-192.png",
   192,
-  "c55dc0c7",
+  "d7d6da9b",
 );
 await assertPngAsset(
   "apps/web/public/assets/mahmoud-elephant-maskable.png",
   512,
-  "b915c02a",
+  "14813153",
 );
 const listeners = new Map();
 const cachedLab = new Response("cached local lab", { status: 200 });
@@ -138,7 +138,7 @@ assert.ok(
   "Decision workbench route was not precached",
 );
 assert.ok(
-  precached.includes("/assets/mahmoud-elephant-192.png?v=8bb95beb"),
+  precached.includes("/assets/mahmoud-elephant-192.png?v=d7d6da9b"),
   "the content-versioned PWA icon was not precached",
 );
 assert.equal(
@@ -147,11 +147,11 @@ assert.equal(
   "the negatively cached unversioned PWA icon must not be precached",
 );
 assert.ok(
-  precached.includes("/assets/mahmoud-elephant-maskable-192.png?v=c55dc0c7"),
+  precached.includes("/assets/mahmoud-elephant-maskable-192.png?v=d7d6da9b"),
   "the 192px maskable icon was not precached",
 );
 assert.ok(
-  precached.includes("/assets/mahmoud-elephant-maskable.png?v=b915c02a"),
+  precached.includes("/assets/mahmoud-elephant-maskable.png?v=14813153"),
   "the 512px maskable icon was not precached",
 );
 assert.ok(

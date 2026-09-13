@@ -8,10 +8,10 @@ const SHELL = [
   "/replay",
   "/decisions",
   "/manifest.webmanifest",
-  "/assets/mahmoud-elephant-192.png?v=8bb95beb",
+  "/assets/mahmoud-elephant-192.png?v=d7d6da9b",
   "/assets/mahmoud-elephant.png",
-  "/assets/mahmoud-elephant-maskable-192.png?v=c55dc0c7",
-  "/assets/mahmoud-elephant-maskable.png?v=b915c02a",
+  "/assets/mahmoud-elephant-maskable-192.png?v=d7d6da9b",
+  "/assets/mahmoud-elephant-maskable.png?v=14813153",
 ];
 
 const manifestAssets = (manifest) =>
